@@ -168,15 +168,30 @@ jobs:
           title_vuln_img: "Trivy (image) vulnerability summary"
           title_mis_img: "Trivy (image) misconfiguration summary"
 
-      # === UPLOAD RESULTS ===
-      - name: Upload scan results
-        uses: actions/upload-artifact@v5
+      # === PUBLISH TO GITHUB RELEASE ===
+      - name: Publish scan results
+        uses: Avarko/gh-security-toolkit/actions/publisher/github-release@improvements
         with:
-          name: security-scan-${{ steps.ts.outputs.ts }}
-          path: ${{ steps.setup.outputs.output_dir }}
-          retention-days: ${{ inputs.retention_days }}
+          outdir: ${{ steps.setup.outputs.output_dir }}
+          metadata_timestamp: ${{ steps.ts.outputs.ts }}
+          metadata_branch: ${{ inputs.branch }}
+          metadata_repository: ${{ inputs.repository }}
+          metadata_commit_sha: ${{ inputs.commit_sha }}
+          metadata_image_name: ${{ inputs.image_name }}
+          metadata_scan_id: ${{ github.run_id }}
+          release_name: "Security Scan ${{ inputs.branch }} ${{ steps.ts.outputs.ts }}"
+          tag_name: "security-scan-${{ steps.ts.outputs.ts }}"
+          body_file: ${{ steps.sum.outputs.release_body_markdown }}
+          draft: "false"
+          prerelease: "true"
+          overwrite_tag: "false"
+          channel: "security-scan-${{ inputs.branch }}"
+          retention_keep: "10"
+          retention_days: "${{ inputs.retention_days }}"
+          github_token: ${{ secrets.GH_TOKEN }}
 
-      - name: Upload latest alias
+      # === UPLOAD ARTIFACTS (backup/diff) ===
+      - name: Upload latest for diff
         uses: actions/upload-artifact@v5
         with:
           name: security-scan-latest
