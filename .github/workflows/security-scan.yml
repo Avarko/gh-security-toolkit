@@ -94,14 +94,14 @@ jobs:
       # === DOWNLOAD ARTIFACTS ===
       - name: Download filesystem artifact
         if: ${{ inputs.filesystem_artifact != '' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: ${{ inputs.filesystem_artifact }}
           path: ${{ steps.setup.outputs.work_dir }}/filesystem
 
       - name: Download docker image artifact
         if: ${{ inputs.docker_image_artifact != '' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: ${{ inputs.docker_image_artifact }}
           path: ${{ steps.setup.outputs.work_dir }}/image
@@ -141,7 +141,7 @@ jobs:
 
       - name: Download previous
         if: steps.hasprev.outputs.exists == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: security-scan-latest
           path: ./previous-scan/
@@ -170,14 +170,14 @@ jobs:
 
       # === UPLOAD RESULTS ===
       - name: Upload scan results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: security-scan-${{ steps.ts.outputs.ts }}
           path: ${{ steps.setup.outputs.output_dir }}
           retention-days: ${{ inputs.retention_days }}
 
       - name: Upload latest alias
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: security-scan-latest
           path: ${{ steps.setup.outputs.output_dir }}
