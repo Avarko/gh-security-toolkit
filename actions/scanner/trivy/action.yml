@@ -1,0 +1,145 @@
+name: "Scanner (fs + image)"
+description: "Builds app, builds local Docker image, runs fs/image scans, writes canonical JSONs."
+inputs:
+  branch:
+    description: "Git branch to scan"
+    required: false
+    default: "master"
+  image_name:
+    description: "Local image name (no registry)"
+    required: false
+    default: "ciam-backend"
+  mvn_module_path:
+    description: "Path to Maven module to build"
+    required: false
+    default: "ciam-backend"
+  java_version:
+    description: "Java version for the Maven build"
+    required: false
+    default: "17"
+  trivy_config:
+    description: "Path to .trivy.yaml (relative to repo root)"
+    required: false
+    default: ".trivy.yaml"
+  trivy_output_dir:
+    description: "Directory for Trivy JSON outputs"
+    required: true
+  timestamp:
+    description: "Precomputed UTC timestamp (YYYY-mm-dd-HHMMSS)"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout target branch
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ inputs.branch }}
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java_version }}
+        cache: maven
+
+    - name: Build application (mvn)
+      shell: bash
+      run: cd "${{ inputs.mvn_module_path }}" && mvn clean package -DskipTests
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        driver: docker-container
+        install: true
+
+    - name: Build local Docker image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        tags: ${{ inputs.image_name }}:nightly-${{ inputs.branch }}
+        load: true
+        provenance: false
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        labels: |
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.source=${{ github.repository }}
+
+    - name: Resolve local image digest/ID
+      id: img
+      shell: bash
+      run: |
+        ID=$(docker images --no-trunc --quiet "${{ inputs.image_name }}:nightly-${{ inputs.branch }}")
+        echo "id=$ID" >> "$GITHUB_OUTPUT"
+        echo "short=${ID#sha256:}" >> "$GITHUB_OUTPUT"
+
+    - name: Prepare dirs
+      shell: bash
+      run: |
+        mkdir -p "${{ inputs.trivy_output_dir }}"
+        chmod +x scripts/*.sh || true
+
+    - name: Trivy cache
+      uses: yogeshlonkar/trivy-cache-action@v0
+      with:
+        gh-token: ${{ github.token }}
+
+    - name: Trivy - FS scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: fs
+        scan-ref: .
+        format: json
+        output: ${{ inputs.trivy_output_dir }}/trivy-fs-${{ inputs.timestamp }}.json
+        exit-code: 0
+        trivy-config: ${{ inputs.trivy_config }}
+        cache-dir: .trivy
+
+    - name: Canonicalize FS filename
+      shell: bash
+      run: |
+        cp "${{ inputs.trivy_output_dir }}/trivy-fs-${{ inputs.timestamp }}.json" \
+           "${{ inputs.trivy_output_dir }}/trivy-fs-results.json"
+
+    - name: Trivy - Image scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ steps.img.outputs.id }}
+        format: json
+        output: ${{ inputs.trivy_output_dir }}/trivy-image-${{ inputs.timestamp }}.json
+        exit-code: 0
+        trivy-config: ${{ inputs.trivy_config }}
+        cache-dir: .trivy
+
+    - name: Canonicalize Image filename
+      shell: bash
+      run: |
+        cp "${{ inputs.trivy_output_dir }}/trivy-image-${{ inputs.timestamp }}.json" \
+           "${{ inputs.trivy_output_dir }}/trivy-image-results.json"
+
+    - name: Write build metadata
+      id: meta
+      shell: bash
+      run: |
+        mkdir -p meta
+        jq -n \
+          --arg ts   "${{ inputs.timestamp }}" \
+          --arg id   "${{ steps.img.outputs.id }}" \
+          --arg sha  "${{ github.sha }}" \
+          --arg tag  "nightly-${{ inputs.branch }}" \
+          '{timestamp:$ts,image_digest:$id,git_sha:$sha,tag:$tag}' > meta/build-${{ inputs.timestamp }}.json
+        echo "meta=meta/build-${{ inputs.timestamp }}.json" >> "$GITHUB_OUTPUT"
+
+outputs:
+  fs_json:
+    description: "Filesystem scan (canonical) JSON path"
+    value: ${{ inputs.trivy_output_dir }}/trivy-fs-results.json
+  image_json:
+    description: "Image scan (canonical) JSON path"
+    value: ${{ inputs.trivy_output_dir }}/trivy-image-results.json
+  image_digest:
+    description: "Local image digest/ID"
+    value: ${{ steps.img.outputs.id }}
+  meta_json:
+    description: "Build metadata JSON path"
+    value: ${{ steps.meta.outputs.meta }}

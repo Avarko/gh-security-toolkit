@@ -1,0 +1,162 @@
+name: "Publisher (GitHub Release + retention)"
+description: "Creates a GitHub Release and uploads scan outputs; optionally prunes old releases in the same channel."
+inputs:
+  # What to publish
+  outdir:
+    description: "Directory containing scan outputs (JSON/MD/etc.). Use a unique, namespaced dir."
+    required: true
+  meta_json:
+    description: "Build metadata JSON path to include"
+    required: true
+
+  # Release naming
+  release_name:
+    description: "Human-friendly release name (e.g. Security Scan 2025-11-04-021500)"
+    required: true
+  tag_name:
+    description: "Tag name (must be unique unless overwrite_tag=true). Example: secscan-2025-11-04-021500"
+    required: true
+  body_file:
+    description: "Optional path to Markdown body (e.g. combined summary)"
+    required: false
+    default: ""
+  draft:
+    description: "Create as a draft release"
+    required: false
+    default: "false"
+  prerelease:
+    description: "Mark as prerelease"
+    required: false
+    default: "false"
+  overwrite_tag:
+    description: "If tag exists, delete and recreate before publishing"
+    required: false
+    default: "false"
+
+  # Channel retention
+  channel:
+    description: "Logical channel (e.g. nightly-main). Used for pruning related releases."
+    required: false
+    default: ""
+  retention_keep:
+    description: "Keep at most N newest releases in this channel (0=ignore)"
+    required: false
+    default: "10"
+  retention_days:
+    description: "Delete channel releases older than N days (0=ignore)"
+    required: false
+    default: "0"
+
+  # Auth (defaults to GITHUB_TOKEN)
+  github_token:
+    description: "Token with contents:write"
+    required: false
+    default: "${{ github.token }}"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        set -euo pipefail
+        [ -n "${{ inputs.release_name }}" ] || { echo "release_name is required"; exit 1; }
+        [ -n "${{ inputs.tag_name }}" ] || { echo "tag_name is required"; exit 1; }
+        [ -f "${{ inputs.meta_json }}" ] || { echo "meta_json not found"; exit 1; }
+        [ -d "${{ inputs.outdir }}" ] || { echo "outdir '${{ inputs.outdir }}' not found"; exit 1; }
+
+    - name: Prepare Gh auth
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: gh auth status || true
+
+    - name: Ensure unique tag (optional overwrite)
+      if: ${{ inputs.overwrite_tag == 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -euo pipefail
+        if gh release view "${{ inputs.tag_name }}" &>/dev/null; then
+          echo "Tag exists -> deleting release + tag: ${{ inputs.tag_name }}"
+          gh release delete "${{ inputs.tag_name }}" -y || true
+          git tag -d "${{ inputs.tag_name }}" || true
+        fi
+
+    - name: Create release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -euo pipefail
+        args=( --title "${{ inputs.release_name }}" )
+        if [ -n "${{ inputs.body_file }}" ] && [ -f "${{ inputs.body_file }}" ]; then
+          args+=( --notes-file "${{ inputs.body_file }}" )
+        fi
+        [ "${{ inputs.draft }}" = "true" ] && args+=( --draft )
+        [ "${{ inputs.prerelease }}" = "true" ] && args+=( --prerelease )
+        gh release create "${{ inputs.tag_name }}" "${args[@]}"
+
+    - name: Upload assets (scan outputs + metadata)
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -euo pipefail
+        # Collect files: everything under outdir + meta_json
+        mapfile -t files < <(find "${{ inputs.outdir }}" -type f -maxdepth 3 -print)
+        files+=( "${{ inputs.meta_json }}" )
+        # Upload with --clobber to allow re-runs
+        gh release upload "${{ inputs.tag_name }}" "${files[@]}" --clobber
+
+    - name: Channel retention (optional)
+      if: ${{ inputs.channel != '' && (inputs.retention_keep != '0' || inputs.retention_days != '0') }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -euo pipefail
+        channel="${{ inputs.channel }}"
+        keep="${{ inputs.retention_keep }}"
+        days="${{ inputs.retention_days }}"
+        echo "Pruning channel='${channel}' keep=${keep} days=${days}"
+
+        # List releases JSON
+        releases_json=$(gh release list --limit 200 --json tagName,name,createdAt,isDraft,isPrerelease | jq -c '.')
+        # Filter to channel by NAME prefix match (adjust if you tag-prefix instead)
+        filtered=$(echo "$releases_json" | jq --arg ch "$channel" '[ .[] | select(.name | startswith($ch)) ]')
+        # Sort newest first
+        sorted=$(echo "$filtered" | jq 'sort_by(.createdAt) | reverse')
+
+        now_s=$(date -u +%s)
+        deleted=0
+
+        index=0
+        echo "$sorted" | jq -c '.[]' | while read -r rel; do
+          name=$(echo "$rel" | jq -r '.name')
+          tag=$(echo "$rel" | jq -r '.tagName')
+          created=$(echo "$rel" | jq -r '.createdAt')
+          created_s=$(date -u -d "$created" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$created" +%s)
+          age_days=$(( (now_s - created_s) / 86400 ))
+
+          delete_reason=""
+
+          # Enforce count
+          if [ "$keep" != "0" ] && [ $index -ge $keep ]; then
+            delete_reason="exceeds keep=$keep"
+          fi
+          # Enforce age
+          if [ -z "$delete_reason" ] && [ "$days" != "0" ] && [ $age_days -gt $days ]; then
+            delete_reason="older than ${days}d (age=${age_days}d)"
+          fi
+
+          if [ -n "$delete_reason" ]; then
+            echo "Deleting ${name} (tag=${tag}) -> ${delete_reason}"
+            gh release delete "$tag" -y || true
+            git tag -d "$tag" || true
+            deleted=$((deleted+1))
+          fi
+
+          index=$((index+1))
+        done

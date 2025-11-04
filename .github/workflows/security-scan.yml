@@ -1,0 +1,126 @@
+name: Security Scan
+
+on:
+  workflow_call:
+    inputs:
+      branch:
+        description: "Branch to scan"
+        required: false
+        default: "master"
+        type: string
+      image_name:
+        description: "Local image name to build/scan"
+        required: false
+        default: "ciam-backend"
+        type: string
+      mvn_module_path:
+        description: "Path to Maven module"
+        required: false
+        default: "ciam-backend"
+        type: string
+      trivy_config:
+        description: "Path to .trivy.yaml"
+        required: false
+        default: ".trivy.yaml"
+        type: string
+      retention_days_main:
+        description: "Retention days for main artifacts"
+        required: false
+        default: 90
+        type: number
+      retention_days_latest:
+        description: "Retention days for latest alias"
+        required: false
+        default: 30
+        type: number
+    secrets:
+      GH_TOKEN:
+        required: false
+      SLACK_WEBHOOK_URL:
+        required: false
+
+permissions:
+  contents: read
+  actions: write
+  security-events: write
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup output directory
+        id: setup
+        run: |
+          OUTPUT_DIR="${RUNNER_TEMP}/gh-security-toolkit-${{ github.run_id }}"
+          mkdir -p "$OUTPUT_DIR"
+          echo "output_dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Timestamp
+        id: ts
+        run: echo "ts=$(date -u +%Y-%m-%d-%H%M%S)" >> "$GITHUB_OUTPUT"
+
+      - name: Scanner
+        id: scan
+        uses: ./actions/scanner/trivy
+        with:
+          trivy_output_dir: ${{ steps.setup.outputs.output_dir }}
+          timestamp: ${{ steps.ts.outputs.ts }}
+          branch: ${{ inputs.branch }}
+          image_name: ${{ inputs.image_name }}
+          mvn_module_path: ${{ inputs.mvn_module_path }}
+          trivy_config: ${{ inputs.trivy_config }}
+
+      - name: Check previous exists
+        id: hasprev
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
+        shell: bash
+        run: |
+          if gh api repos/${{ github.repository }}/actions/artifacts \
+             --jq '.artifacts[] | select(.name=="security-scan-latest") | .id' 2>/dev/null | grep -q .; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download previous
+        if: steps.hasprev.outputs.exists == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: security-scan-latest
+          path: ./previous-scan/
+
+      - name: Diff (if previous)
+        if: steps.hasprev.outputs.exists == 'true'
+        id: diff
+        uses: ./actions/diff
+        with:
+          current_fs: ${{ steps.scan.outputs.fs_json }}
+          current_image: ${{ steps.scan.outputs.image_json }}
+          previous_dir: ./previous-scan/${{ steps.setup.outputs.output_dir }}
+          outdir: ${{ steps.setup.outputs.output_dir }}
+
+      - name: Summarizer
+        id: sum
+        uses: ./actions/summarizer
+        with:
+          fs_json: ${{ steps.scan.outputs.fs_json }}
+          image_json: ${{ steps.scan.outputs.image_json }}
+          outdir: ${{ steps.setup.outputs.output_dir }}
+
+      - name: Publisher (GitHub Release)
+        uses: ./actions/publisher/github-release
+        with:
+          outdir: ${{ steps.setup.outputs.output_dir }}
+          meta_json: ${{ steps.scan.outputs.meta_json }}
+          release_name: "nightly-${{ inputs.branch }} ${{
+            steps.ts.outputs.ts }}"
+          tag_name: "secscan-${{ inputs.branch }}-${{ steps.ts.outputs.ts }}"
+          body_file: ${{ steps.sum.outputs.release_body_markdown }}
+          draft: "false"
+          prerelease: "false"
+          overwrite_tag: "false"
+          channel: "nightly-${{ inputs.branch }}"
+          retention_keep: "10"          # keep last 10 releases for that channel
+          retention_days: "0"           # or set e.g. 180
