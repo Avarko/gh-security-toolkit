@@ -47,6 +47,8 @@ runs:
       run: |
         jbang "${{ github.action_path }}/../../scripts/trivy_summarize.java" \
           "${{ inputs.fs_json }}" "${{ inputs.max_rows }}" "${{ inputs.outdir }}"
+        # Rename to temp file to avoid overwrite
+        mv "${{ inputs.outdir }}/TRIVY_SUMMARY.md" "${{ inputs.outdir }}/TRIVY_SUMMARY_FS.md"
 
     - name: Summarize Image (if provided)
       if: ${{ inputs.image_json != '' }}
@@ -57,6 +59,26 @@ runs:
       run: |
         jbang "${{ github.action_path }}/../../scripts/trivy_summarize.java" \
           "${{ inputs.image_json }}" "${{ inputs.max_rows }}" "${{ inputs.outdir }}"
+        # Rename to temp file
+        mv "${{ inputs.outdir }}/TRIVY_SUMMARY.md" "${{ inputs.outdir }}/TRIVY_SUMMARY_IMAGE.md"
+
+    - name: Combine Trivy summaries
+      shell: bash
+      run: |
+        summary="${{ inputs.outdir }}/TRIVY_SUMMARY.md"
+        > "$summary"  # Create empty file
+
+        # Append FS summary if exists
+        if [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY_FS.md" ]; then
+          cat "${{ inputs.outdir }}/TRIVY_SUMMARY_FS.md" >> "$summary"
+          echo "" >> "$summary"
+        fi
+
+        # Append Image summary if exists
+        if [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY_IMAGE.md" ]; then
+          cat "${{ inputs.outdir }}/TRIVY_SUMMARY_IMAGE.md" >> "$summary"
+          echo "" >> "$summary"
+        fi
 
     - name: Combine summaries to release body
       id: combine
@@ -64,9 +86,20 @@ runs:
       run: |
         out="${{ inputs.outdir }}/RELEASE_BODY.md"
         echo "## 🔍 Security Scan Summary" > "$out"
-        for f in "${{ inputs.outdir }}/TRIVY_SUMMARY.md"; do
-          [ -f "$f" ] && { echo "" >> "$out"; cat "$f" >> "$out"; }
-        done
+        echo "" >> "$out"
+
+        # Add diff if exists
+        if [ -f "${{ inputs.outdir }}/diff.md" ]; then
+          cat "${{ inputs.outdir }}/diff.md" >> "$out"
+          echo "" >> "$out"
+        fi
+
+        # Add Trivy summary if exists
+        if [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY.md" ]; then
+          cat "${{ inputs.outdir }}/TRIVY_SUMMARY.md" >> "$out"
+          echo "" >> "$out"
+        fi
+
         echo "release_body=$out" >> "$GITHUB_OUTPUT"
 outputs:
   release_body_markdown:

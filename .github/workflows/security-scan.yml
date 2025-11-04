@@ -89,7 +89,7 @@ jobs:
 
       - name: Timestamp
         id: ts
-        run: echo "ts=$(date -u +%Y-%m-%d-%H%M%S)" >> "$GITHUB_OUTPUT"
+        run: echo "ts=$(date -u +%Y-%m-%d-%H%M%SZ)" >> "$GITHUB_OUTPUT"
 
       # === DOWNLOAD ARTIFACTS ===
       - name: Download filesystem artifact
@@ -123,7 +123,6 @@ jobs:
           trivy_config: ${{ inputs.trivy_config != '' && format('{0}/filesystem/{1}', steps.setup.outputs.work_dir, inputs.trivy_config) || '' }}
           trivy_severity: ${{ inputs.trivy_severity }}
           trivy_output_dir: ${{ steps.setup.outputs.output_dir }}
-          timestamp: ${{ steps.ts.outputs.ts }}
 
       # === DIFF WITH PREVIOUS RELEASE ===
       - name: Diff with previous release
