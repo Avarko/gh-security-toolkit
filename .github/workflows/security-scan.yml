@@ -47,6 +47,8 @@ permissions:
 jobs:
   security-scan:
     runs-on: ubuntu-latest
+    # Note: All action references use @improvements for testing.
+    # When merging to main, update all @improvements refs to @main or use version tags like @v1.0.0
     steps:
       - name: Setup output directory
         id: setup
@@ -61,7 +63,7 @@ jobs:
 
       - name: Scanner
         id: scan
-        uses: ./actions/scanner/trivy
+        uses: Avarko/gh-security-toolkit/actions/scanner/trivy@improvements
         with:
           trivy_output_dir: ${{ steps.setup.outputs.output_dir }}
           timestamp: ${{ steps.ts.outputs.ts }}
@@ -94,7 +96,7 @@ jobs:
       - name: Diff (if previous)
         if: steps.hasprev.outputs.exists == 'true'
         id: diff
-        uses: ./actions/diff
+        uses: Avarko/gh-security-toolkit/actions/diff@improvements
         with:
           current_fs: ${{ steps.scan.outputs.fs_json }}
           current_image: ${{ steps.scan.outputs.image_json }}
@@ -103,14 +105,14 @@ jobs:
 
       - name: Summarizer
         id: sum
-        uses: ./actions/summarizer
+        uses: Avarko/gh-security-toolkit/actions/summarizer@improvements
         with:
           fs_json: ${{ steps.scan.outputs.fs_json }}
           image_json: ${{ steps.scan.outputs.image_json }}
           outdir: ${{ steps.setup.outputs.output_dir }}
 
       - name: Publisher (GitHub Release)
-        uses: ./actions/publisher/github-release
+        uses: Avarko/gh-security-toolkit/actions/publisher/github-release@improvements
         with:
           outdir: ${{ steps.setup.outputs.output_dir }}
           meta_json: ${{ steps.scan.outputs.meta_json }}
