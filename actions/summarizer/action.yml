@@ -45,7 +45,7 @@ runs:
         TITLE_VULN: ${{ inputs.title_vuln_fs }}
         TITLE_MIS:  ${{ inputs.title_mis_fs }}
       run: |
-        jbang "$GITHUB_WORKSPACE/scripts/trivy_summarize.java" \
+        jbang "${{ github.action_path }}/../../scripts/trivy_summarize.java" \
           "${{ inputs.fs_json }}" "${{ inputs.max_rows }}" "${{ inputs.outdir }}"
 
     - name: Summarize Image (if provided)
@@ -55,7 +55,7 @@ runs:
         TITLE_VULN: ${{ inputs.title_vuln_img }}
         TITLE_MIS:  ${{ inputs.title_mis_img }}
       run: |
-        jbang "$GITHUB_WORKSPACE/scripts/trivy_summarize.java" \
+        jbang "${{ github.action_path }}/../../scripts/trivy_summarize.java" \
           "${{ inputs.image_json }}" "${{ inputs.max_rows }}" "${{ inputs.outdir }}"
 
     - name: Combine summaries to release body
