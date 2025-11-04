@@ -47,8 +47,10 @@ runs:
       run: |
         jbang "${{ github.action_path }}/../../scripts/trivy_summarize.java" \
           "${{ inputs.fs_json }}" "${{ inputs.max_rows }}" "${{ inputs.outdir }}"
-        # Rename to temp file to avoid overwrite
-        mv "${{ inputs.outdir }}/TRIVY_SUMMARY.md" "${{ inputs.outdir }}/TRIVY_SUMMARY_FS.md"
+        # Rename to temp file to avoid overwrite (if file was created)
+        [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY.md" ] && \
+          mv "${{ inputs.outdir }}/TRIVY_SUMMARY.md" "${{ inputs.outdir }}/TRIVY_SUMMARY_FS.md" || \
+          echo "No TRIVY_SUMMARY.md created for FS scan"
 
     - name: Summarize Image (if provided)
       if: ${{ inputs.image_json != '' }}
@@ -59,8 +61,10 @@ runs:
       run: |
         jbang "${{ github.action_path }}/../../scripts/trivy_summarize.java" \
           "${{ inputs.image_json }}" "${{ inputs.max_rows }}" "${{ inputs.outdir }}"
-        # Rename to temp file
-        mv "${{ inputs.outdir }}/TRIVY_SUMMARY.md" "${{ inputs.outdir }}/TRIVY_SUMMARY_IMAGE.md"
+        # Rename to temp file (if file was created)
+        [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY.md" ] && \
+          mv "${{ inputs.outdir }}/TRIVY_SUMMARY.md" "${{ inputs.outdir }}/TRIVY_SUMMARY_IMAGE.md" || \
+          echo "No TRIVY_SUMMARY.md created for Image scan"
 
     - name: Combine Trivy summaries
       shell: bash
