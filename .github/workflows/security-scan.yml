@@ -113,12 +113,6 @@ jobs:
           TAR_FILE=$(find "${{ steps.setup.outputs.work_dir }}/image" -name "*.tar" -type f | head -n1)
           echo "tar_path=$TAR_FILE" >> "$GITHUB_OUTPUT"
 
-      # === TRIVY CACHE ===
-      - name: Trivy cache
-        uses: yogeshlonkar/trivy-cache-action@v0
-        with:
-          gh-token: ${{ secrets.GH_TOKEN }}
-
       # === RUN TRIVY SCANS ===
       - name: Run Trivy scans
         id: scan
