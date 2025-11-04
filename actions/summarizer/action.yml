@@ -1,0 +1,74 @@
+name: "Summarizer"
+description: "Runs JBang-based summarizer for FS/Image JSONs and returns a combined Markdown body."
+inputs:
+  fs_json:
+    description: "Filesystem scan JSON"
+    required: false
+    default: ""
+  image_json:
+    description: "Image scan JSON"
+    required: false
+    default: ""
+  outdir:
+    description: "Output directory"
+    required: true
+  title_vuln_fs:
+    description: "Title for FS vulnerabilities section"
+    required: false
+    default: "Trivy (fs) vulnerability summary"
+  title_mis_fs:
+    description: "Title for FS misconfiguration section"
+    required: false
+    default: "Trivy (fs) misconfiguration summary"
+  title_vuln_img:
+    description: "Title for Image vulnerabilities section"
+    required: false
+    default: "Trivy (image) vulnerability summary"
+  title_mis_img:
+    description: "Title for Image misconfiguration section"
+    required: false
+    default: "Trivy (image) misconfiguration summary"
+  max_rows:
+    description: "Max rows in summaries"
+    required: false
+    default: "50"
+runs:
+  using: "composite"
+  steps:
+    - name: Setup JBang
+      uses: jbangdev/setup-jbang@main
+
+    - name: Summarize FS (if provided)
+      if: ${{ inputs.fs_json != '' }}
+      shell: bash
+      env:
+        TITLE_VULN: ${{ inputs.title_vuln_fs }}
+        TITLE_MIS:  ${{ inputs.title_mis_fs }}
+      run: |
+        jbang "$GITHUB_WORKSPACE/scripts/trivy_summarize.java" \
+          "${{ inputs.fs_json }}" "${{ inputs.max_rows }}" "${{ inputs.outdir }}"
+
+    - name: Summarize Image (if provided)
+      if: ${{ inputs.image_json != '' }}
+      shell: bash
+      env:
+        TITLE_VULN: ${{ inputs.title_vuln_img }}
+        TITLE_MIS:  ${{ inputs.title_mis_img }}
+      run: |
+        jbang "$GITHUB_WORKSPACE/scripts/trivy_summarize.java" \
+          "${{ inputs.image_json }}" "${{ inputs.max_rows }}" "${{ inputs.outdir }}"
+
+    - name: Combine summaries to release body
+      id: combine
+      shell: bash
+      run: |
+        out="${{ inputs.outdir }}/RELEASE_BODY.md"
+        echo "## 🔍 Security Scan Summary" > "$out"
+        for f in "${{ inputs.outdir }}/TRIVY_SUMMARY.md"; do
+          [ -f "$f" ] && { echo "" >> "$out"; cat "$f" >> "$out"; }
+        done
+        echo "release_body=$out" >> "$GITHUB_OUTPUT"
+outputs:
+  release_body_markdown:
+    description: "Path to combined release body"
+    value: ${{ steps.combine.outputs.release_body }}

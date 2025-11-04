@@ -1,0 +1,77 @@
+name: "Diff (current vs. previous)"
+description: "Compares current JSONs vs. previous JSONs (if provided); emits a compact Markdown summary."
+inputs:
+  current_fs:
+    description: "Current FS scan JSON"
+    required: false
+    default: ""
+  current_image:
+    description: "Current Image scan JSON"
+    required: false
+    default: ""
+  previous_dir:
+    description: "Directory containing previous JSONs (expects trivy-fs-results.json / trivy-image-results.json)"
+    required: false
+    default: ""
+  outdir:
+    description: "Output directory for diff artifacts"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Prepare outdir
+      shell: bash
+      run: mkdir -p "${{ inputs.outdir }}"
+
+    - name: Diff FS and Image (counts by severity)
+      id: run
+      shell: bash
+      run: |
+        set -euo pipefail
+        md="${{ inputs.outdir }}/diff.md"
+        json="${{ inputs.outdir }}/diff.json"
+        prev_fs="${{ inputs.previous_dir }}/trivy-fs-results.json"
+        prev_img="${{ inputs.previous_dir }}/trivy-image-results.json"
+        cur_fs="${{ inputs.current_fs }}"
+        cur_img="${{ inputs.current_image }}"
+        echo "# Security Scan Comparison" > "$md"
+        echo '{ "fs": {}, "image": {} }' > "$json"
+
+        cmp_counts () {
+          local prev="$1" cur="$2" label="$3"
+          if [ -f "$prev" ] && [ -f "$cur" ]; then
+            prev_c=$(jq '[(.Results[]?.Vulnerabilities[]? // empty) | select(.Severity=="CRITICAL" or .Severity=="HIGH")] | length' "$prev" 2>/dev/null || echo 0)
+            cur_c=$(jq '[(.Results[]?.Vulnerabilities[]? // empty) | select(.Severity=="CRITICAL" or .Severity=="HIGH")] | length' "$cur" 2>/dev/null || echo 0)
+            diff=$((cur_c - prev_c)); sign=""
+            [ $diff -gt 0 ] && sign="+"
+            echo "### ${label}" >> "$md"
+            echo "| Severity | Previous | Current | Δ |" >> "$md"
+            echo "|----------|----------|---------|---|" >> "$md"
+            for sev in CRITICAL HIGH MEDIUM LOW; do
+              pv=$(jq "[(.Results[]?.Vulnerabilities[]? // empty) | select(.Severity==\"$sev\")] | length" "$prev" 2>/dev/null || echo 0)
+              cv=$(jq "[(.Results[]?.Vulnerabilities[]? // empty) | select(.Severity==\"$sev\")] | length" "$cur" 2>/dev/null || echo 0)
+              d=$((cv - pv)); s=""; [ $d -gt 0 ] && s="+"
+              echo "| $sev | $pv | $cv | ${s}${d} |" >> "$md"
+            done
+            jq --arg lbl "$label" --argjson pc "$prev_c" --argjson cc "$cur_c" \
+               '.[$lbl] = {"prev_critical_high": $pc, "cur_critical_high": $cc}' \
+               "$json" > "${json}.tmp" && mv "${json}.tmp" "$json"
+          else
+            echo "### ${label}" >> "$md"
+            echo "_No previous or current results available to diff._" >> "$md"
+          fi
+          echo "" >> "$md"
+        }
+
+        [ -n "$cur_fs" ] && cmp_counts "$prev_fs" "$cur_fs" "Filesystem"
+        [ -n "$cur_img" ] && cmp_counts "$prev_img" "$cur_img" "Image"
+
+        echo "md=$md" >> "$GITHUB_OUTPUT"
+        echo "json=$json" >> "$GITHUB_OUTPUT"
+outputs:
+  diff_md:
+    description: "Markdown diff summary path"
+    value: ${{ steps.run.outputs.md }}
+  diff_json:
+    description: "JSON diff stats path"
+    value: ${{ steps.run.outputs.json }}
