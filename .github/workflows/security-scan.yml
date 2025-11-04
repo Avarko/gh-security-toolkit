@@ -125,35 +125,14 @@ jobs:
           trivy_output_dir: ${{ steps.setup.outputs.output_dir }}
           timestamp: ${{ steps.ts.outputs.ts }}
 
-      - name: Check previous exists
-        id: hasprev
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
-        shell: bash
-        run: |
-          if gh api repos/${{ github.repository }}/actions/artifacts \
-             --jq '.artifacts[] | select(.name=="security-scan-latest") | .id' 2>/dev/null | grep -q .; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Download previous
-        if: steps.hasprev.outputs.exists == 'true'
-        uses: actions/download-artifact@v6
-        with:
-          name: security-scan-latest
-          path: ./previous-scan/
-
-      - name: Diff (if previous)
-        if: steps.hasprev.outputs.exists == 'true'
+      # === DIFF WITH PREVIOUS RELEASE ===
+      - name: Diff with previous release
         id: diff
-        uses: Avarko/gh-security-toolkit/actions/diff@improvements
+        uses: Avarko/gh-security-toolkit/actions/diff/github-release@improvements
         with:
           current_fs: ${{ steps.scan.outputs.fs_json }}
           current_image: ${{ steps.scan.outputs.image_json }}
-          previous_dir: ./previous-scan/${{ steps.setup.outputs.output_dir }}
+          channel: security-scan-${{ inputs.branch }}
           outdir: ${{ steps.setup.outputs.output_dir }}
 
       - name: Summarizer
@@ -189,12 +168,3 @@ jobs:
           retention_keep: "10"
           retention_days: "${{ inputs.retention_days }}"
           github_token: ${{ secrets.GH_TOKEN }}
-
-      # === UPLOAD ARTIFACTS (backup/diff) ===
-      - name: Upload latest for diff
-        uses: actions/upload-artifact@v5
-        with:
-          name: security-scan-latest
-          path: ${{ steps.setup.outputs.output_dir }}
-          retention-days: ${{ inputs.retention_days }}
-          overwrite: true

@@ -1,0 +1,239 @@
+name: 'Diff Security Results (GitHub Release)'
+description: 'Compare current security scan results with previous GitHub Release by channel'
+
+inputs:
+  current_fs:
+    description: 'Path to current filesystem scan JSON'
+    required: true
+  current_image:
+    description: 'Path to current image scan JSON'
+    required: true
+  channel:
+    description: 'Release channel to search for previous release (e.g., security-scan-main)'
+    required: true
+  outdir:
+    description: 'Output directory for diff results'
+    required: true
+    default: '.trivy-output'
+
+outputs:
+  diff-summary:
+    description: 'Markdown summary of differences'
+    value: ${{ steps.diff.outputs.summary }}
+  previous-found:
+    description: 'Whether a previous release was found'
+    value: ${{ steps.find-previous.outputs.found }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup environment
+      shell: bash
+      run: |
+        mkdir -p "${{ inputs.outdir }}/previous"
+        echo "Previous release download directory created"
+
+    - name: Find previous release
+      id: find-previous
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        echo "Searching for previous release with channel: ${{ inputs.channel }}"
+
+        # Find the most recent release matching the channel pattern
+        PREVIOUS_TAG=$(gh release list \
+          --repo ${{ github.repository }} \
+          --limit 100 \
+          --json tagName,isPrerelease \
+          --jq '.[] | select(.tagName | startswith("${{ inputs.channel }}-")) | .tagName' \
+          | head -n 1)
+
+        if [ -z "$PREVIOUS_TAG" ]; then
+          echo "No previous release found for channel: ${{ inputs.channel }}"
+          echo "found=false" >> $GITHUB_OUTPUT
+          echo "tag=" >> $GITHUB_OUTPUT
+        else
+          echo "Found previous release: $PREVIOUS_TAG"
+          echo "found=true" >> $GITHUB_OUTPUT
+          echo "tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Download previous release assets
+      if: steps.find-previous.outputs.found == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        echo "Downloading assets from release: ${{ steps.find-previous.outputs.tag }}"
+
+        cd "${{ inputs.outdir }}/previous"
+
+        # Download trivy-results-fs.json if it exists
+        if gh release download "${{ steps.find-previous.outputs.tag }}" \
+           --repo ${{ github.repository }} \
+           --pattern "trivy-results-fs.json" 2>/dev/null; then
+          echo "Downloaded trivy-results-fs.json"
+        else
+          echo "No trivy-results-fs.json in previous release"
+        fi
+
+        # Download trivy-results-image.json if it exists
+        if gh release download "${{ steps.find-previous.outputs.tag }}" \
+           --repo ${{ github.repository }} \
+           --pattern "trivy-results-image.json" 2>/dev/null; then
+          echo "Downloaded trivy-results-image.json"
+        else
+          echo "No trivy-results-image.json in previous release"
+        fi
+
+        cd -
+
+    - name: Compare results
+      id: diff
+      shell: bash
+      run: |
+        echo "# Security Scan Comparison" > "${{ inputs.outdir }}/diff.md"
+        echo "" >> "${{ inputs.outdir }}/diff.md"
+
+        if [ "${{ steps.find-previous.outputs.found }}" != "true" ]; then
+          echo "⚠️ **No previous release found** - This is the first scan for channel \`${{ inputs.channel }}\`" >> "${{ inputs.outdir }}/diff.md"
+          echo "" >> "${{ inputs.outdir }}/diff.md"
+          echo "**Current Scan Results:**" >> "${{ inputs.outdir }}/diff.md"
+        else
+          echo "📊 **Comparing with:** \`${{ steps.find-previous.outputs.tag }}\`" >> "${{ inputs.outdir }}/diff.md"
+          echo "" >> "${{ inputs.outdir }}/diff.md"
+        fi
+
+        # Initialize JSON output
+        echo "{" > "${{ inputs.outdir }}/diff.json"
+        echo "  \"previous_release\": \"${{ steps.find-previous.outputs.tag }}\"," >> "${{ inputs.outdir }}/diff.json"
+        echo "  \"comparison\": {" >> "${{ inputs.outdir }}/diff.json"
+
+        # Compare filesystem scans
+        if [ -f "${{ inputs.current_fs }}" ]; then
+          echo "## Filesystem Scan" >> "${{ inputs.outdir }}/diff.md"
+
+          CURRENT_FS_CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "${{ inputs.current_fs }}")
+          CURRENT_FS_HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "${{ inputs.current_fs }}")
+          CURRENT_FS_MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "${{ inputs.current_fs }}")
+          CURRENT_FS_LOW=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "LOW")] | length' "${{ inputs.current_fs }}")
+
+          if [ -f "${{ inputs.outdir }}/previous/trivy-results-fs.json" ]; then
+            PREV_FS_CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "${{ inputs.outdir }}/previous/trivy-results-fs.json")
+            PREV_FS_HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "${{ inputs.outdir }}/previous/trivy-results-fs.json")
+            PREV_FS_MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "${{ inputs.outdir }}/previous/trivy-results-fs.json")
+            PREV_FS_LOW=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "LOW")] | length' "${{ inputs.outdir }}/previous/trivy-results-fs.json")
+
+            DIFF_FS_CRITICAL=$((CURRENT_FS_CRITICAL - PREV_FS_CRITICAL))
+            DIFF_FS_HIGH=$((CURRENT_FS_HIGH - PREV_FS_HIGH))
+            DIFF_FS_MEDIUM=$((CURRENT_FS_MEDIUM - PREV_FS_MEDIUM))
+            DIFF_FS_LOW=$((CURRENT_FS_LOW - PREV_FS_LOW))
+
+            # Format differences with +/- and colors
+            [ $DIFF_FS_CRITICAL -gt 0 ] && FS_CRITICAL_STR="🔴 $CURRENT_FS_CRITICAL (+$DIFF_FS_CRITICAL)" || FS_CRITICAL_STR="$CURRENT_FS_CRITICAL ($DIFF_FS_CRITICAL)"
+            [ $DIFF_FS_HIGH -gt 0 ] && FS_HIGH_STR="🟠 $CURRENT_FS_HIGH (+$DIFF_FS_HIGH)" || FS_HIGH_STR="$CURRENT_FS_HIGH ($DIFF_FS_HIGH)"
+            [ $DIFF_FS_MEDIUM -gt 0 ] && FS_MEDIUM_STR="🟡 $CURRENT_FS_MEDIUM (+$DIFF_FS_MEDIUM)" || FS_MEDIUM_STR="$CURRENT_FS_MEDIUM ($DIFF_FS_MEDIUM)"
+            [ $DIFF_FS_LOW -gt 0 ] && FS_LOW_STR="⚪ $CURRENT_FS_LOW (+$DIFF_FS_LOW)" || FS_LOW_STR="$CURRENT_FS_LOW ($DIFF_FS_LOW)"
+          else
+            FS_CRITICAL_STR="$CURRENT_FS_CRITICAL"
+            FS_HIGH_STR="$CURRENT_FS_HIGH"
+            FS_MEDIUM_STR="$CURRENT_FS_MEDIUM"
+            FS_LOW_STR="$CURRENT_FS_LOW"
+            DIFF_FS_CRITICAL=$CURRENT_FS_CRITICAL
+            DIFF_FS_HIGH=$CURRENT_FS_HIGH
+            DIFF_FS_MEDIUM=$CURRENT_FS_MEDIUM
+            DIFF_FS_LOW=$CURRENT_FS_LOW
+          fi
+
+          echo "| Severity | Count |" >> "${{ inputs.outdir }}/diff.md"
+          echo "|----------|-------|" >> "${{ inputs.outdir }}/diff.md"
+          echo "| CRITICAL | $FS_CRITICAL_STR |" >> "${{ inputs.outdir }}/diff.md"
+          echo "| HIGH     | $FS_HIGH_STR |" >> "${{ inputs.outdir }}/diff.md"
+          echo "| MEDIUM   | $FS_MEDIUM_STR |" >> "${{ inputs.outdir }}/diff.md"
+          echo "| LOW      | $FS_LOW_STR |" >> "${{ inputs.outdir }}/diff.md"
+          echo "" >> "${{ inputs.outdir }}/diff.md"
+
+          # JSON output for filesystem
+          echo "    \"filesystem\": {" >> "${{ inputs.outdir }}/diff.json"
+          echo "      \"current\": {\"critical\": $CURRENT_FS_CRITICAL, \"high\": $CURRENT_FS_HIGH, \"medium\": $CURRENT_FS_MEDIUM, \"low\": $CURRENT_FS_LOW}," >> "${{ inputs.outdir }}/diff.json"
+          if [ -f "${{ inputs.outdir }}/previous/trivy-results-fs.json" ]; then
+            echo "      \"previous\": {\"critical\": $PREV_FS_CRITICAL, \"high\": $PREV_FS_HIGH, \"medium\": $PREV_FS_MEDIUM, \"low\": $PREV_FS_LOW}," >> "${{ inputs.outdir }}/diff.json"
+          else
+            echo "      \"previous\": null," >> "${{ inputs.outdir }}/diff.json"
+          fi
+          echo "      \"diff\": {\"critical\": $DIFF_FS_CRITICAL, \"high\": $DIFF_FS_HIGH, \"medium\": $DIFF_FS_MEDIUM, \"low\": $DIFF_FS_LOW}" >> "${{ inputs.outdir }}/diff.json"
+          echo "    }," >> "${{ inputs.outdir }}/diff.json"
+        else
+          echo "    \"filesystem\": null," >> "${{ inputs.outdir }}/diff.json"
+        fi
+
+        # Compare image scans
+        if [ -f "${{ inputs.current_image }}" ]; then
+          echo "## Container Image Scan" >> "${{ inputs.outdir }}/diff.md"
+
+          CURRENT_IMG_CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "${{ inputs.current_image }}")
+          CURRENT_IMG_HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "${{ inputs.current_image }}")
+          CURRENT_IMG_MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "${{ inputs.current_image }}")
+          CURRENT_IMG_LOW=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "LOW")] | length' "${{ inputs.current_image }}")
+
+          if [ -f "${{ inputs.outdir }}/previous/trivy-results-image.json" ]; then
+            PREV_IMG_CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "${{ inputs.outdir }}/previous/trivy-results-image.json")
+            PREV_IMG_HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "${{ inputs.outdir }}/previous/trivy-results-image.json")
+            PREV_IMG_MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' "${{ inputs.outdir }}/previous/trivy-results-image.json")
+            PREV_IMG_LOW=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "LOW")] | length' "${{ inputs.outdir }}/previous/trivy-results-image.json")
+
+            DIFF_IMG_CRITICAL=$((CURRENT_IMG_CRITICAL - PREV_IMG_CRITICAL))
+            DIFF_IMG_HIGH=$((CURRENT_IMG_HIGH - PREV_IMG_HIGH))
+            DIFF_IMG_MEDIUM=$((CURRENT_IMG_MEDIUM - PREV_IMG_MEDIUM))
+            DIFF_IMG_LOW=$((CURRENT_IMG_LOW - PREV_IMG_LOW))
+
+            # Format differences with +/- and colors
+            [ $DIFF_IMG_CRITICAL -gt 0 ] && IMG_CRITICAL_STR="🔴 $CURRENT_IMG_CRITICAL (+$DIFF_IMG_CRITICAL)" || IMG_CRITICAL_STR="$CURRENT_IMG_CRITICAL ($DIFF_IMG_CRITICAL)"
+            [ $DIFF_IMG_HIGH -gt 0 ] && IMG_HIGH_STR="🟠 $CURRENT_IMG_HIGH (+$DIFF_IMG_HIGH)" || IMG_HIGH_STR="$CURRENT_IMG_HIGH ($DIFF_IMG_HIGH)"
+            [ $DIFF_IMG_MEDIUM -gt 0 ] && IMG_MEDIUM_STR="🟡 $CURRENT_IMG_MEDIUM (+$DIFF_IMG_MEDIUM)" || IMG_MEDIUM_STR="$CURRENT_IMG_MEDIUM ($DIFF_IMG_MEDIUM)"
+            [ $DIFF_IMG_LOW -gt 0 ] && IMG_LOW_STR="⚪ $CURRENT_IMG_LOW (+$DIFF_IMG_LOW)" || IMG_LOW_STR="$CURRENT_IMG_LOW ($DIFF_IMG_LOW)"
+          else
+            IMG_CRITICAL_STR="$CURRENT_IMG_CRITICAL"
+            IMG_HIGH_STR="$CURRENT_IMG_HIGH"
+            IMG_MEDIUM_STR="$CURRENT_IMG_MEDIUM"
+            IMG_LOW_STR="$CURRENT_IMG_LOW"
+            DIFF_IMG_CRITICAL=$CURRENT_IMG_CRITICAL
+            DIFF_IMG_HIGH=$CURRENT_IMG_HIGH
+            DIFF_IMG_MEDIUM=$CURRENT_IMG_MEDIUM
+            DIFF_IMG_LOW=$CURRENT_IMG_LOW
+          fi
+
+          echo "| Severity | Count |" >> "${{ inputs.outdir }}/diff.md"
+          echo "|----------|-------|" >> "${{ inputs.outdir }}/diff.md"
+          echo "| CRITICAL | $IMG_CRITICAL_STR |" >> "${{ inputs.outdir }}/diff.md"
+          echo "| HIGH     | $IMG_HIGH_STR |" >> "${{ inputs.outdir }}/diff.md"
+          echo "| MEDIUM   | $IMG_MEDIUM_STR |" >> "${{ inputs.outdir }}/diff.md"
+          echo "| LOW      | $IMG_LOW_STR |" >> "${{ inputs.outdir }}/diff.md"
+          echo "" >> "${{ inputs.outdir }}/diff.md"
+
+          # JSON output for image
+          echo "    \"image\": {" >> "${{ inputs.outdir }}/diff.json"
+          echo "      \"current\": {\"critical\": $CURRENT_IMG_CRITICAL, \"high\": $CURRENT_IMG_HIGH, \"medium\": $CURRENT_IMG_MEDIUM, \"low\": $CURRENT_IMG_LOW}," >> "${{ inputs.outdir }}/diff.json"
+          if [ -f "${{ inputs.outdir }}/previous/trivy-results-image.json" ]; then
+            echo "      \"previous\": {\"critical\": $PREV_IMG_CRITICAL, \"high\": $PREV_IMG_HIGH, \"medium\": $PREV_IMG_MEDIUM, \"low\": $PREV_IMG_LOW}," >> "${{ inputs.outdir }}/diff.json"
+          else
+            echo "      \"previous\": null," >> "${{ inputs.outdir }}/diff.json"
+          fi
+          echo "      \"diff\": {\"critical\": $DIFF_IMG_CRITICAL, \"high\": $DIFF_IMG_HIGH, \"medium\": $DIFF_IMG_MEDIUM, \"low\": $DIFF_IMG_LOW}" >> "${{ inputs.outdir }}/diff.json"
+          echo "    }" >> "${{ inputs.outdir }}/diff.json"
+        else
+          echo "    \"image\": null" >> "${{ inputs.outdir }}/diff.json"
+        fi
+
+        # Close JSON
+        echo "  }" >> "${{ inputs.outdir }}/diff.json"
+        echo "}" >> "${{ inputs.outdir }}/diff.json"
+
+        # Set output
+        SUMMARY=$(cat "${{ inputs.outdir }}/diff.md")
+        echo "summary<<EOF" >> $GITHUB_OUTPUT
+        echo "$SUMMARY" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+        echo "Diff comparison complete"
