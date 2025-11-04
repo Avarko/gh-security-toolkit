@@ -20,9 +20,6 @@ inputs:
   trivy_output_dir:
     description: "Directory for Trivy JSON outputs"
     required: true
-  timestamp:
-    description: "Timestamp for output filenames"
-    required: true
 runs:
   using: "composite"
   steps:
@@ -53,18 +50,11 @@ runs:
         scan-type: fs
         scan-ref: ${{ inputs.filesystem_path }}
         format: json
-        output: ${{ inputs.trivy_output_dir }}/trivy-fs-${{ inputs.timestamp }}.json
+        output: ${{ inputs.trivy_output_dir }}/trivy-fs-results.json
         exit-code: 0
         severity: ${{ inputs.trivy_severity }}
         trivy-config: ${{ inputs.trivy_config }}
         cache-dir: .trivy
-
-    - name: Canonicalize FS filename
-      if: ${{ inputs.filesystem_path != '' }}
-      shell: bash
-      run: |
-        cp "${{ inputs.trivy_output_dir }}/trivy-fs-${{ inputs.timestamp }}.json" \
-           "${{ inputs.trivy_output_dir }}/trivy-fs-results.json"
 
     - name: Trivy - Image scan
       if: ${{ inputs.docker_image_tar != '' }}
@@ -72,18 +62,11 @@ runs:
       with:
         image-ref: ${{ steps.load_image.outputs.image_id }}
         format: json
-        output: ${{ inputs.trivy_output_dir }}/trivy-image-${{ inputs.timestamp }}.json
+        output: ${{ inputs.trivy_output_dir }}/trivy-image-results.json
         exit-code: 0
         severity: ${{ inputs.trivy_severity }}
         trivy-config: ${{ inputs.trivy_config }}
         cache-dir: .trivy
-
-    - name: Canonicalize Image filename
-      if: ${{ inputs.docker_image_tar != '' }}
-      shell: bash
-      run: |
-        cp "${{ inputs.trivy_output_dir }}/trivy-image-${{ inputs.timestamp }}.json" \
-           "${{ inputs.trivy_output_dir }}/trivy-image-results.json"
 
     - name: Set outputs
       id: outputs
