@@ -217,13 +217,15 @@ public class trivy_summarize {
     }
 
     static void writeSummary(String md, String fallbackFile) throws IOException {
+        // Always write to fallback file for artifacts/release
+        Files.writeString(Path.of(fallbackFile), md + "\n");
+        System.out.println("Wrote " + fallbackFile);
+
+        // Also write to GitHub step summary if available
         String summaryPath = System.getenv("GITHUB_STEP_SUMMARY");
         if (summaryPath != null && !summaryPath.isBlank()) {
             Files.writeString(Path.of(summaryPath), md + "\n", java.nio.file.StandardOpenOption.CREATE,
                     java.nio.file.StandardOpenOption.APPEND);
-        } else {
-            Files.writeString(Path.of(fallbackFile), md + "\n");
-            System.out.println("Wrote " + fallbackFile);
         }
     }
 
