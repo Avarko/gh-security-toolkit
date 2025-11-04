@@ -65,10 +65,10 @@ on:
 
       GH_TOKEN:
         description: 'GitHub token for API access'
-        required: true
+        required: false
 
 permissions:
-  contents: read
+  contents: write
   actions: write
   security-events: write
 
@@ -167,4 +167,4 @@ jobs:
           channel: "security-scan-${{ inputs.branch }}"
           retention_keep: "10"
           retention_days: "${{ inputs.retention_days }}"
-          github_token: ${{ secrets.GH_TOKEN }}
+          github_token: ${{ secrets.GH_TOKEN || github.token }}
