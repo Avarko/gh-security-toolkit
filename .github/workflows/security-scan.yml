@@ -63,13 +63,15 @@ on:
         required: false
         default: ''
 
+      dependabot_gh_token:
+        description: 'GitHub Personal Access Token (PAT) with security_events scope for Dependabot API. Optional - if not provided, Dependabot scan is skipped.'
+        type: string
+        required: false
+        default: ''
+
     secrets:
       SLACK_BOT_TOKEN:
         description: 'Slack OAuth token (xoxb-...) for notifications'
-        required: false
-
-      GH_TOKEN:
-        description: 'GitHub Personal Access Token (PAT) with security_events scope. Required for Dependabot alerts on public repos. Falls back to github.token for private repos.'
         required: false
 
 permissions:
@@ -173,10 +175,11 @@ jobs:
       # === FETCH DEPENDABOT ALERTS ===
       - name: Fetch Dependabot alerts
         id: dependabot
+        if: ${{ inputs.dependabot_gh_token != '' }}
         uses: Avarko/gh-security-toolkit/actions/scanner/dependabot@improvements
         with:
           repository: ${{ inputs.repository }}
-          github_token: ${{ secrets.GH_TOKEN || github.token }}
+          github_token: ${{ inputs.dependabot_gh_token }}
           dependabot_output_dir: ${{ steps.setup.outputs.output_dir }}
 
       # === DIFF WITH PREVIOUS RELEASE ===
