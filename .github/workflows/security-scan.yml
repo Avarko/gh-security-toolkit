@@ -28,10 +28,16 @@ on:
 
       # === RESULT RETENTION ===
       retention_days:
-        description: 'Days to retain scan results as artifacts'
+        description: 'Days to retain scan results'
         type: number
         required: false
         default: 30
+
+      retention_keep:
+        description: 'Results per channel to retain scan results'
+        type: number
+        required: false
+        default: 2
 
       # === METADATA FOR REPORTING ===
       channel:
@@ -224,6 +230,6 @@ jobs:
           prerelease: "true"
           overwrite_tag: "false"
           channel: "security-scan-${{ inputs.channel }}"
-          retention_keep: "10"
+          retention_keep: "${{ inputs.retention_keep }}"
           retention_days: "${{ inputs.retention_days }}"
           github_token: ${{ secrets.GH_TOKEN || github.token }}
