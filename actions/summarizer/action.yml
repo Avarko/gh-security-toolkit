@@ -13,6 +13,10 @@ inputs:
     description: "Semgrep summary markdown file"
     required: false
     default: ""
+  dependabot_summary:
+    description: "Dependabot summary markdown file"
+    required: false
+    default: ""
   outdir:
     description: "Output directory"
     required: true
@@ -115,6 +119,12 @@ runs:
         # Add Semgrep summary if exists
         if [ -f "${{ inputs.outdir }}/SEMGREP_SUMMARY.md" ]; then
           cat "${{ inputs.outdir }}/SEMGREP_SUMMARY.md" >> "$out"
+          echo "" >> "$out"
+        fi
+
+        # Add Dependabot summary if exists
+        if [ -f "${{ inputs.outdir }}/DEPENDABOT_SUMMARY.md" ]; then
+          cat "${{ inputs.outdir }}/DEPENDABOT_SUMMARY.md" >> "$out"
           echo "" >> "$out"
         fi
 
