@@ -3,18 +3,6 @@ name: Security Scan
 on:
   workflow_call:
     inputs:
-      filesystem_artifact:
-        description: 'Artifact containing filesystem to scan. Use actions/uploader/filesystem to upload, or leave default to use the standard artifact name.'
-        type: string
-        required: false
-        default: '__gh_security_toolkit__filesystem__'
-
-      docker_image_artifact:
-        description: 'Artifact containing Docker image tar file. Use actions/uploader/docker-image to upload, or leave default to use the standard artifact name.'
-        type: string
-        required: false
-        default: '__gh_security_toolkit__docker_image__'
-
       # === TRIVY CONFIGURATION ===
       trivy_config:
         description: 'Path to .trivy.yaml config file (relative to filesystem_artifact root)'
@@ -143,7 +131,7 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@v6
         with:
-          name: ${{ inputs.filesystem_artifact }}
+          name: __gh_security_toolkit__filesystem__
           path: ${{ steps.setup.outputs.work_dir }}/filesystem
 
       - name: Download docker image artifact
@@ -151,7 +139,7 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@v6
         with:
-          name: ${{ inputs.docker_image_artifact }}
+          name: __gh_security_toolkit__docker_image__
           path: ${{ steps.setup.outputs.work_dir }}/image
 
       - name: Find Docker image tar
