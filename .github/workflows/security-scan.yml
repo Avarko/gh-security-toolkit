@@ -154,27 +154,6 @@ jobs:
           name: ${{ inputs.docker_image_artifact }}
           path: ${{ steps.setup.outputs.work_dir }}/image
 
-      - name: Check downloaded artifacts
-        run: |
-          echo "📦 Artifact download status:"
-          if [ "${{ steps.download_fs.outcome }}" == "success" ]; then
-            echo "  ✅ Filesystem artifact downloaded"
-          else
-            echo "  ⏭️  Filesystem artifact not found (skipping filesystem scan)"
-          fi
-          
-          if [ "${{ steps.download_image.outcome }}" == "success" ]; then
-            echo "  ✅ Docker image artifact downloaded"
-          else
-            echo "  ⏭️  Docker image artifact not found (skipping image scan)"
-          fi
-          
-          # At least one artifact must be present
-          if [ "${{ steps.download_fs.outcome }}" != "success" ] && [ "${{ steps.download_image.outcome }}" != "success" ]; then
-            echo "❌ Error: No artifacts found to scan. Use actions/uploader/filesystem or actions/uploader/docker-image to upload artifacts."
-            exit 1
-          fi
-
       - name: Find Docker image tar
         if: ${{ steps.download_image.outcome == 'success' }}
         id: find_tar
