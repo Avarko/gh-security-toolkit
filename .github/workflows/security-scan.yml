@@ -69,7 +69,7 @@ on:
         required: false
 
       GH_TOKEN:
-        description: 'GitHub token for API access'
+        description: 'GitHub Personal Access Token (PAT) with security_events scope. Required for Dependabot alerts on public repos. Falls back to github.token for private repos.'
         required: false
 
 permissions:
