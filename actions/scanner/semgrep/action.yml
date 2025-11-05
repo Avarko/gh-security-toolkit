@@ -93,7 +93,7 @@ runs:
 
         echo "Created .semgrepignore with common exclusions"
 
-    - name: Run Semgrep scan
+    - name: Run Semgrep scan (JSON for parsing)
       shell: bash
       working-directory: ${{ inputs.filesystem_path }}
       run: |
@@ -107,32 +107,112 @@ runs:
 
         echo "Running Semgrep with configs: $CONFIG_FLAGS"
 
+        # Run Semgrep JSON output for parsing
         semgrep scan \
           $CONFIG_FLAGS \
           --json \
-          --output "${{ inputs.semgrep_output_dir }}/semgrep-results.json" \
           --metrics=off \
-          --quiet \
           --no-git-ignore \
-          . || true
+          . > "${{ inputs.semgrep_output_dir }}/semgrep-results.json" 2>&1 || true
 
         echo "Semgrep scan completed"
 
-    - name: Verify output
-      id: verify
+    - name: Run Semgrep scan (text for full report)
+      shell: bash
+      working-directory: ${{ inputs.filesystem_path }}
+      run: |
+        # Split comma-separated configs into --config flags
+        CONFIGS="${{ inputs.semgrep_configs }}"
+        CONFIG_FLAGS=""
+        IFS=',' read -ra CONFIG_ARRAY <<< "$CONFIGS"
+        for cfg in "${CONFIG_ARRAY[@]}"; do
+          CONFIG_FLAGS="$CONFIG_FLAGS --config $(echo $cfg | xargs)"
+        done
+
+        # Run Semgrep text output for full report
+        semgrep scan \
+          $CONFIG_FLAGS \
+          --metrics=off \
+          --no-git-ignore \
+          . > "${{ inputs.semgrep_output_dir }}/semgrep-full-report.txt" 2>&1 || true
+
+    - name: Create full report markdown
       shell: bash
       run: |
-        if [ -f "${{ inputs.semgrep_output_dir }}/semgrep-results.json" ]; then
-          echo "semgrep_json=${{ inputs.semgrep_output_dir }}/semgrep-results.json" >> "$GITHUB_OUTPUT"
+        FULL_REPORT="${{ inputs.semgrep_output_dir }}/semgrep-full-report.md"
 
-          # Count findings
-          FINDINGS=$(jq '.results | length' "${{ inputs.semgrep_output_dir }}/semgrep-results.json" 2>/dev/null || echo "0")
-          echo "Found $FINDINGS Semgrep findings"
-        else
-          echo "No Semgrep results file created"
+        echo "# Semgrep SAST Full Report" > "$FULL_REPORT"
+        echo "" >> "$FULL_REPORT"
+        echo '```' >> "$FULL_REPORT"
+        cat "${{ inputs.semgrep_output_dir }}/semgrep-full-report.txt" >> "$FULL_REPORT"
+        echo '```' >> "$FULL_REPORT"
+
+    - name: Create summary markdown (top 10)
+      id: summary
+      shell: bash
+      run: |
+        OUTPUT_FILE="${{ inputs.semgrep_output_dir }}/SEMGREP_SUMMARY.md"
+        JSON_FILE="${{ inputs.semgrep_output_dir }}/semgrep-results.json"
+
+        echo "## Semgrep SAST Scan Results" > "$OUTPUT_FILE"
+        echo "" >> "$OUTPUT_FILE"
+
+        if [ ! -f "$JSON_FILE" ]; then
+          echo "No Semgrep results available." >> "$OUTPUT_FILE"
+          echo "semgrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+          exit 0
         fi
 
+        # Count findings by severity
+        TOTAL=$(jq '.results | length' "$JSON_FILE" 2>/dev/null || echo "0")
+        ERRORS=$(jq '[.results[] | select(.extra.severity == "ERROR")] | length' "$JSON_FILE" 2>/dev/null || echo "0")
+        WARNINGS=$(jq '[.results[] | select(.extra.severity == "WARNING")] | length' "$JSON_FILE" 2>/dev/null || echo "0")
+        INFO=$(jq '[.results[] | select(.extra.severity == "INFO")] | length' "$JSON_FILE" 2>/dev/null || echo "0")
+
+        echo "**Summary:** $TOTAL findings ($ERRORS errors, $WARNINGS warnings, $INFO info)" >> "$OUTPUT_FILE"
+        echo "" >> "$OUTPUT_FILE"
+
+        if [ "$TOTAL" -eq 0 ]; then
+          echo "✅ No issues found!" >> "$OUTPUT_FILE"
+          echo "semgrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Extract top 10 findings (errors first, then by severity)
+        echo "**Top 10 findings:**" >> "$OUTPUT_FILE"
+        echo "" >> "$OUTPUT_FILE"
+
+        jq -r '[.results[] | {
+          severity: .extra.severity,
+          check_id: .check_id,
+          message: .extra.message,
+          path: .path,
+          line: .start.line
+        }] |
+        sort_by(
+          if .severity == "ERROR" then 0
+          elif .severity == "WARNING" then 1
+          else 2 end
+        ) |
+        .[:10] |
+        .[] |
+        "### \(.severity): \(.check_id)\n- **File:** `\(.path):\(.line)`\n- **Message:** \(.message)\n"' "$JSON_FILE" >> "$OUTPUT_FILE"
+
+        echo "" >> "$OUTPUT_FILE"
+
+        # Show remaining count if more than 10
+        if [ "$TOTAL" -gt 10 ]; then
+          REMAINING=$((TOTAL - 10))
+          echo "**... and $REMAINING more findings**" >> "$OUTPUT_FILE"
+          echo "" >> "$OUTPUT_FILE"
+        fi
+
+        echo "📄 [View full Semgrep report](semgrep-full-report.md)" >> "$OUTPUT_FILE"
+
+        echo "semgrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+        echo "Semgrep summary created at $OUTPUT_FILE"
+
 outputs:
-  semgrep_json:
-    description: "Semgrep scan JSON path"
-    value: ${{ steps.verify.outputs.semgrep_json }}
+  semgrep_summary:
+    description: "Semgrep summary markdown file path"
+    value: ${{ steps.summary.outputs.semgrep_summary }}
