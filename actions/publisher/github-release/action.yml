@@ -154,8 +154,15 @@ runs:
         GH_TOKEN: ${{ inputs.github_token }}
       run: |
         set -euo pipefail
-        # Collect files: everything under outdir (including the metadata we just created)
-        mapfile -t files < <(find "${{ inputs.outdir }}" -type f -maxdepth 3 -print)
+        # Collect non-empty files only (skip empty files to avoid "Bad Content-Length" error)
+        mapfile -t files < <(find "${{ inputs.outdir }}" -type f -size +0 -maxdepth 3 -print)
+        
+        if [ ${#files[@]} -eq 0 ]; then
+          echo "⚠️ No files to upload in ${{ inputs.outdir }}"
+          exit 0
+        fi
+        
+        echo "📤 Uploading ${#files[@]} file(s) to release ${{ inputs.tag_name }}"
         # Upload with --clobber to allow re-runs
         gh release upload "${{ inputs.tag_name }}" "${files[@]}" --clobber
 
