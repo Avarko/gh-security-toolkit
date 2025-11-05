@@ -4,14 +4,16 @@ on:
   workflow_call:
     inputs:
       filesystem_artifact:
-        description: 'Artifact containing filesystem to scan (source, configs, dependencies)'
+        description: 'Artifact containing filesystem to scan. Use actions/uploader/filesystem to upload, or leave default to use the standard artifact name.'
         type: string
         required: false
+        default: '__gh_security_toolkit__filesystem__'
 
       docker_image_artifact:
-        description: 'Artifact containing Docker image tar file'
+        description: 'Artifact containing Docker image tar file. Use actions/uploader/docker-image to upload, or leave default to use the standard artifact name.'
         type: string
         required: false
+        default: '__gh_security_toolkit__docker_image__'
 
       # === TRIVY CONFIGURATION ===
       trivy_config:
@@ -37,7 +39,7 @@ on:
         description: 'Results per channel to retain scan results'
         type: number
         required: false
-        default: 2
+        default: 10
 
       # === METADATA FOR REPORTING ===
       channel:
@@ -137,21 +139,23 @@ jobs:
 
       # === DOWNLOAD ARTIFACTS ===
       - name: Download filesystem artifact
-        if: ${{ inputs.filesystem_artifact != '' }}
+        id: download_fs
+        continue-on-error: true
         uses: actions/download-artifact@v6
         with:
           name: ${{ inputs.filesystem_artifact }}
           path: ${{ steps.setup.outputs.work_dir }}/filesystem
 
       - name: Download docker image artifact
-        if: ${{ inputs.docker_image_artifact != '' }}
+        id: download_image
+        continue-on-error: true
         uses: actions/download-artifact@v6
         with:
           name: ${{ inputs.docker_image_artifact }}
           path: ${{ steps.setup.outputs.work_dir }}/image
 
       - name: Find Docker image tar
-        if: ${{ inputs.docker_image_artifact != '' }}
+        if: ${{ steps.download_image.outcome == 'success' }}
         id: find_tar
         run: |
           TAR_FILE=$(find "${{ steps.setup.outputs.work_dir }}/image" -name "*.tar" -type f | head -n1)
@@ -162,8 +166,8 @@ jobs:
         id: scan
         uses: Avarko/gh-security-toolkit/actions/scanner/trivy@improvements
         with:
-          filesystem_path: ${{ inputs.filesystem_artifact != '' && format('{0}/filesystem', steps.setup.outputs.work_dir) || '' }}
-          docker_image_tar: ${{ inputs.docker_image_artifact != '' && steps.find_tar.outputs.tar_path || '' }}
+          filesystem_path: ${{ steps.download_fs.outcome == 'success' && format('{0}/filesystem', steps.setup.outputs.work_dir) || '' }}
+          docker_image_tar: ${{ steps.download_image.outcome == 'success' && steps.find_tar.outputs.tar_path || '' }}
           trivy_config: ${{ inputs.trivy_config != '' && format('{0}/filesystem/{1}', steps.setup.outputs.work_dir, inputs.trivy_config) || '' }}
           trivy_severity: ${{ inputs.trivy_severity }}
           trivy_output_dir: ${{ steps.setup.outputs.output_dir }}
@@ -171,10 +175,10 @@ jobs:
       # === RUN SEMGREP SCAN ===
       - name: Run Semgrep scan
         id: semgrep
-        if: ${{ inputs.filesystem_artifact != '' }}
+        if: ${{ steps.download_fs.outcome == 'success' }}
         uses: Avarko/gh-security-toolkit/actions/scanner/semgrep@improvements
         with:
-          filesystem_path: ${{ inputs.filesystem_artifact != '' && format('{0}/filesystem', steps.setup.outputs.work_dir) || '' }}
+          filesystem_path: ${{ format('{0}/filesystem', steps.setup.outputs.work_dir) }}
           semgrep_output_dir: ${{ steps.setup.outputs.output_dir }}
           semgrep_configs: "p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets"
 

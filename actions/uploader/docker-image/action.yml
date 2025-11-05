@@ -1,0 +1,39 @@
+name: "Upload Docker Image for Security Scan"
+description: "Saves and uploads Docker image as tar file for security scanning. Artifact name is managed internally."
+inputs:
+  image-name:
+    description: "Docker image name (with tag) to save, e.g., 'myapp:latest'"
+    required: true
+  retention-days:
+    description: "Number of days to retain the artifact"
+    required: false
+    default: "1"
+  compression-level:
+    description: "Compression level (0-9). 0 = no compression (fastest), 9 = maximum compression (slowest)"
+    required: false
+    default: "0"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Save Docker image to tar
+      shell: bash
+      run: |
+        echo "Saving Docker image: ${{ inputs.image-name }}"
+        docker save "${{ inputs.image-name }}" -o /tmp/gh-security-toolkit-docker-image.tar
+        echo "Image saved to /tmp/gh-security-toolkit-docker-image.tar"
+        ls -lh /tmp/gh-security-toolkit-docker-image.tar
+
+    - name: Upload Docker image artifact
+      uses: actions/upload-artifact@v5
+      with:
+        name: __gh_security_toolkit__docker_image__
+        path: /tmp/gh-security-toolkit-docker-image.tar
+        retention-days: ${{ inputs.retention-days }}
+        compression-level: ${{ inputs.compression-level }}
+        if-no-files-found: error
+
+outputs:
+  artifact-name:
+    description: "The artifact name used (for reference only, pass this to security-scan.yml)"
+    value: "__gh_security_toolkit__docker_image__"
