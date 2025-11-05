@@ -186,7 +186,7 @@ jobs:
         with:
           fs_json: ${{ steps.scan.outputs.fs_json || '' }}
           image_json: ${{ steps.scan.outputs.image_json || '' }}
-          semgrep_json: ${{ steps.semgrep.outputs.semgrep_json || '' }}
+          semgrep_summary: ${{ steps.semgrep.outputs.semgrep_summary || '' }}
           outdir: ${{ steps.setup.outputs.output_dir }}
           title_vuln_fs: "Trivy (filesystem) vulnerability summary"
           title_mis_fs: "Trivy (filesystem) misconfiguration summary"

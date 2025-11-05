@@ -9,8 +9,8 @@ inputs:
     description: "Image scan JSON"
     required: false
     default: ""
-  semgrep_json:
-    description: "Semgrep scan JSON"
+  semgrep_summary:
+    description: "Semgrep summary markdown file"
     required: false
     default: ""
   outdir:
@@ -73,15 +73,6 @@ runs:
         [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY.md" ] && \
           mv "${{ inputs.outdir }}/TRIVY_SUMMARY.md" "${{ inputs.outdir }}/TRIVY_SUMMARY_IMAGE.md" || \
           echo "No TRIVY_SUMMARY.md created for Image scan"
-
-    - name: Summarize Semgrep (if provided)
-      if: ${{ inputs.semgrep_json != '' }}
-      shell: bash
-      env:
-        TITLE: ${{ inputs.title_semgrep }}
-      run: |
-        jbang "${{ github.action_path }}/../../scripts/semgrep_summarize.java" \
-          "${{ inputs.semgrep_json }}" "${{ inputs.max_rows }}" "${{ inputs.outdir }}"
 
     - name: Combine Trivy summaries
       shell: bash
