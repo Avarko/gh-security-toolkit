@@ -1,5 +1,5 @@
 name: "Summarizer"
-description: "Runs JBang-based summarizer for FS/Image JSONs and returns a combined Markdown body."
+description: "Runs JBang-based summarizer for Trivy and Semgrep results and returns a combined Markdown body."
 inputs:
   fs_json:
     description: "Filesystem scan JSON"
@@ -7,6 +7,10 @@ inputs:
     default: ""
   image_json:
     description: "Image scan JSON"
+    required: false
+    default: ""
+  semgrep_json:
+    description: "Semgrep scan JSON"
     required: false
     default: ""
   outdir:
@@ -28,6 +32,10 @@ inputs:
     description: "Title for Image misconfiguration section"
     required: false
     default: "Trivy (image) misconfiguration summary"
+  title_semgrep:
+    description: "Title for Semgrep SAST section"
+    required: false
+    default: "Semgrep SAST summary"
   max_rows:
     description: "Max rows in summaries"
     required: false
@@ -66,6 +74,15 @@ runs:
           mv "${{ inputs.outdir }}/TRIVY_SUMMARY.md" "${{ inputs.outdir }}/TRIVY_SUMMARY_IMAGE.md" || \
           echo "No TRIVY_SUMMARY.md created for Image scan"
 
+    - name: Summarize Semgrep (if provided)
+      if: ${{ inputs.semgrep_json != '' }}
+      shell: bash
+      env:
+        TITLE: ${{ inputs.title_semgrep }}
+      run: |
+        jbang "${{ github.action_path }}/../../scripts/semgrep_summarize.java" \
+          "${{ inputs.semgrep_json }}" "${{ inputs.max_rows }}" "${{ inputs.outdir }}"
+
     - name: Combine Trivy summaries
       shell: bash
       run: |
@@ -101,6 +118,12 @@ runs:
         # Add Trivy summary if exists
         if [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY.md" ]; then
           cat "${{ inputs.outdir }}/TRIVY_SUMMARY.md" >> "$out"
+          echo "" >> "$out"
+        fi
+
+        # Add Semgrep summary if exists
+        if [ -f "${{ inputs.outdir }}/SEMGREP_SUMMARY.md" ]; then
+          cat "${{ inputs.outdir }}/SEMGREP_SUMMARY.md" >> "$out"
           echo "" >> "$out"
         fi
 

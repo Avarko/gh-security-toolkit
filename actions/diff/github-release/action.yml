@@ -98,13 +98,13 @@ runs:
       id: diff
       shell: bash
       run: |
-        echo "# Security Scan Comparison" > "${{ inputs.outdir }}/diff.md"
+        echo "# Security scan comparison" > "${{ inputs.outdir }}/diff.md"
         echo "" >> "${{ inputs.outdir }}/diff.md"
 
         if [ "${{ steps.find-previous.outputs.found }}" != "true" ]; then
           echo "⚠️ **No previous release found** - This is the first scan for channel \`${{ inputs.channel }}\`" >> "${{ inputs.outdir }}/diff.md"
           echo "" >> "${{ inputs.outdir }}/diff.md"
-          echo "**Current Scan Results:**" >> "${{ inputs.outdir }}/diff.md"
+          echo "**Current scan results:**" >> "${{ inputs.outdir }}/diff.md"
         else
           echo "📊 **Comparing with:** \`${{ steps.find-previous.outputs.tag }}\`" >> "${{ inputs.outdir }}/diff.md"
           echo "" >> "${{ inputs.outdir }}/diff.md"
@@ -175,7 +175,7 @@ runs:
 
         # Compare image scans
         if [ -f "${{ inputs.current_image }}" ]; then
-          echo "## Container Image Scan" >> "${{ inputs.outdir }}/diff.md"
+          echo "## Container image scan" >> "${{ inputs.outdir }}/diff.md"
 
           CURRENT_IMG_CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' "${{ inputs.current_image }}")
           CURRENT_IMG_HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' "${{ inputs.current_image }}")

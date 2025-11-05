@@ -1,4 +1,4 @@
-name: "Trivy Scanner"
+name: "Trivy scanner"
 description: "Runs Trivy scans on filesystem and/or Docker image"
 inputs:
   filesystem_path:
