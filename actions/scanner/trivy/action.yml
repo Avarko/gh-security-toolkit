@@ -39,6 +39,7 @@ runs:
         echo "Loaded image: $IMAGE_ID"
 
     - name: Trivy cache
+      continue-on-error: true
       uses: yogeshlonkar/trivy-cache-action@v0
       with:
         gh-token: ${{ github.token }}
