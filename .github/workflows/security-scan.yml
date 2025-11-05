@@ -34,8 +34,13 @@ on:
         default: 30
 
       # === METADATA FOR REPORTING ===
+      channel:
+        description: 'Channel name for release grouping (tag-friendly, e.g., "master", "dev", "prod"). Used in tags and release retention.'
+        type: string
+        required: true
+
       branch:
-        description: 'Git branch name (for reports/notifications)'
+        description: 'Git branch name (for reports/notifications, can contain slashes)'
         type: string
         required: false
         default: ''
@@ -91,6 +96,37 @@ jobs:
         id: ts
         run: echo "ts=$(date -u +%Y-%m-%d-%H%M%SZ)" >> "$GITHUB_OUTPUT"
 
+      - name: Validate channel name
+        run: |
+          CHANNEL="${{ inputs.channel }}"
+
+          # Check if empty
+          if [ -z "$CHANNEL" ]; then
+            echo "❌ Error: channel is required but empty"
+            exit 1
+          fi
+
+          # Check length (max 35 characters)
+          if [ ${#CHANNEL} -gt 35 ]; then
+            echo "❌ Error: channel name too long (max 35 characters): '$CHANNEL'"
+            exit 1
+          fi
+
+          # Check for invalid characters (only allow: a-z, A-Z, 0-9, dash, underscore)
+          if ! echo "$CHANNEL" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+            echo "❌ Error: channel contains invalid characters: '$CHANNEL'"
+            echo "   Allowed: a-z, A-Z, 0-9, dash (-), underscore (_)"
+            exit 1
+          fi
+
+          # Check it doesn't start/end with dash or underscore
+          if echo "$CHANNEL" | grep -qE '^[-_]|[-_]$'; then
+            echo "❌ Error: channel cannot start or end with dash/underscore: '$CHANNEL'"
+            exit 1
+          fi
+
+          echo "✅ Channel name is valid: '$CHANNEL'"
+
       # === DOWNLOAD ARTIFACTS ===
       - name: Download filesystem artifact
         if: ${{ inputs.filesystem_artifact != '' }}
@@ -124,6 +160,16 @@ jobs:
           trivy_severity: ${{ inputs.trivy_severity }}
           trivy_output_dir: ${{ steps.setup.outputs.output_dir }}
 
+      # === RUN SEMGREP SCAN ===
+      - name: Run Semgrep scan
+        id: semgrep
+        if: ${{ inputs.filesystem_artifact != '' }}
+        uses: Avarko/gh-security-toolkit/actions/scanner/semgrep@improvements
+        with:
+          filesystem_path: ${{ inputs.filesystem_artifact != '' && format('{0}/filesystem', steps.setup.outputs.work_dir) || '' }}
+          semgrep_output_dir: ${{ steps.setup.outputs.output_dir }}
+          semgrep_configs: "p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets"
+
       # === DIFF WITH PREVIOUS RELEASE ===
       - name: Diff with previous release
         id: diff
@@ -131,7 +177,7 @@ jobs:
         with:
           current_fs: ${{ steps.scan.outputs.fs_json }}
           current_image: ${{ steps.scan.outputs.image_json }}
-          channel: security-scan-${{ inputs.branch }}
+          channel: security-scan-${{ inputs.channel }}
           outdir: ${{ steps.setup.outputs.output_dir }}
 
       - name: Summarizer
@@ -140,6 +186,7 @@ jobs:
         with:
           fs_json: ${{ steps.scan.outputs.fs_json || '' }}
           image_json: ${{ steps.scan.outputs.image_json || '' }}
+          semgrep_json: ${{ steps.semgrep.outputs.semgrep_json || '' }}
           outdir: ${{ steps.setup.outputs.output_dir }}
           title_vuln_fs: "Trivy (filesystem) vulnerability summary"
           title_mis_fs: "Trivy (filesystem) misconfiguration summary"
@@ -157,13 +204,13 @@ jobs:
           metadata_commit_sha: ${{ inputs.commit_sha }}
           metadata_image_name: ${{ inputs.image_name }}
           metadata_scan_id: ${{ github.run_id }}
-          release_name: "Security Scan ${{ inputs.branch }} ${{ steps.ts.outputs.ts }}"
-          tag_name: "security-scan-${{ steps.ts.outputs.ts }}"
+          release_name: "Security Scan ${{ inputs.channel }} ${{ steps.ts.outputs.ts }}"
+          tag_name: "security-scan-${{ inputs.channel }}-${{ steps.ts.outputs.ts }}"
           body_file: ${{ steps.sum.outputs.release_body_markdown }}
           draft: "false"
           prerelease: "true"
           overwrite_tag: "false"
-          channel: "security-scan-${{ inputs.branch }}"
+          channel: "security-scan-${{ inputs.channel }}"
           retention_keep: "10"
           retention_days: "${{ inputs.retention_days }}"
           github_token: ${{ secrets.GH_TOKEN || github.token }}

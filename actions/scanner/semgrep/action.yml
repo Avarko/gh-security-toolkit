@@ -1,0 +1,138 @@
+name: "Semgrep Scanner"
+description: "Runs Semgrep static analysis scans on source code"
+inputs:
+  filesystem_path:
+    description: "Path to source code to scan"
+    required: true
+  semgrep_output_dir:
+    description: "Directory for Semgrep JSON output"
+    required: true
+  semgrep_configs:
+    description: "Semgrep rulesets to use (comma-separated)"
+    required: false
+    default: "p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets"
+runs:
+  using: "composite"
+  steps:
+    - name: Prepare output directory
+      shell: bash
+      run: mkdir -p "${{ inputs.semgrep_output_dir }}"
+
+    - name: Setup Semgrep
+      shell: bash
+      run: |
+        python3 -m pip install --upgrade pip
+        pip3 install semgrep
+
+    - name: Create .semgrepignore
+      shell: bash
+      working-directory: ${{ inputs.filesystem_path }}
+      run: |
+        cat > .semgrepignore << 'EOF'
+        # Version control
+        .git/
+        .svn/
+        .hg/
+
+        # Dependencies
+        node_modules/
+        vendor/
+
+        # Build outputs (Java/JVM)
+        target/
+        build/
+        out/
+        bin/
+
+        # Build outputs (JavaScript/TypeScript)
+        dist/
+        .next/
+        .nuxt/
+
+        # Build outputs (Python)
+        __pycache__/
+        *.pyc
+        .pytest_cache/
+        venv/
+        .venv/
+
+        # Build outputs (Go)
+        *.exe
+        *.test
+
+        # Build outputs (.NET)
+        obj/
+
+        # IDE
+        .idea/
+        .vscode/
+        *.iml
+
+        # Test coverage
+        coverage/
+        .coverage
+        htmlcov/
+
+        # Generated files
+        *.min.js
+        *.min.css
+        *.map
+
+        # Lock files (often large, low value)
+        package-lock.json
+        yarn.lock
+        pnpm-lock.yaml
+        Gemfile.lock
+        Pipfile.lock
+        poetry.lock
+
+        # Documentation
+        docs/
+        documentation/
+        EOF
+
+        echo "Created .semgrepignore with common exclusions"
+
+    - name: Run Semgrep scan
+      shell: bash
+      working-directory: ${{ inputs.filesystem_path }}
+      run: |
+        # Split comma-separated configs into --config flags
+        CONFIGS="${{ inputs.semgrep_configs }}"
+        CONFIG_FLAGS=""
+        IFS=',' read -ra CONFIG_ARRAY <<< "$CONFIGS"
+        for cfg in "${CONFIG_ARRAY[@]}"; do
+          CONFIG_FLAGS="$CONFIG_FLAGS --config $(echo $cfg | xargs)"
+        done
+
+        echo "Running Semgrep with configs: $CONFIG_FLAGS"
+
+        semgrep scan \
+          $CONFIG_FLAGS \
+          --json \
+          --output "${{ inputs.semgrep_output_dir }}/semgrep-results.json" \
+          --metrics=off \
+          --quiet \
+          --no-git-ignore \
+          . || true
+
+        echo "Semgrep scan completed"
+
+    - name: Verify output
+      id: verify
+      shell: bash
+      run: |
+        if [ -f "${{ inputs.semgrep_output_dir }}/semgrep-results.json" ]; then
+          echo "semgrep_json=${{ inputs.semgrep_output_dir }}/semgrep-results.json" >> "$GITHUB_OUTPUT"
+
+          # Count findings
+          FINDINGS=$(jq '.results | length' "${{ inputs.semgrep_output_dir }}/semgrep-results.json" 2>/dev/null || echo "0")
+          echo "Found $FINDINGS Semgrep findings"
+        else
+          echo "No Semgrep results file created"
+        fi
+
+outputs:
+  semgrep_json:
+    description: "Semgrep scan JSON path"
+    value: ${{ steps.verify.outputs.semgrep_json }}
