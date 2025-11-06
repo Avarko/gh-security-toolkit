@@ -1,4 +1,4 @@
-name: Security Scan
+name: Security scan
 
 on:
   workflow_call:
@@ -28,6 +28,13 @@ on:
         type: number
         required: false
         default: 10
+
+      # === RELEASE NOTES ===
+      release_notes_maxlength:
+        description: 'Maximum length of release notes body (characters). GitHub limit is 125000, but shorter is more readable.'
+        type: number
+        required: false
+        default: 30000
 
       # === METADATA FOR REPORTING ===
       channel:
@@ -180,16 +187,7 @@ jobs:
           github_token: ${{ inputs.dependabot_gh_token }}
           dependabot_output_dir: ${{ steps.setup.outputs.output_dir }}
 
-      # === DIFF WITH PREVIOUS RELEASE ===
-      - name: Diff with previous release
-        id: diff
-        uses: Avarko/gh-security-toolkit/actions/diff/github-release@improvements
-        with:
-          current_fs: ${{ steps.scan.outputs.fs_json }}
-          current_image: ${{ steps.scan.outputs.image_json }}
-          channel: security-scan-${{ inputs.channel }}
-          outdir: ${{ steps.setup.outputs.output_dir }}
-
+      # === SUMMARIZE RESULTS ===
       - name: Summarizer
         id: sum
         uses: Avarko/gh-security-toolkit/actions/summarizer@improvements
@@ -199,6 +197,7 @@ jobs:
           semgrep_summary: ${{ steps.semgrep.outputs.semgrep_summary || '' }}
           dependabot_summary: ${{ steps.dependabot.outputs.dependabot_summary || '' }}
           outdir: ${{ steps.setup.outputs.output_dir }}
+          maxlength: ${{ inputs.release_notes_maxlength }}
           title_vuln_fs: "Trivy (filesystem) vulnerability summary"
           title_mis_fs: "Trivy (filesystem) misconfiguration summary"
           title_vuln_img: "Trivy (image) vulnerability summary"
@@ -215,7 +214,7 @@ jobs:
           metadata_commit_sha: ${{ inputs.commit_sha }}
           metadata_image_name: ${{ inputs.image_name }}
           metadata_scan_id: ${{ github.run_id }}
-          release_name: "Security Scan ${{ inputs.channel }} ${{ steps.ts.outputs.ts }}"
+          release_name: "Security scan ${{ inputs.channel }} ${{ steps.ts.outputs.ts }}"
           tag_name: "security-scan-${{ inputs.channel }}-${{ steps.ts.outputs.ts }}"
           body_file: ${{ steps.sum.outputs.release_body_markdown }}
           draft: "false"

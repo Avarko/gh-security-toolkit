@@ -20,6 +20,10 @@ inputs:
   outdir:
     description: "Output directory"
     required: true
+  maxlength:
+    description: "Maximum total length of release notes body in characters"
+    required: false
+    default: "30000"
   title_vuln_fs:
     description: "Title for FS vulnerabilities section"
     required: false
@@ -64,7 +68,7 @@ runs:
           mv "${{ inputs.outdir }}/TRIVY_SUMMARY.md" "${{ inputs.outdir }}/TRIVY_SUMMARY_FS.md" || \
           echo "No TRIVY_SUMMARY.md created for FS scan"
 
-    - name: Summarize Image (if provided)
+    - name: Summarize image (if provided)
       if: ${{ inputs.image_json != '' }}
       shell: bash
       env:
@@ -100,32 +104,113 @@ runs:
       id: combine
       shell: bash
       run: |
-        out="${{ inputs.outdir }}/RELEASE_BODY.md"
-        echo "## 🔍 Security Scan Summary" > "$out"
-        echo "" >> "$out"
+        set -euo pipefail
 
-        # Add diff if exists
-        if [ -f "${{ inputs.outdir }}/diff.md" ]; then
-          cat "${{ inputs.outdir }}/diff.md" >> "$out"
-          echo "" >> "$out"
+        outdir="${{ inputs.outdir }}"
+        maxlength="${{ inputs.maxlength }}"
+        out="${outdir}/RELEASE_BODY.md"
+        header="## 🔍 Security Scan Summary"
+
+        # Collect all section files
+        declare -a sections=()
+        declare -a section_files=()
+
+        if [ -f "${outdir}/TRIVY_SUMMARY.md" ]; then
+          sections+=("TRIVY")
+          section_files+=("${outdir}/TRIVY_SUMMARY.md")
         fi
 
-        # Add Trivy summary if exists
-        if [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY.md" ]; then
-          cat "${{ inputs.outdir }}/TRIVY_SUMMARY.md" >> "$out"
-          echo "" >> "$out"
+        if [ -f "${outdir}/SEMGREP_SUMMARY.md" ]; then
+          sections+=("SEMGREP")
+          section_files+=("${outdir}/SEMGREP_SUMMARY.md")
         fi
 
-        # Add Semgrep summary if exists
-        if [ -f "${{ inputs.outdir }}/SEMGREP_SUMMARY.md" ]; then
-          cat "${{ inputs.outdir }}/SEMGREP_SUMMARY.md" >> "$out"
-          echo "" >> "$out"
+        if [ -f "${outdir}/DEPENDABOT_SUMMARY.md" ]; then
+          sections+=("DEPENDABOT")
+          section_files+=("${outdir}/DEPENDABOT_SUMMARY.md")
         fi
 
-        # Add Dependabot summary if exists
-        if [ -f "${{ inputs.outdir }}/DEPENDABOT_SUMMARY.md" ]; then
-          cat "${{ inputs.outdir }}/DEPENDABOT_SUMMARY.md" >> "$out"
+        # If no sections, create minimal output
+        if [ ${#sections[@]} -eq 0 ]; then
+          echo "$header" > "$out"
           echo "" >> "$out"
+          echo "No scan results available." >> "$out"
+          echo "release_body=$out" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Calculate total length with header
+        header_len=$(echo -e "${header}\n" | wc -c)
+        total_len=$header_len
+
+        # Read each section and calculate lengths
+        declare -a section_contents=()
+        declare -a section_lengths=()
+
+        for file in "${section_files[@]}"; do
+          content=$(cat "$file")
+          section_contents+=("$content")
+          # Add 1 for newline separator
+          len=$(($(echo -e "$content\n" | wc -c)))
+          section_lengths+=("$len")
+          total_len=$((total_len + len))
+        done
+
+        echo "📊 Total length: ${total_len} / ${maxlength} characters"
+
+        # Check if truncation needed
+        if [ $total_len -le $maxlength ]; then
+          # No truncation needed, combine as-is
+          echo "$header" > "$out"
+          echo "" >> "$out"
+          for content in "${section_contents[@]}"; do
+            echo "$content" >> "$out"
+            echo "" >> "$out"
+          done
+        else
+          # Truncation needed - calculate how much to trim from each section
+          echo "⚠️  Truncation needed (current: ${total_len}, max: ${maxlength})"
+
+          overflow=$((total_len - maxlength))
+          section_count=${#sections[@]}
+
+          # Calculate trim amount per section (equal distribution)
+          # Add 3 for "..." suffix per section
+          trim_per_section=$(( (overflow + (section_count * 3)) / section_count ))
+
+          echo "   Trimming ~${trim_per_section} chars from each of ${section_count} sections"
+
+          # Write header
+          echo "$header" > "$out"
+          echo "" >> "$out"
+
+          # Write each section (truncated if needed)
+          for i in "${!sections[@]}"; do
+            content="${section_contents[$i]}"
+            original_len="${section_lengths[$i]}"
+
+            if [ $trim_per_section -ge $((original_len - 100)) ]; then
+              # Section would be too short, keep minimum 100 chars + ellipsis
+              target_len=100
+              truncated=$(echo "$content" | head -c $target_len)
+              echo "${truncated}..." >> "$out"
+              echo "" >> "$out"
+              echo "   ${sections[$i]}: truncated to ${target_len} chars (from ${original_len})"
+            else
+              # Normal truncation
+              target_len=$((original_len - trim_per_section - 3))
+              if [ $target_len -lt 100 ]; then
+                target_len=100
+              fi
+              truncated=$(echo "$content" | head -c $target_len)
+              echo "${truncated}..." >> "$out"
+              echo "" >> "$out"
+              echo "   ${sections[$i]}: truncated to ${target_len} chars (from ${original_len})"
+            fi
+          done
+
+          final_len=$(wc -c < "$out")
+          echo "✅ Final length: ${final_len} characters"
         fi
 
         echo "release_body=$out" >> "$GITHUB_OUTPUT"

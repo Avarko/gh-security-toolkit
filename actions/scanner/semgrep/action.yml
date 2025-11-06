@@ -107,15 +107,16 @@ runs:
 
         echo "Running Semgrep with configs: $CONFIG_FLAGS"
 
-        # Run Semgrep JSON output for parsing
+        # Run Semgrep JSON output (quiet mode to suppress progress output)
         semgrep scan \
           $CONFIG_FLAGS \
           --json \
+          --quiet \
           --metrics=off \
           --no-git-ignore \
-          . > "${{ inputs.semgrep_output_dir }}/semgrep-results.json" 2>&1 || true
+          . > "${{ inputs.semgrep_output_dir }}/semgrep-results.json" || true
 
-        echo "Semgrep scan completed"
+        echo "Semgrep JSON scan completed"
 
     - name: Run Semgrep scan (text for full report)
       shell: bash
@@ -154,11 +155,18 @@ runs:
         OUTPUT_FILE="${{ inputs.semgrep_output_dir }}/SEMGREP_SUMMARY.md"
         JSON_FILE="${{ inputs.semgrep_output_dir }}/semgrep-results.json"
 
-        echo "## Semgrep SAST Scan Results" > "$OUTPUT_FILE"
+        echo "## 🔍 Semgrep SAST Scan Results" > "$OUTPUT_FILE"
         echo "" >> "$OUTPUT_FILE"
 
         if [ ! -f "$JSON_FILE" ]; then
-          echo "No Semgrep results available." >> "$OUTPUT_FILE"
+          echo "⚠️ No Semgrep results available." >> "$OUTPUT_FILE"
+          echo "semgrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Validate JSON
+        if ! jq empty "$JSON_FILE" 2>/dev/null; then
+          echo "⚠️ Invalid Semgrep JSON output. Check semgrep-results.json for details." >> "$OUTPUT_FILE"
           echo "semgrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
           exit 0
         fi

@@ -1,4 +1,4 @@
-name: "Upload Docker Image for Security Scan"
+name: "Upload Docker image for security scan"
 description: "Saves and uploads Docker image as tar file for security scanning. Artifact name is managed internally."
 inputs:
   image-name:

@@ -62,7 +62,7 @@ public class slack_integration {
             }
 
             // Build Block Kit JSON payload - parse title and text as JSON-like structure
-            // Title format: "*🔍 Trivy Security Scan*\n*repo | branch | sha @ timestamp*"
+            // Title format: "*🔍 Trivy security scan*\n*repo | branch | sha @ timestamp*"
             // Text format: JSON string with blocks data
             String payload = buildBlockKitPayload(targetChannel, title, text);
 
