@@ -341,7 +341,7 @@ public class trivy_summarize {
         String timestamp = java.time.LocalDateTime.now()
                 .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
-        return String.format("*🔍 Trivy Security Scan*\n*%s | %s | %s @ %s*",
+        return String.format("*🔍 Trivy security scan*\n*%s | %s | %s @ %s*",
                 repoName, branch, sha, timestamp);
     }
 }

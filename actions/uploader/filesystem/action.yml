@@ -1,4 +1,4 @@
-name: "Upload Filesystem for Security Scan"
+name: "Upload filesystem for security scan"
 description: "Uploads filesystem artifacts for security scanning. Artifact name is managed internally."
 inputs:
   path:
