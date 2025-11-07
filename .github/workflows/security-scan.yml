@@ -85,11 +85,9 @@ on:
         required: false
 
 permissions:
-  contents: write
-  actions: write
-  security-events: write
-  pages: write
-  id-token: write
+  contents: write    # Required: gh release create/delete, commit to docs/ folder
+  pages: write       # Required: deploy-pages action (if publish_to contains 'github-pages')
+  id-token: write    # Required: deploy-pages OIDC authentication (if publish_to contains 'github-pages')
 
 # Concurrency: one scan per channel at a time
 # Queue new scans instead of canceling - let each scan complete

@@ -2,13 +2,15 @@
 
 Publishes security scan results as static HTML pages to GitHub Pages.
 
+> **🔒 Security**: This action **requires Private Pages** (GitHub Enterprise Cloud). It will verify Pages visibility before deployment and **refuse to publish** if Pages is configured as public.
+
 ## Features
 
 - 📄 **Static HTML pages** - No build step, instant deployment
 - 📊 **Organized by channel** - Separate scan histories for different environments
 - 🔍 **Interactive viewing** - Browse all scans with timestamp-based navigation
 - 📦 **Retention management** - Automatically cleans up old scans
-- 🔒 **Private support** - Works with GitHub Enterprise private Pages
+- 🔒 **Private Pages enforced** - Refuses to deploy to public Pages sites
 
 ## Structure
 
@@ -53,12 +55,18 @@ docs/                          # GitHub Pages root
 
 ### Configure GitHub Pages
 
+**⚠️ Important**: This publisher will **refuse to deploy** if Pages is configured as public.
+
 1. Go to repository **Settings** → **Pages**
 2. **Source**: Deploy from a branch
 3. **Branch**: Select your branch (e.g., `main`) and `/docs` folder
-4. **Visibility**:
-   - Public repos: Public by default
-   - Private repos (Enterprise): Choose "Private" for internal-only access
+4. **Visibility**: Select **"Private"** (GitHub Enterprise Cloud only)
+   - ✅ **Private**: Only organization members can access
+   - ❌ **Public**: Action will fail with error message
+
+**If you don't have GitHub Enterprise Cloud:**
+- Private Pages is not available on GitHub.com (free)
+- Use `publish_to: "github-release"` instead
 
 ### Permissions required
 
@@ -95,11 +103,12 @@ permissions:
 | Feature | GitHub Pages | GitHub Releases |
 |---------|--------------|-----------------|
 | **No Git tags** | ✅ Yes | ❌ No (creates tags) |
-| **Private access** | ✅ Yes (Enterprise) | ⚠️ Limited |
+| **Private access** | ✅ Yes (Enterprise required) | ✅ Yes |
+| **Security check** | ✅ Enforced (fails if public) | ⚠️ Best-effort |
 | **UI/UX** | ✅ Better (HTML pages) | ⚠️ Basic (release list) |
 | **Retention** | ✅ File-based cleanup | ✅ API-based cleanup |
 | **History view** | ✅ All scans on one site | ⚠️ Separate releases |
-| **Setup complexity** | ⚠️ Requires Pages config | ✅ Works immediately |
+| **Setup complexity** | ⚠️ Requires Pages + Enterprise | ✅ Works immediately |
 
 ## Examples
 
