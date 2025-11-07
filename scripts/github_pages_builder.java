@@ -179,24 +179,35 @@ public class github_pages_builder {
         html.append("      </dl>\n");
         html.append("    </section>\n");
 
-        // Summary sections
-        if (results.trivySummary != null) {
+        // Summary sections - Trivy with tables
+        if (results.trivyFs != null || results.trivyImage != null) {
             html.append("    <section class=\"summary trivy\">\n");
             html.append("      <h2>Trivy Results</h2>\n");
-            html.append("      <div class=\"markdown-content\">").append(markdownToHtml(results.trivySummary))
-                    .append("</div>\n");
+
             if (results.trivyFs != null) {
+                html.append("      <h3>Filesystem Scan</h3>\n");
+                appendTrivyTable(html, results.trivyFs);
                 html.append(
-                        "      <p><a href=\"trivy-fs-results.json\" class=\"json-link\">📄 View Filesystem JSON</a></p>\n");
+                        "      <p><a href=\"trivy-fs-results.json\" class=\"json-link\">📄 View Full JSON</a></p>\n");
             }
+
             if (results.trivyImage != null) {
+                html.append("      <h3>Image Scan</h3>\n");
+                appendTrivyTable(html, results.trivyImage);
                 html.append(
-                        "      <p><a href=\"trivy-image-results.json\" class=\"json-link\">📄 View Image JSON</a></p>\n");
+                        "      <p><a href=\"trivy-image-results.json\" class=\"json-link\">📄 View Full JSON</a></p>\n");
             }
+
             html.append("    </section>\n");
         }
 
-        if (results.semgrepSummary != null) {
+        if (results.semgrep != null) {
+            html.append("    <section class=\"summary semgrep\">\n");
+            html.append("      <h2>Semgrep Results</h2>\n");
+            appendSemgrepTable(html, results.semgrep);
+            html.append("      <p><a href=\"semgrep-results.json\" class=\"json-link\">📄 View JSON</a></p>\n");
+            html.append("    </section>\n");
+        } else if (results.semgrepSummary != null) {
             html.append("    <section class=\"summary semgrep\">\n");
             html.append("      <h2>Semgrep Results</h2>\n");
             html.append("      <div class=\"markdown-content\">").append(markdownToHtml(results.semgrepSummary))
@@ -373,6 +384,46 @@ public class github_pages_builder {
         System.out.println("   ✅ Updated channel index page");
     }
 
+    private static void appendBranchCommitInfo(StringBuilder html, ScanEntry scan, Path pagesPath) {
+        try {
+            Path metadataPath = pagesPath.resolve(scan.path).resolve("scan-metadata.json");
+            if (Files.exists(metadataPath)) {
+                JsonObject metadata = GSON.fromJson(Files.readString(metadataPath), JsonObject.class);
+                String branch = metadata.has("branch") && !metadata.get("branch").isJsonNull()
+                        ? metadata.get("branch").getAsString()
+                        : "";
+                String commit = metadata.has("commit_sha") && !metadata.get("commit_sha").isJsonNull()
+                        ? metadata.get("commit_sha").getAsString()
+                        : "";
+                String repo = metadata.has("repository") && !metadata.get("repository").isJsonNull()
+                        ? metadata.get("repository").getAsString()
+                        : "";
+
+                if (!branch.isEmpty()) {
+                    html.append("<div class=\"branch\">").append(escapeHtml(branch)).append("</div>");
+                }
+                if (!commit.isEmpty()) {
+                    String shortCommit = commit.length() > 7 ? commit.substring(0, 7) : commit;
+                    if (!repo.isEmpty()) {
+                        String commitUrl = "https://github.com/" + repo + "/commit/" + commit;
+                        html.append("<div class=\"commit\"><a href=\"").append(commitUrl)
+                                .append("\" target=\"_blank\" rel=\"noopener\">").append(escapeHtml(shortCommit))
+                                .append("</a></div>");
+                    } else {
+                        html.append("<div class=\"commit\">").append(escapeHtml(shortCommit)).append("</div>");
+                    }
+                }
+                if (branch.isEmpty() && commit.isEmpty()) {
+                    html.append("-");
+                }
+            } else {
+                html.append("-");
+            }
+        } catch (Exception e) {
+            html.append("-");
+        }
+    }
+
     private static void appendStatsCell(StringBuilder html, VulnStats stats) {
         if (!stats.scanned) {
             html.append("              <td class=\"not-scanned\" colspan=\"4\">✗</td>\n");
@@ -385,6 +436,243 @@ public class github_pages_builder {
                     .append("\">").append(stats.medium > 0 ? stats.medium : "-").append("</td>\n");
             html.append("              <td class=\"count").append(stats.low > 0 ? " severity-low" : "")
                     .append("\">").append(stats.low > 0 ? stats.low : "-").append("</td>\n");
+        }
+    }
+
+    private static void appendTrivyTable(StringBuilder html, JsonObject trivyResult) {
+        if (trivyResult == null || !trivyResult.has("Results")) {
+            html.append("      <p>No results available.</p>\n");
+            return;
+        }
+
+        // Collect all vulnerabilities and misconfigurations
+        List<TrivyFinding> findings = new ArrayList<>();
+        JsonArray results = trivyResult.getAsJsonArray("Results");
+
+        for (int i = 0; i < results.size(); i++) {
+            JsonObject result = results.get(i).getAsJsonObject();
+            String target = result.has("Target") ? result.get("Target").getAsString() : "Unknown";
+
+            // Parse vulnerabilities
+            if (result.has("Vulnerabilities") && !result.get("Vulnerabilities").isJsonNull()) {
+                JsonArray vulns = result.getAsJsonArray("Vulnerabilities");
+                for (int j = 0; j < vulns.size(); j++) {
+                    JsonObject vuln = vulns.get(j).getAsJsonObject();
+                    findings.add(new TrivyFinding(
+                            "Vulnerability",
+                            target,
+                            vuln.has("PkgName") ? vuln.get("PkgName").getAsString() : "—",
+                            vuln.has("VulnerabilityID") ? vuln.get("VulnerabilityID").getAsString() : "—",
+                            vuln.has("Severity") ? vuln.get("Severity").getAsString() : "UNKNOWN",
+                            vuln.has("Title") ? vuln.get("Title").getAsString()
+                                    : (vuln.has("Description") ? vuln.get("Description").getAsString() : "—"),
+                            vuln.has("InstalledVersion") ? vuln.get("InstalledVersion").getAsString() : "—",
+                            vuln.has("FixedVersion") ? vuln.get("FixedVersion").getAsString() : "—"));
+                }
+            }
+
+            // Parse misconfigurations
+            if (result.has("Misconfigurations") && !result.get("Misconfigurations").isJsonNull()) {
+                JsonArray misconfigs = result.getAsJsonArray("Misconfigurations");
+                for (int j = 0; j < misconfigs.size(); j++) {
+                    JsonObject misconfig = misconfigs.get(j).getAsJsonObject();
+                    findings.add(new TrivyFinding(
+                            "Misconfiguration",
+                            target,
+                            misconfig.has("Type") ? misconfig.get("Type").getAsString() : "—",
+                            misconfig.has("ID") ? misconfig.get("ID").getAsString() : "—",
+                            misconfig.has("Severity") ? misconfig.get("Severity").getAsString() : "UNKNOWN",
+                            misconfig.has("Title") ? misconfig.get("Title").getAsString()
+                                    : (misconfig.has("Message") ? misconfig.get("Message").getAsString() : "—"),
+                            "—",
+                            "—"));
+                }
+            }
+        }
+
+        if (findings.isEmpty()) {
+            html.append("      <p>✓ No issues found.</p>\n");
+            return;
+        }
+
+        // Sort by severity (CRITICAL > HIGH > MEDIUM > LOW > UNKNOWN)
+        findings.sort((a, b) -> {
+            int severityA = getSeverityOrder(a.severity);
+            int severityB = getSeverityOrder(b.severity);
+            return Integer.compare(severityB, severityA); // Descending
+        });
+
+        html.append("      <table class=\"scan-table findings-table\">\n");
+        html.append("        <thead>\n");
+        html.append("          <tr>\n");
+        html.append("            <th>Type</th>\n");
+        html.append("            <th>Target</th>\n");
+        html.append("            <th>Package/Type</th>\n");
+        html.append("            <th>ID</th>\n");
+        html.append("            <th>Severity</th>\n");
+        html.append("            <th>Title</th>\n");
+        html.append("            <th>Installed</th>\n");
+        html.append("            <th>Fixed</th>\n");
+        html.append("          </tr>\n");
+        html.append("        </thead>\n");
+        html.append("        <tbody>\n");
+
+        for (TrivyFinding finding : findings) {
+            String severityClass = "severity-" + finding.severity.toLowerCase();
+            html.append("          <tr>\n");
+            html.append("            <td>").append(finding.type).append("</td>\n");
+            html.append("            <td class=\"target-cell\">").append(escapeHtml(finding.target)).append("</td>\n");
+            html.append("            <td>").append(escapeHtml(finding.pkg)).append("</td>\n");
+            html.append("            <td class=\"id-cell\">").append(escapeHtml(finding.id)).append("</td>\n");
+            html.append("            <td class=\"").append(severityClass).append("\">")
+                    .append(finding.severity).append("</td>\n");
+            html.append("            <td class=\"title-cell\">").append(escapeHtml(finding.title)).append("</td>\n");
+            html.append("            <td>").append(escapeHtml(finding.installedVersion)).append("</td>\n");
+            html.append("            <td>").append(escapeHtml(finding.fixedVersion)).append("</td>\n");
+            html.append("          </tr>\n");
+        }
+
+        html.append("        </tbody>\n");
+        html.append("      </table>\n");
+    }
+
+    private static int getSeverityOrder(String severity) {
+        switch (severity.toUpperCase()) {
+            case "CRITICAL":
+                return 4;
+            case "HIGH":
+                return 3;
+            case "MEDIUM":
+                return 2;
+            case "LOW":
+                return 1;
+            default:
+                return 0;
+        }
+    }
+
+    static class TrivyFinding {
+        String type;
+        String target;
+        String pkg;
+        String id;
+        String severity;
+        String title;
+        String installedVersion;
+        String fixedVersion;
+
+        TrivyFinding(String type, String target, String pkg, String id, String severity,
+                String title, String installedVersion, String fixedVersion) {
+            this.type = type;
+            this.target = target;
+            this.pkg = pkg;
+            this.id = id;
+            this.severity = severity;
+            this.title = title;
+            this.installedVersion = installedVersion;
+            this.fixedVersion = fixedVersion;
+        }
+    }
+
+    private static void appendSemgrepTable(StringBuilder html, JsonObject semgrepResult) {
+        if (semgrepResult == null || !semgrepResult.has("results")) {
+            html.append("      <p>No results available.</p>\n");
+            return;
+        }
+
+        JsonArray results = semgrepResult.getAsJsonArray("results");
+        if (results.size() == 0) {
+            html.append("      <p>✓ No issues found.</p>\n");
+            return;
+        }
+
+        // Collect findings
+        List<SemgrepFinding> findings = new ArrayList<>();
+        for (int i = 0; i < results.size(); i++) {
+            JsonObject finding = results.get(i).getAsJsonObject();
+
+            String ruleId = finding.has("check_id") ? finding.get("check_id").getAsString() : "—";
+            String severity = "INFO";
+            String message = finding.has("extra") && finding.getAsJsonObject("extra").has("message")
+                    ? finding.getAsJsonObject("extra").get("message").getAsString()
+                    : "—";
+
+            if (finding.has("extra") && finding.getAsJsonObject("extra").has("severity")) {
+                severity = finding.getAsJsonObject("extra").get("severity").getAsString().toUpperCase();
+            }
+
+            String path = finding.has("path") ? finding.get("path").getAsString() : "—";
+            int line = 0;
+            if (finding.has("start") && finding.getAsJsonObject("start").has("line")) {
+                line = finding.getAsJsonObject("start").get("line").getAsInt();
+            }
+
+            findings.add(new SemgrepFinding(ruleId, severity, path, line, message));
+        }
+
+        // Sort by severity (ERROR > WARNING > INFO)
+        findings.sort((a, b) -> {
+            int severityA = getSemgrepSeverityOrder(a.severity);
+            int severityB = getSemgrepSeverityOrder(b.severity);
+            return Integer.compare(severityB, severityA); // Descending
+        });
+
+        html.append("      <table class=\"scan-table findings-table\">\n");
+        html.append("        <thead>\n");
+        html.append("          <tr>\n");
+        html.append("            <th>Rule ID</th>\n");
+        html.append("            <th>Severity</th>\n");
+        html.append("            <th>File</th>\n");
+        html.append("            <th>Line</th>\n");
+        html.append("            <th>Message</th>\n");
+        html.append("          </tr>\n");
+        html.append("        </thead>\n");
+        html.append("        <tbody>\n");
+
+        for (SemgrepFinding finding : findings) {
+            String severityClass = "severity-" + finding.severity.toLowerCase();
+            html.append("          <tr>\n");
+            html.append("            <td class=\"rule-cell\">").append(escapeHtml(finding.ruleId)).append("</td>\n");
+            html.append("            <td class=\"").append(severityClass).append("\">")
+                    .append(finding.severity).append("</td>\n");
+            html.append("            <td class=\"path-cell\">").append(escapeHtml(finding.path)).append("</td>\n");
+            html.append("            <td class=\"line-cell\">").append(finding.line > 0 ? finding.line : "—")
+                    .append("</td>\n");
+            html.append("            <td class=\"message-cell\">").append(escapeHtml(finding.message))
+                    .append("</td>\n");
+            html.append("          </tr>\n");
+        }
+
+        html.append("        </tbody>\n");
+        html.append("      </table>\n");
+    }
+
+    private static int getSemgrepSeverityOrder(String severity) {
+        switch (severity.toUpperCase()) {
+            case "ERROR":
+                return 3;
+            case "WARNING":
+                return 2;
+            case "INFO":
+                return 1;
+            default:
+                return 0;
+        }
+    }
+
+    static class SemgrepFinding {
+        String ruleId;
+        String severity;
+        String path;
+        int line;
+        String message;
+
+        SemgrepFinding(String ruleId, String severity, String path, int line, String message) {
+            this.ruleId = ruleId;
+            this.severity = severity;
+            this.path = path;
+            this.line = line;
+            this.message = message;
         }
     }
 
@@ -476,11 +764,13 @@ public class github_pages_builder {
                 html.append("          <thead>\n");
                 html.append("            <tr>\n");
                 html.append("              <th>Timestamp</th>\n");
+                html.append("              <th>Branch & Commit</th>\n");
                 html.append("              <th colspan=\"4\">Trivy FS Vuln</th>\n");
                 html.append("              <th colspan=\"4\">Trivy Image Vuln</th>\n");
                 html.append("              <th colspan=\"3\">Semgrep</th>\n");
                 html.append("            </tr>\n");
                 html.append("            <tr class=\"subheader\">\n");
+                html.append("              <th></th>\n");
                 html.append("              <th></th>\n");
                 html.append(
                         "              <th class=\"severity-c\">C</th><th class=\"severity-h\">H</th><th class=\"severity-m\">M</th><th class=\"severity-l\">L</th>\n");
@@ -496,6 +786,11 @@ public class github_pages_builder {
                     html.append("            <tr>\n");
                     html.append("              <td class=\"timestamp-cell\"><a href=\"").append(scan.path)
                             .append("/index.html\">").append(formatTimestamp(scan.timestamp)).append("</a></td>\n");
+
+                    // Branch & Commit cell
+                    html.append("              <td class=\"metadata-cell\">");
+                    appendBranchCommitInfo(html, scan, pagesPath);
+                    html.append("</td>\n");
 
                     // Trivy FS Vulns (simplified - no misconfig)
                     appendStatsCell(html, scan.stats.trivyFs);
@@ -751,7 +1046,7 @@ public class github_pages_builder {
                 }
 
                 .scan-table th {
-                    background: #34495e;
+                    background: #54697e;
                     color: white;
                     padding: 0.75rem 0.5rem;
                     text-align: center;
@@ -782,6 +1077,33 @@ public class github_pages_builder {
                 }
 
                 .timestamp-cell a:hover {
+                    text-decoration: underline;
+                }
+
+                .metadata-cell {
+                    text-align: left !important;
+                    font-size: 0.85rem;
+                    white-space: nowrap;
+                }
+
+                .metadata-cell .branch {
+                    color: #2c3e50;
+                    font-weight: 500;
+                }
+
+                .metadata-cell .commit {
+                    color: #7f8c8d;
+                    font-family: 'Courier New', monospace;
+                    font-size: 0.8rem;
+                    margin-top: 0.2rem;
+                }
+
+                .metadata-cell .commit a {
+                    color: #3498db;
+                    text-decoration: none;
+                }
+
+                .metadata-cell .commit a:hover {
                     text-decoration: underline;
                 }
 
@@ -841,8 +1163,49 @@ public class github_pages_builder {
                 }
 
                 .subheader th {
-                    background: #455a64;
+                    background: #657a84;
                     font-size: 0.75rem;
+                }
+
+                .findings-table {
+                    margin: 1.5rem 0;
+                }
+
+                .findings-table th {
+                    background: #34495e;
+                    position: sticky;
+                    top: 0;
+                }
+
+                .findings-table td {
+                    padding: 0.75rem 0.5rem;
+                    vertical-align: top;
+                }
+
+                .target-cell,
+                .path-cell {
+                    font-family: 'Courier New', monospace;
+                    font-size: 0.85rem;
+                    max-width: 300px;
+                    word-break: break-all;
+                }
+
+                .id-cell,
+                .rule-cell {
+                    font-family: 'Courier New', monospace;
+                    font-size: 0.85rem;
+                    white-space: nowrap;
+                }
+
+                .line-cell {
+                    text-align: center;
+                    font-family: 'Courier New', monospace;
+                }
+
+                .title-cell,
+                .message-cell {
+                    max-width: 400px;
+                    line-height: 1.4;
                 }
 
                 @media (max-width: 768px) {
