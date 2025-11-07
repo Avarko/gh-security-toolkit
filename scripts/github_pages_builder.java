@@ -248,7 +248,9 @@ public class github_pages_builder {
                         String timestamp = scanDir.getFileName().toString();
                         Path indexPath = scanDir.resolve("index.html");
                         if (Files.exists(indexPath)) {
-                            scans.add(new ScanEntry(timestamp, "scans/" + channel + "/" + timestamp));
+                            ScanEntry entry = new ScanEntry(timestamp, "scans/" + channel + "/" + timestamp);
+                            entry.stats = loadScanStats(scanDir);
+                            scans.add(entry);
                         }
                     });
         }
@@ -279,16 +281,81 @@ public class github_pages_builder {
         if (scans.isEmpty()) {
             html.append("      <p class=\"no-scans\">No scans available yet.</p>\n");
         } else {
-            html.append("      <ul class=\"scan-items\">\n");
+            // Table with scan statistics
+            html.append("      <div class=\"table-wrapper\">\n");
+            html.append("        <table class=\"scan-table\">\n");
+            html.append("          <thead>\n");
+            html.append("            <tr>\n");
+            html.append("              <th rowspan=\"2\">Timestamp</th>\n");
+            html.append("              <th colspan=\"4\">Trivy FS Vulnerabilities</th>\n");
+            html.append("              <th colspan=\"4\">Trivy FS Misconfig</th>\n");
+            html.append("              <th colspan=\"4\">Trivy Image Vulnerabilities</th>\n");
+            html.append("              <th colspan=\"4\">Trivy Image Misconfig</th>\n");
+            html.append("              <th colspan=\"3\">Semgrep</th>\n");
+            html.append("            </tr>\n");
+            html.append("            <tr>\n");
+            // Trivy FS Vulns
+            html.append("              <th class=\"severity-c\">C</th>\n");
+            html.append("              <th class=\"severity-h\">H</th>\n");
+            html.append("              <th class=\"severity-m\">M</th>\n");
+            html.append("              <th class=\"severity-l\">L</th>\n");
+            // Trivy FS Misconfig
+            html.append("              <th class=\"severity-c\">C</th>\n");
+            html.append("              <th class=\"severity-h\">H</th>\n");
+            html.append("              <th class=\"severity-m\">M</th>\n");
+            html.append("              <th class=\"severity-l\">L</th>\n");
+            // Trivy Image Vulns
+            html.append("              <th class=\"severity-c\">C</th>\n");
+            html.append("              <th class=\"severity-h\">H</th>\n");
+            html.append("              <th class=\"severity-m\">M</th>\n");
+            html.append("              <th class=\"severity-l\">L</th>\n");
+            // Trivy Image Misconfig
+            html.append("              <th class=\"severity-c\">C</th>\n");
+            html.append("              <th class=\"severity-h\">H</th>\n");
+            html.append("              <th class=\"severity-m\">M</th>\n");
+            html.append("              <th class=\"severity-l\">L</th>\n");
+            // Semgrep
+            html.append("              <th class=\"severity-error\">E</th>\n");
+            html.append("              <th class=\"severity-warn\">W</th>\n");
+            html.append("              <th class=\"severity-info\">I</th>\n");
+            html.append("            </tr>\n");
+            html.append("          </thead>\n");
+            html.append("          <tbody>\n");
+
             for (ScanEntry scan : scans) {
-                html.append("        <li>\n");
-                html.append("          <a href=\"").append(scan.timestamp).append("/index.html\">\n");
-                html.append("            <span class=\"timestamp\">").append(formatTimestamp(scan.timestamp))
-                        .append("</span>\n");
-                html.append("          </a>\n");
-                html.append("        </li>\n");
+                html.append("            <tr>\n");
+                html.append("              <td class=\"timestamp-cell\"><a href=\"").append(scan.timestamp)
+                        .append("/index.html\">").append(formatTimestamp(scan.timestamp)).append("</a></td>\n");
+
+                // Trivy FS Vulns
+                appendStatsCell(html, scan.stats.trivyFs);
+                // Trivy FS Misconfig
+                appendStatsCell(html, scan.stats.trivyFsMisconfig);
+                // Trivy Image Vulns
+                appendStatsCell(html, scan.stats.trivyImage);
+                // Trivy Image Misconfig
+                appendStatsCell(html, scan.stats.trivyImageMisconfig);
+
+                // Semgrep
+                html.append("              <td class=\"count")
+                        .append(scan.stats.semgrepErrors > 0 ? " severity-error" : "")
+                        .append("\">").append(scan.stats.semgrepErrors > 0 ? scan.stats.semgrepErrors : "-")
+                        .append("</td>\n");
+                html.append("              <td class=\"count")
+                        .append(scan.stats.semgrepWarnings > 0 ? " severity-warn" : "")
+                        .append("\">").append(scan.stats.semgrepWarnings > 0 ? scan.stats.semgrepWarnings : "-")
+                        .append("</td>\n");
+                html.append("              <td class=\"count")
+                        .append(scan.stats.semgrepInfo > 0 ? " severity-info" : "")
+                        .append("\">").append(scan.stats.semgrepInfo > 0 ? scan.stats.semgrepInfo : "-")
+                        .append("</td>\n");
+
+                html.append("            </tr>\n");
             }
-            html.append("      </ul>\n");
+
+            html.append("          </tbody>\n");
+            html.append("        </table>\n");
+            html.append("      </div>\n");
         }
 
         html.append("    </section>\n");
@@ -304,6 +371,21 @@ public class github_pages_builder {
 
         Files.writeString(channelPath.resolve("index.html"), html.toString());
         System.out.println("   ✅ Updated channel index page");
+    }
+
+    private static void appendStatsCell(StringBuilder html, VulnStats stats) {
+        if (!stats.scanned) {
+            html.append("              <td class=\"not-scanned\" colspan=\"4\">✗</td>\n");
+        } else {
+            html.append("              <td class=\"count").append(stats.critical > 0 ? " severity-critical" : "")
+                    .append("\">").append(stats.critical > 0 ? stats.critical : "-").append("</td>\n");
+            html.append("              <td class=\"count").append(stats.high > 0 ? " severity-high" : "")
+                    .append("\">").append(stats.high > 0 ? stats.high : "-").append("</td>\n");
+            html.append("              <td class=\"count").append(stats.medium > 0 ? " severity-medium" : "")
+                    .append("\">").append(stats.medium > 0 ? stats.medium : "-").append("</td>\n");
+            html.append("              <td class=\"count").append(stats.low > 0 ? " severity-low" : "")
+                    .append("\">").append(stats.low > 0 ? stats.low : "-").append("</td>\n");
+        }
     }
 
     private static void updateMainIndexPage(Path pagesPath) throws IOException {
@@ -368,20 +450,77 @@ public class github_pages_builder {
             for (Map.Entry<String, List<ScanEntry>> entry : channelScans.entrySet()) {
                 String channel = entry.getKey();
                 List<ScanEntry> scans = entry.getValue();
+
+                // Load stats for all scans and get latest
+                for (ScanEntry scan : scans) {
+                    if (scan.stats == null) {
+                        Path scanPath = pagesPath.resolve(scan.path);
+                        scan.stats = loadScanStats(scanPath);
+                    }
+                }
                 ScanEntry latest = scans.get(0);
 
                 html.append("    <section class=\"channel\">\n");
                 html.append("      <h2>").append(channel).append("</h2>\n");
                 html.append("      <p class=\"channel-info\">\n");
                 html.append("        <strong>Total scans:</strong> ").append(scans.size()).append(" | \n");
-                html.append("        <strong>Latest:</strong> ").append(formatTimestamp(latest.timestamp)).append("\n");
+                html.append("        <strong>Latest:</strong> ").append(formatTimestamp(latest.timestamp))
+                        .append(" | \n");
+                html.append("        <a href=\"scans/").append(channel).append("/index.html\">View All →</a>\n");
                 html.append("      </p>\n");
-                html.append("      <div class=\"channel-actions\">\n");
-                html.append("        <a href=\"").append(latest.path)
-                        .append("/index.html\" class=\"btn btn-primary\">View Latest Scan</a>\n");
-                html.append("        <a href=\"scans/").append(channel)
-                        .append("/index.html\" class=\"btn btn-secondary\">View All (").append(scans.size())
-                        .append(")</a>\n");
+
+                // Show last 5 scans in table
+                List<ScanEntry> recentScans = scans.stream().limit(5).toList();
+                html.append("      <div class=\"table-wrapper\">\n");
+                html.append("        <table class=\"scan-table scan-table-compact\">\n");
+                html.append("          <thead>\n");
+                html.append("            <tr>\n");
+                html.append("              <th>Timestamp</th>\n");
+                html.append("              <th colspan=\"4\">Trivy FS Vuln</th>\n");
+                html.append("              <th colspan=\"4\">Trivy Image Vuln</th>\n");
+                html.append("              <th colspan=\"3\">Semgrep</th>\n");
+                html.append("            </tr>\n");
+                html.append("            <tr class=\"subheader\">\n");
+                html.append("              <th></th>\n");
+                html.append(
+                        "              <th class=\"severity-c\">C</th><th class=\"severity-h\">H</th><th class=\"severity-m\">M</th><th class=\"severity-l\">L</th>\n");
+                html.append(
+                        "              <th class=\"severity-c\">C</th><th class=\"severity-h\">H</th><th class=\"severity-m\">M</th><th class=\"severity-l\">L</th>\n");
+                html.append(
+                        "              <th class=\"severity-error\">E</th><th class=\"severity-warn\">W</th><th class=\"severity-info\">I</th>\n");
+                html.append("            </tr>\n");
+                html.append("          </thead>\n");
+                html.append("          <tbody>\n");
+
+                for (ScanEntry scan : recentScans) {
+                    html.append("            <tr>\n");
+                    html.append("              <td class=\"timestamp-cell\"><a href=\"").append(scan.path)
+                            .append("/index.html\">").append(formatTimestamp(scan.timestamp)).append("</a></td>\n");
+
+                    // Trivy FS Vulns (simplified - no misconfig)
+                    appendStatsCell(html, scan.stats.trivyFs);
+                    // Trivy Image Vulns (simplified - no misconfig)
+                    appendStatsCell(html, scan.stats.trivyImage);
+
+                    // Semgrep
+                    html.append("              <td class=\"count")
+                            .append(scan.stats.semgrepErrors > 0 ? " severity-error" : "")
+                            .append("\">").append(scan.stats.semgrepErrors > 0 ? scan.stats.semgrepErrors : "-")
+                            .append("</td>\n");
+                    html.append("              <td class=\"count")
+                            .append(scan.stats.semgrepWarnings > 0 ? " severity-warn" : "")
+                            .append("\">").append(scan.stats.semgrepWarnings > 0 ? scan.stats.semgrepWarnings : "-")
+                            .append("</td>\n");
+                    html.append("              <td class=\"count")
+                            .append(scan.stats.semgrepInfo > 0 ? " severity-info" : "")
+                            .append("\">").append(scan.stats.semgrepInfo > 0 ? scan.stats.semgrepInfo : "-")
+                            .append("</td>\n");
+
+                    html.append("            </tr>\n");
+                }
+
+                html.append("          </tbody>\n");
+                html.append("        </table>\n");
                 html.append("      </div>\n");
                 html.append("    </section>\n");
             }
@@ -599,6 +738,113 @@ public class github_pages_builder {
                     text-decoration: underline;
                 }
 
+                /* Scan statistics table */
+                .table-wrapper {
+                    overflow-x: auto;
+                    margin: 1rem 0;
+                }
+
+                .scan-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 0.9rem;
+                }
+
+                .scan-table th {
+                    background: #34495e;
+                    color: white;
+                    padding: 0.75rem 0.5rem;
+                    text-align: center;
+                    font-weight: 600;
+                    border: 1px solid #2c3e50;
+                    font-size: 0.85rem;
+                }
+
+                .scan-table td {
+                    padding: 0.75rem 0.5rem;
+                    text-align: center;
+                    border: 1px solid #ddd;
+                }
+
+                .scan-table tbody tr:hover {
+                    background: #f8f9fa;
+                }
+
+                .timestamp-cell {
+                    text-align: left !important;
+                    white-space: nowrap;
+                }
+
+                .timestamp-cell a {
+                    color: #3498db;
+                    text-decoration: none;
+                    font-weight: 500;
+                }
+
+                .timestamp-cell a:hover {
+                    text-decoration: underline;
+                }
+
+                .count {
+                    font-family: 'Courier New', monospace;
+                    font-weight: 600;
+                }
+
+                .severity-critical {
+                    color: #c0392b;
+                    font-weight: bold;
+                }
+
+                .severity-high {
+                    color: #e67e22;
+                    font-weight: bold;
+                }
+
+                .severity-medium {
+                    color: #f39c12;
+                }
+
+                .severity-low {
+                    color: #95a5a6;
+                }
+
+                .severity-error {
+                    color: #c0392b;
+                    font-weight: bold;
+                }
+
+                .severity-warn {
+                    color: #f39c12;
+                }
+
+                .severity-info {
+                    color: #3498db;
+                }
+
+                .severity-c, .severity-h, .severity-m, .severity-l {
+                    font-size: 0.75rem;
+                    font-weight: 600;
+                }
+
+                .not-scanned {
+                    color: #95a5a6;
+                    font-size: 1.2rem;
+                }
+
+                .scan-table-compact {
+                    font-size: 0.85rem;
+                }
+
+                .scan-table-compact th,
+                .scan-table-compact td {
+                    padding: 0.5rem 0.4rem;
+                }
+
+                .subheader th {
+                    background: #455a64;
+                    font-size: 0.75rem;
+                }
+
                 @media (max-width: 768px) {
                     .metadata dl {
                         grid-template-columns: 1fr;
@@ -606,6 +852,15 @@ public class github_pages_builder {
 
                     .channel-actions {
                         flex-direction: column;
+                    }
+
+                    .scan-table {
+                        font-size: 0.75rem;
+                    }
+
+                    .scan-table th,
+                    .scan-table td {
+                        padding: 0.5rem 0.25rem;
                     }
                 }
                 """;
@@ -691,10 +946,160 @@ public class github_pages_builder {
     static class ScanEntry {
         String timestamp;
         String path;
+        ScanStats stats;
 
         ScanEntry(String timestamp, String path) {
             this.timestamp = timestamp;
             this.path = path;
         }
+    }
+
+    static class ScanStats {
+        VulnStats trivyFs = new VulnStats();
+        VulnStats trivyFsMisconfig = new VulnStats();
+        VulnStats trivyImage = new VulnStats();
+        VulnStats trivyImageMisconfig = new VulnStats();
+        int semgrepErrors = 0;
+        int semgrepWarnings = 0;
+        int semgrepInfo = 0;
+        boolean hasDependabot = false;
+    }
+
+    static class VulnStats {
+        int critical = 0;
+        int high = 0;
+        int medium = 0;
+        int low = 0;
+        boolean scanned = false;
+
+        int total() {
+            return critical + high + medium + low;
+        }
+    }
+
+    // Parse Trivy JSON to extract vulnerability stats
+    private static VulnStats parseTrivyVulnerabilities(JsonObject trivyJson) {
+        VulnStats stats = new VulnStats();
+        if (trivyJson == null)
+            return stats;
+
+        stats.scanned = true;
+        try {
+            JsonArray results = trivyJson.getAsJsonArray("Results");
+            if (results != null) {
+                for (int i = 0; i < results.size(); i++) {
+                    JsonObject result = results.get(i).getAsJsonObject();
+                    JsonArray vulns = result.getAsJsonArray("Vulnerabilities");
+                    if (vulns != null) {
+                        for (int j = 0; j < vulns.size(); j++) {
+                            JsonObject vuln = vulns.get(j).getAsJsonObject();
+                            String severity = vuln.has("Severity") ? vuln.get("Severity").getAsString() : "";
+                            switch (severity.toUpperCase()) {
+                                case "CRITICAL" -> stats.critical++;
+                                case "HIGH" -> stats.high++;
+                                case "MEDIUM" -> stats.medium++;
+                                case "LOW" -> stats.low++;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Ignore parse errors
+        }
+        return stats;
+    }
+
+    // Parse Trivy JSON to extract misconfiguration stats
+    private static VulnStats parseTrivyMisconfigurations(JsonObject trivyJson) {
+        VulnStats stats = new VulnStats();
+        if (trivyJson == null)
+            return stats;
+
+        stats.scanned = true;
+        try {
+            JsonArray results = trivyJson.getAsJsonArray("Results");
+            if (results != null) {
+                for (int i = 0; i < results.size(); i++) {
+                    JsonObject result = results.get(i).getAsJsonObject();
+                    JsonArray misconfigs = result.getAsJsonArray("Misconfigurations");
+                    if (misconfigs != null) {
+                        for (int j = 0; j < misconfigs.size(); j++) {
+                            JsonObject misconfig = misconfigs.get(j).getAsJsonObject();
+                            String severity = misconfig.has("Severity") ? misconfig.get("Severity").getAsString() : "";
+                            switch (severity.toUpperCase()) {
+                                case "CRITICAL" -> stats.critical++;
+                                case "HIGH" -> stats.high++;
+                                case "MEDIUM" -> stats.medium++;
+                                case "LOW" -> stats.low++;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Ignore parse errors
+        }
+        return stats;
+    }
+
+    // Parse Semgrep JSON to extract finding stats
+    private static void parseSemgrepStats(JsonObject semgrepJson, ScanStats stats) {
+        if (semgrepJson == null)
+            return;
+
+        try {
+            JsonArray results = semgrepJson.getAsJsonArray("results");
+            if (results != null) {
+                for (int i = 0; i < results.size(); i++) {
+                    JsonObject result = results.get(i).getAsJsonObject();
+                    JsonObject extra = result.getAsJsonObject("extra");
+                    if (extra != null && extra.has("severity")) {
+                        String severity = extra.get("severity").getAsString().toUpperCase();
+                        switch (severity) {
+                            case "ERROR" -> stats.semgrepErrors++;
+                            case "WARNING" -> stats.semgrepWarnings++;
+                            case "INFO" -> stats.semgrepInfo++;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Ignore parse errors
+        }
+    }
+
+    // Load scan statistics from JSON files
+    private static ScanStats loadScanStats(Path scanPath) {
+        ScanStats stats = new ScanStats();
+
+        try {
+            Path trivyFsPath = scanPath.resolve("trivy-fs-results.json");
+            if (Files.exists(trivyFsPath)) {
+                JsonObject trivyFs = GSON.fromJson(Files.readString(trivyFsPath), JsonObject.class);
+                stats.trivyFs = parseTrivyVulnerabilities(trivyFs);
+                stats.trivyFsMisconfig = parseTrivyMisconfigurations(trivyFs);
+            }
+
+            Path trivyImagePath = scanPath.resolve("trivy-image-results.json");
+            if (Files.exists(trivyImagePath)) {
+                JsonObject trivyImage = GSON.fromJson(Files.readString(trivyImagePath), JsonObject.class);
+                stats.trivyImage = parseTrivyVulnerabilities(trivyImage);
+                stats.trivyImageMisconfig = parseTrivyMisconfigurations(trivyImage);
+            }
+
+            Path semgrepPath = scanPath.resolve("semgrep-results.json");
+            if (Files.exists(semgrepPath)) {
+                JsonObject semgrep = GSON.fromJson(Files.readString(semgrepPath), JsonObject.class);
+                parseSemgrepStats(semgrep, stats);
+            }
+
+            // Check for Dependabot
+            stats.hasDependabot = Files.exists(scanPath.resolve("DEPENDABOT_SUMMARY.md"));
+        } catch (Exception e) {
+            // Ignore errors
+        }
+
+        return stats;
     }
 }
