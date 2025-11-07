@@ -78,62 +78,62 @@
                                             <td class="not-scanned" colspan="4">✗</td>
                                         <#else>
                                             <td class="count <#if s.stats.trivyFs.critical gt 0>severity-critical</#if>">
-                                                ${s.stats.trivyFs.critical?string('-')}</td>
+                                                ${s.stats.trivyFs.critical!'-'}</td>
                                             <td class="count <#if s.stats.trivyFs.high gt 0>severity-high</#if>">
-                                                ${s.stats.trivyFs.high?string('-')}</td>
+                                                ${s.stats.trivyFs.high!'-'}</td>
                                             <td class="count <#if s.stats.trivyFs.medium gt 0>severity-medium</#if>">
-                                                ${s.stats.trivyFs.medium?string('-')}</td>
+                                                ${s.stats.trivyFs.medium!'-'}</td>
                                             <td class="count <#if s.stats.trivyFs.low gt 0>severity-low</#if>">
-                                                ${s.stats.trivyFs.low?string('-')}</td>
+                                                ${s.stats.trivyFs.low!'-'}</td>
                                         </#if>
                                         <#-- Trivy FS Misconfig -->
                                         <#if !s.stats.trivyFsMisconfig.scanned>
                                             <td class="not-scanned" colspan="4">✗</td>
                                         <#else>
                                             <td class="count <#if s.stats.trivyFsMisconfig.critical gt 0>severity-critical</#if>">
-                                                ${s.stats.trivyFsMisconfig.critical?string('-')}</td>
+                                                ${s.stats.trivyFsMisconfig.critical!'-'}</td>
                                             <td class="count <#if s.stats.trivyFsMisconfig.high gt 0>severity-high</#if>">
-                                                ${s.stats.trivyFsMisconfig.high?string('-')}</td>
+                                                ${s.stats.trivyFsMisconfig.high!'-'}</td>
                                             <td class="count <#if s.stats.trivyFsMisconfig.medium gt 0>severity-medium</#if>">
-                                                ${s.stats.trivyFsMisconfig.medium?string('-')}</td>
+                                                ${s.stats.trivyFsMisconfig.medium!'-'}</td>
                                             <td class="count <#if s.stats.trivyFsMisconfig.low gt 0>severity-low</#if>">
-                                                ${s.stats.trivyFsMisconfig.low?string('-')}</td>
+                                                ${s.stats.trivyFsMisconfig.low!'-'}</td>
                                         </#if>
                                         <#-- Trivy Image Vulns -->
                                         <#if !s.stats.trivyImage.scanned>
                                             <td class="not-scanned" colspan="4">✗</td>
                                         <#else>
                                             <td class="count <#if s.stats.trivyImage.critical gt 0>severity-critical</#if>">
-                                                ${s.stats.trivyImage.critical?string('-')}</td>
+                                                ${s.stats.trivyImage.critical!'-'}</td>
                                             <td class="count <#if s.stats.trivyImage.high gt 0>severity-high</#if>">
-                                                ${s.stats.trivyImage.high?string('-')}</td>
+                                                ${s.stats.trivyImage.high!'-'}</td>
                                             <td class="count <#if s.stats.trivyImage.medium gt 0>severity-medium</#if>">
-                                                ${s.stats.trivyImage.medium?string('-')}</td>
+                                                ${s.stats.trivyImage.medium!'-'}</td>
                                             <td class="count <#if s.stats.trivyImage.low gt 0>severity-low</#if>">
-                                                ${s.stats.trivyImage.low?string('-')}</td>
+                                                ${s.stats.trivyImage.low!'-'}</td>
                                         </#if>
                                         <#-- Trivy Image Misconfig -->
                                         <#if !s.stats.trivyImageMisconfig.scanned>
                                             <td class="not-scanned" colspan="4">✗</td>
                                         <#else>
                                             <td class="count <#if s.stats.trivyImageMisconfig.critical gt 0>severity-critical</#if>">
-                                                ${s.stats.trivyImageMisconfig.critical?string('-')}</td>
+                                                ${s.stats.trivyImageMisconfig.critical!'-'}</td>
                                             <td class="count <#if s.stats.trivyImageMisconfig.high gt 0>severity-high</#if>">
-                                                ${s.stats.trivyImageMisconfig.high?string('-')}</td>
+                                                ${s.stats.trivyImageMisconfig.high!'-'}</td>
                                             <td class="count <#if s.stats.trivyImageMisconfig.medium gt 0>severity-medium</#if>">
-                                                ${s.stats.trivyImageMisconfig.medium?string('-')}</td>
+                                                ${s.stats.trivyImageMisconfig.medium!'-'}</td>
                                             <td class="count <#if s.stats.trivyImageMisconfig.low gt 0>severity-low</#if>">
-                                                ${s.stats.trivyImageMisconfig.low?string('-')}</td>
+                                                ${s.stats.trivyImageMisconfig.low!'-'}</td>
                                         </#if>
                                                         <td
                                                             class="count <#if s.stats.semgrepErrors gt 0>severity-error</#if>">
-                                                            ${s.stats.semgrepErrors?string('-')}</td>
+                                                            ${s.stats.semgrepErrors!'-'}</td>
                                                         <td
                                                             class="count <#if s.stats.semgrepWarnings gt 0>severity-warn</#if>">
-                                                            ${s.stats.semgrepWarnings?string('-')}</td>
+                                                            ${s.stats.semgrepWarnings!'-'}</td>
                                                         <td
                                                             class="count <#if s.stats.semgrepInfo gt 0>severity-info</#if>">
-                                                            ${s.stats.semgrepInfo?string('-')}</td>
+                                                            ${s.stats.semgrepInfo!'-'}</td>
                                     </tr>
                                 </#list>
                             </tbody>
@@ -142,7 +142,7 @@
             </#if>
         </section>
     </main>
-    <footer>
+    <footer style="text-align: center;">
         <p>Generated by <a href="https://github.com/Avarko/gh-security-toolkit">gh-security-toolkit</a></p>
     </footer>
 </body>
