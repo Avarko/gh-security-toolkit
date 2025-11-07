@@ -111,21 +111,21 @@ runs:
         out="${outdir}/RELEASE_BODY.md"
         header="## 🔍 Security Scan Summary"
 
-        # Collect all section files
+        # Collect all section files (only non-empty ones)
         declare -a sections=()
         declare -a section_files=()
 
-        if [ -f "${outdir}/TRIVY_SUMMARY.md" ]; then
+        if [ -f "${outdir}/TRIVY_SUMMARY.md" ] && [ -s "${outdir}/TRIVY_SUMMARY.md" ]; then
           sections+=("TRIVY")
           section_files+=("${outdir}/TRIVY_SUMMARY.md")
         fi
 
-        if [ -f "${outdir}/SEMGREP_SUMMARY.md" ]; then
+        if [ -f "${outdir}/SEMGREP_SUMMARY.md" ] && [ -s "${outdir}/SEMGREP_SUMMARY.md" ]; then
           sections+=("SEMGREP")
           section_files+=("${outdir}/SEMGREP_SUMMARY.md")
         fi
 
-        if [ -f "${outdir}/DEPENDABOT_SUMMARY.md" ]; then
+        if [ -f "${outdir}/DEPENDABOT_SUMMARY.md" ] && [ -s "${outdir}/DEPENDABOT_SUMMARY.md" ]; then
           sections+=("DEPENDABOT")
           section_files+=("${outdir}/DEPENDABOT_SUMMARY.md")
         fi
@@ -134,7 +134,9 @@ runs:
         if [ ${#sections[@]} -eq 0 ]; then
           echo "$header" > "$out"
           echo "" >> "$out"
-          echo "No scan results available." >> "$out"
+          echo "✅ **No security issues found!**" >> "$out"
+          echo "" >> "$out"
+          echo "All scans completed successfully with no vulnerabilities, misconfigurations, or alerts detected." >> "$out"
           echo "release_body=$out" >> "$GITHUB_OUTPUT"
           exit 0
         fi

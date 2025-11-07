@@ -99,7 +99,9 @@ jobs:
 
       - name: Timestamp
         id: ts
-        run: echo "ts=$(date -u +%Y-%m-%d-%H%M%SZ)" >> "$GITHUB_OUTPUT"
+        run: |
+          # Always use current time for unique releases
+          echo "ts=$(date -u +%Y-%m-%d-%H%M%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Validate channel name
         run: |
