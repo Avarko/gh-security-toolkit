@@ -1,0 +1,145 @@
+name: "Publisher (GitHub Pages)"
+description: "Publishes security scan results as static HTML pages to GitHub Pages"
+inputs:
+  # What to publish
+  outdir:
+    description: "Directory containing scan outputs (JSON/MD/etc.)"
+    required: true
+
+  # Metadata
+  metadata_timestamp:
+    description: "Timestamp of the scan"
+    required: true
+  metadata_branch:
+    description: "Branch name"
+    required: false
+    default: ""
+  metadata_repository:
+    description: "Repository name (owner/repo)"
+    required: false
+    default: ""
+  metadata_commit_sha:
+    description: "Commit SHA"
+    required: false
+    default: ""
+  metadata_image_name:
+    description: "Docker image name"
+    required: false
+    default: ""
+  metadata_scan_id:
+    description: "Scan run ID"
+    required: false
+    default: ""
+
+  # Pages configuration
+  channel:
+    description: "Channel name for organizing scans (e.g., 'nightly-master', 'pr-123')"
+    required: true
+  pages_root:
+    description: "Root directory for GitHub Pages (e.g., 'docs')"
+    required: false
+    default: "docs"
+  retention_keep:
+    description: "Keep at most N scans per channel (0=unlimited)"
+    required: false
+    default: "50"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup JBang
+      uses: jbangdev/setup-jbang@main
+
+    - name: Create metadata JSON
+      id: metadata
+      shell: bash
+      run: |
+        set -euo pipefail
+        META_FILE="${{ inputs.outdir }}/scan-metadata.json"
+        jq -n \
+          --arg ts "${{ inputs.metadata_timestamp }}" \
+          --arg branch "${{ inputs.metadata_branch }}" \
+          --arg repo "${{ inputs.metadata_repository }}" \
+          --arg sha "${{ inputs.metadata_commit_sha }}" \
+          --arg image "${{ inputs.metadata_image_name }}" \
+          --arg scan_id "${{ inputs.metadata_scan_id }}" \
+          '{
+            timestamp: $ts,
+            branch: $branch,
+            repository: $repo,
+            commit_sha: $sha,
+            image_name: $image,
+            scan_run_id: $scan_id
+          }' > "$META_FILE"
+        echo "meta_json=$META_FILE" >> "$GITHUB_OUTPUT"
+
+    - name: Build GitHub Pages
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "🏗️  Building GitHub Pages..."
+
+        jbang "${{ github.action_path }}/../../../scripts/github_pages_builder.java" \
+          "${{ inputs.outdir }}" \
+          "${{ inputs.pages_root }}" \
+          "${{ inputs.metadata_timestamp }}" \
+          "${{ inputs.channel }}" \
+          "${{ steps.metadata.outputs.meta_json }}"
+
+    - name: Cleanup old scans (retention)
+      if: ${{ inputs.retention_keep != '0' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        CHANNEL="${{ inputs.channel }}"
+        KEEP="${{ inputs.retention_keep }}"
+        PAGES_ROOT="${{ inputs.pages_root }}"
+        CHANNEL_PATH="${PAGES_ROOT}/scans/${CHANNEL}"
+
+        if [ ! -d "$CHANNEL_PATH" ]; then
+          echo "⏭️  No scans to clean up in channel: $CHANNEL"
+          exit 0
+        fi
+
+        echo "🧹 Cleaning up old scans in channel: $CHANNEL (keep=$KEEP)"
+
+        # List all scan directories (sorted by name, newest first)
+        mapfile -t scans < <(find "$CHANNEL_PATH" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -r)
+
+        total=${#scans[@]}
+        echo "   Found $total scans in channel"
+
+        if [ "$total" -le "$KEEP" ]; then
+          echo "   ✅ No cleanup needed (total=$total, keep=$KEEP)"
+          exit 0
+        fi
+
+        # Delete old scans
+        deleted=0
+        for ((i=KEEP; i<total; i++)); do
+          scan="${scans[$i]}"
+          echo "   🗑️  Deleting old scan: $scan"
+          rm -rf "$CHANNEL_PATH/$scan"
+          deleted=$((deleted + 1))
+        done
+
+        echo "   ✅ Deleted $deleted old scans, kept $KEEP newest"
+
+    - name: Setup Pages
+      uses: actions/configure-pages@v5
+
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ${{ inputs.pages_root }}
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+
+outputs:
+  pages_url:
+    description: "URL to the deployed GitHub Pages site"
+    value: ${{ steps.deployment.outputs.page_url }}

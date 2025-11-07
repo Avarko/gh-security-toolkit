@@ -36,6 +36,13 @@ on:
         required: false
         default: 30000
 
+      # === PUBLISHING ===
+      publish_to:
+        description: 'Where to publish results: "github-release", "github-pages", or "github-release,github-pages" for both'
+        type: string
+        required: false
+        default: 'github-release'
+
       # === METADATA FOR REPORTING ===
       channel:
         description: 'Channel name for release grouping (tag-friendly, e.g., "master", "dev", "prod"). Used in tags and release retention.'
@@ -81,6 +88,14 @@ permissions:
   contents: write
   actions: write
   security-events: write
+  pages: write
+  id-token: write
+
+# Concurrency: one scan per channel at a time
+# Queue new scans instead of canceling - let each scan complete
+concurrency:
+  group: "security-scan-${{ inputs.channel }}"
+  cancel-in-progress: false
 
 jobs:
   security-scan:
@@ -206,7 +221,8 @@ jobs:
           title_mis_img: "Trivy (image) misconfiguration summary"
 
       # === PUBLISH TO GITHUB RELEASE ===
-      - name: Publish scan results
+      - name: Publish to GitHub Release
+        if: contains(inputs.publish_to, 'github-release')
         uses: Avarko/gh-security-toolkit/actions/publisher/github-release@improvements
         with:
           outdir: ${{ steps.setup.outputs.output_dir }}
@@ -226,3 +242,20 @@ jobs:
           retention_keep: "${{ inputs.retention_keep }}"
           retention_days: "${{ inputs.retention_days }}"
           github_token: ${{ secrets.GH_TOKEN || github.token }}
+
+      # === PUBLISH TO GITHUB PAGES ===
+      - name: Publish to GitHub Pages
+        if: contains(inputs.publish_to, 'github-pages')
+        id: pages
+        uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@improvements
+        with:
+          outdir: ${{ steps.setup.outputs.output_dir }}
+          metadata_timestamp: ${{ steps.ts.outputs.ts }}
+          metadata_branch: ${{ inputs.branch }}
+          metadata_repository: ${{ inputs.repository }}
+          metadata_commit_sha: ${{ inputs.commit_sha }}
+          metadata_image_name: ${{ inputs.image_name }}
+          metadata_scan_id: ${{ github.run_id }}
+          channel: ${{ inputs.channel }}
+          pages_root: docs
+          retention_keep: ${{ inputs.retention_keep }}
