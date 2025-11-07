@@ -416,10 +416,10 @@ public class github_pages_builder {
         }
 
         // Sort both lists by severity
-        vulnerabilities
-                .sort(Comparator.comparingInt((TrivyFinding f) -> TrivySeverity.of(f.severity()).rank).reversed());
-        misconfigurations
-                .sort(Comparator.comparingInt((TrivyFinding f) -> TrivySeverity.of(f.severity()).rank).reversed());
+    vulnerabilities
+        .sort(Comparator.comparingInt((TrivyFinding f) -> TrivySeverity.of(f.severity).rank).reversed());
+    misconfigurations
+        .sort(Comparator.comparingInt((TrivyFinding f) -> TrivySeverity.of(f.severity).rank).reversed());
 
         return Map.of("vulnerabilities", vulnerabilities, "misconfigurations", misconfigurations);
     }
@@ -445,12 +445,12 @@ public class github_pages_builder {
                 line = o.getAsJsonObject("start").get("line").getAsInt();
             findings.add(new SemgrepFinding(ruleId, severity, path, line, message));
         }
-        findings.sort(Comparator.comparingInt((SemgrepFinding f) -> SemgrepSeverity.of(f.severity()).rank).reversed());
+    findings.sort(Comparator.comparingInt((SemgrepFinding f) -> SemgrepSeverity.of(f.severity).rank).reversed());
         return findings;
     }
 
     // --------- Stats & apurit ----------
-    enum TrivySeverity {
+    public enum TrivySeverity {
         CRITICAL(4), HIGH(3), MEDIUM(2), LOW(1), UNKNOWN(0);
 
         final int rank;
@@ -468,7 +468,7 @@ public class github_pages_builder {
         }
     }
 
-    enum SemgrepSeverity {
+    public enum SemgrepSeverity {
         ERROR(3), WARNING(2), INFO(1), UNKNOWN(0);
 
         final int rank;
@@ -486,7 +486,7 @@ public class github_pages_builder {
         }
     }
 
-    static class TrivyFinding {
+    public static class TrivyFinding {
         public String type;
         public String target;
         public String pkg;
@@ -496,7 +496,7 @@ public class github_pages_builder {
         public String installedVersion;
         public String fixedVersion;
 
-        TrivyFinding(String type, String target, String pkg, String id, String severity,
+        public TrivyFinding(String type, String target, String pkg, String id, String severity,
                 String title, String installedVersion, String fixedVersion) {
             this.type = type;
             this.target = target;
@@ -508,19 +508,17 @@ public class github_pages_builder {
             this.fixedVersion = fixedVersion;
         }
 
-        public String severity() {
-            return severity;
-        }
+        // Severity is exposed as a public field for FreeMarker templates.
     }
 
-    static class SemgrepFinding {
+    public static class SemgrepFinding {
         public String ruleId;
         public String severity;
         public String path;
         public int line;
         public String message;
 
-        SemgrepFinding(String ruleId, String severity, String path, int line, String message) {
+        public SemgrepFinding(String ruleId, String severity, String path, int line, String message) {
             this.ruleId = ruleId;
             this.severity = severity;
             this.path = path;
@@ -528,12 +526,10 @@ public class github_pages_builder {
             this.message = message;
         }
 
-        public String severity() {
-            return severity;
-        }
+        // Severity is exposed as a public field for FreeMarker templates.
     }
 
-    static class ScanResults {
+    public static class ScanResults {
         JsonObject metadata;
         JsonObject trivyFs;
         JsonObject trivyImage;
@@ -543,7 +539,7 @@ public class github_pages_builder {
         String dependabotSummary;
     }
 
-    static class ScanEntry {
+    public static class ScanEntry {
         String timestamp;
         String path;
         ScanStats stats;
@@ -561,7 +557,7 @@ public class github_pages_builder {
         }
     }
 
-    static class ScanStats {
+    public static class ScanStats {
         VulnStats trivyFs = new VulnStats();
         VulnStats trivyFsMisconfig = new VulnStats();
         VulnStats trivyImage = new VulnStats();
@@ -572,7 +568,7 @@ public class github_pages_builder {
         boolean hasDependabot = false;
     }
 
-    static class VulnStats {
+    public static class VulnStats {
         int critical, high, medium, low;
         boolean scanned;
 
