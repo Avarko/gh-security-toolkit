@@ -102,8 +102,14 @@ runs:
             # Delete or keep
             if [ -n "$delete_reason" ]; then
               echo "🗑️  Deleting: ${tag} -> ${delete_reason}"
-              gh release delete "$tag" -y 2>/dev/null || echo "   ⚠️  Failed to delete release"
-              git tag -d "$tag" 2>/dev/null || echo "   ⚠️  Failed to delete tag"
+
+              # Delete release (this also deletes the tag on GitHub)
+              if gh release delete "$tag" -y --cleanup-tag 2>/dev/null; then
+                echo "   ✅ Deleted release and tag"
+              else
+                echo "   ⚠️  Failed to delete release"
+              fi
+
               deleted=$((deleted + 1))
             else
               echo "✅ Keeping: ${tag} (age=${age_days}d, position=$index)"
