@@ -47,6 +47,54 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Check GitHub Pages visibility
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        echo "🔍 Checking GitHub Pages visibility..."
+
+        # Query GitHub Pages configuration
+        RESPONSE=$(gh api \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "/repos/${{ github.repository }}/pages" 2>&1) || {
+          echo "⚠️  Warning: Could not query GitHub Pages configuration."
+          echo "   Pages may not be enabled yet. Will proceed with deployment."
+          echo "   After first deployment, ensure Pages is configured as Private in Settings → Pages."
+          exit 0
+        }
+
+        # Extract 'public' field from response
+        IS_PUBLIC=$(echo "$RESPONSE" | jq -r '.public // "unknown"')
+
+        if [ "$IS_PUBLIC" = "true" ]; then
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "❌ ERROR: GitHub Pages is configured as PUBLIC"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "Security scan results MUST NOT be published to a public Pages site."
+          echo ""
+          echo "To fix this:"
+          echo "  1. Go to: Settings → Pages"
+          echo "  2. Under 'Visibility', select 'Private'"
+          echo "  3. Click 'Save'"
+          echo ""
+          echo "Note: Private Pages requires GitHub Enterprise Cloud."
+          echo "      If not available, use 'publish_to: github-release' instead."
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          exit 1
+        elif [ "$IS_PUBLIC" = "false" ]; then
+          echo "✅ GitHub Pages is configured as Private - proceeding with deployment"
+        else
+          echo "⚠️  Warning: Could not determine Pages visibility (got: $IS_PUBLIC)"
+          echo "   Proceeding with deployment, but please verify Pages is Private."
+        fi
+
     - name: Setup JBang
       uses: jbangdev/setup-jbang@main
 
