@@ -5,6 +5,7 @@
 import com.google.gson.*;
 import freemarker.template.*;
 import freemarker.core.HTMLOutputFormat;
+import freemarker.ext.beans.BeansWrapperBuilder;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -38,6 +39,12 @@ public class github_pages_builder {
         cfg.setLogTemplateExceptions(false);
         cfg.setWrapUncheckedExceptions(true);
         cfg.setTemplateExceptionHandler(TemplateExceptionHandler.RETHROW_HANDLER);
+        // Salli sekä public-kenttien että getterien käyttö suoraan FreeMarkerissa
+        // Records käyttävät accessor-metodeja (ilman get-etuliitettä)
+        var owb = new BeansWrapperBuilder(Configuration.VERSION_2_3_33);
+        owb.setExposeFields(true);
+        owb.setSimpleMapWrapper(true);
+        cfg.setObjectWrapper(owb.build());
         return cfg;
     }
 
@@ -183,14 +190,14 @@ public class github_pages_builder {
             String channel)
             throws IOException, TemplateException {
 
-        Map<String, Object> model = new HashMap<>();
+        var model = new HashMap<String, Object>();
         model.put("title", "Security Scan - " + timestamp);
         model.put("channel", channel);
         model.put("timestamp", timestamp);
         model.put("timestampHuman", formatTimestamp(timestamp));
 
         // Metadata
-        Map<String, Object> md = new HashMap<>();
+        var md = new HashMap<String, Object>();
         if (results.metadata != null) {
             putIfPresent(md, results.metadata, "branch");
             putIfPresent(md, results.metadata, "commit_sha");
@@ -198,19 +205,19 @@ public class github_pages_builder {
         }
         model.put("metadata", md);
 
-        // Trivy findings listat -> Map muotoon FreeMarkerille
-        List<Map<String, Object>> trivyFsMaps = extractTrivyFindings(results.trivyFs).stream()
-                .map(f -> trivyFindingToMap(f)).toList();
-        List<Map<String, Object>> trivyImageMaps = extractTrivyFindings(results.trivyImage).stream()
-                .map(f -> trivyFindingToMap(f)).toList();
+        // Trivy findings -> separate vulnerabilities and misconfigurations
         model.put("hasTrivy", (results.trivyFs != null || results.trivyImage != null));
-        model.put("trivyFs", trivyFsMaps);
-        model.put("trivyImage", trivyImageMaps);
 
-        // Semgrep -> Map muotoon
-        List<Map<String, Object>> semgrepMaps = extractSemgrepFindings(results.semgrep).stream()
-                .map(f -> semgrepFindingToMap(f)).toList();
-        model.put("semgrepFindings", semgrepMaps);
+        var trivyFsData = extractTrivyFindingsSeparated(results.trivyFs);
+        model.put("trivyFsVulns", trivyFsData.get("vulnerabilities"));
+        model.put("trivyFsMisconfigs", trivyFsData.get("misconfigurations"));
+
+        var trivyImageData = extractTrivyFindingsSeparated(results.trivyImage);
+        model.put("trivyImageVulns", trivyImageData.get("vulnerabilities"));
+        model.put("trivyImageMisconfigs", trivyImageData.get("misconfigurations"));
+
+        // Semgrep -> direct objects
+        model.put("semgrepFindings", extractSemgrepFindings(results.semgrep));
         model.put("semgrepSummaryMd", results.semgrepSummary);
 
         // Dependabot
@@ -266,17 +273,12 @@ public class github_pages_builder {
         }
         scans.sort((a, b) -> b.timestamp.compareTo(a.timestamp));
 
-        // Convert ScanEntry to Map for FreeMarker
-        List<Map<String, Object>> scanMaps = scans.stream()
-                .map(s -> scanEntryToMap(s))
-                .toList();
-
-        Map<String, Object> model = new HashMap<>();
+        var model = new HashMap<String, Object>();
         model.put("title", "Security Scans - " + channel);
         model.put("channel", channel);
         model.put("rootCss", "../../style.css");
         model.put("linkAllChannels", "../../index.html");
-        model.put("scans", scanMaps);
+        model.put("scans", scans);
 
         Template tpl = cfg.getTemplate("channel_index.ftl");
         render(tpl, model, channelPath.resolve("index.html"));
@@ -310,8 +312,8 @@ public class github_pages_builder {
         }
 
         // Täydennä statsit ja poimi 5 viimeistä
-        Map<String, Object> model = new HashMap<>();
-        List<Map<String, Object>> channels = new ArrayList<>();
+        var model = new HashMap<String, Object>();
+        var channels = new ArrayList<Map<String, Object>>();
         for (Map.Entry<String, List<ScanEntry>> e : channelScans.entrySet()) {
             List<ScanEntry> scans = e.getValue();
             for (ScanEntry s : scans) {
@@ -336,14 +338,13 @@ public class github_pages_builder {
                 }
             }
             ScanEntry latest = scans.get(0);
-            Map<String, Object> ch = new HashMap<>();
+            var ch = new HashMap<String, Object>();
             ch.put("name", e.getKey());
             ch.put("total", scans.size());
             ch.put("latestTs", latest.timestamp);
             ch.put("latestHuman", formatTimestamp(latest.timestamp));
             ch.put("viewAllHref", "scans/" + e.getKey() + "/index.html");
-            // Convert ScanEntry list to Map list for FreeMarker
-            ch.put("recent", scans.stream().limit(5).map(s -> scanEntryToMap(s)).toList());
+            ch.put("recent", scans.stream().limit(5).toList());
             channels.add(ch);
         }
         model.put("channels", channels);
@@ -364,20 +365,25 @@ public class github_pages_builder {
         }
     }
 
-    private static List<TrivyFinding> extractTrivyFindings(JsonObject trivyResult) {
-        List<TrivyFinding> findings = new ArrayList<>();
-        if (trivyResult == null || !trivyResult.has("Results"))
-            return findings;
+    private static Map<String, List<TrivyFinding>> extractTrivyFindingsSeparated(JsonObject trivyResult) {
+        List<TrivyFinding> vulnerabilities = new ArrayList<>();
+        List<TrivyFinding> misconfigurations = new ArrayList<>();
+
+        if (trivyResult == null || !trivyResult.has("Results")) {
+            return Map.of("vulnerabilities", vulnerabilities, "misconfigurations", misconfigurations);
+        }
+
         JsonArray results = trivyResult.getAsJsonArray("Results");
         for (JsonElement re : results) {
             JsonObject result = re.getAsJsonObject();
             String target = result.has("Target") ? result.get("Target").getAsString() : "Unknown";
-            // Vulns
+
+            // Vulnerabilities
             if (result.has("Vulnerabilities") && !result.get("Vulnerabilities").isJsonNull()) {
                 JsonArray vulns = result.getAsJsonArray("Vulnerabilities");
                 for (JsonElement ve : vulns) {
                     JsonObject v = ve.getAsJsonObject();
-                    findings.add(new TrivyFinding(
+                    vulnerabilities.add(new TrivyFinding(
                             "Vulnerability",
                             target,
                             v.has("PkgName") ? v.get("PkgName").getAsString() : "—",
@@ -389,12 +395,13 @@ public class github_pages_builder {
                             v.has("FixedVersion") ? v.get("FixedVersion").getAsString() : "—"));
                 }
             }
-            // Misconfigs
+
+            // Misconfigurations
             if (result.has("Misconfigurations") && !result.get("Misconfigurations").isJsonNull()) {
                 JsonArray mis = result.getAsJsonArray("Misconfigurations");
                 for (JsonElement me : mis) {
                     JsonObject m = me.getAsJsonObject();
-                    findings.add(new TrivyFinding(
+                    misconfigurations.add(new TrivyFinding(
                             "Misconfiguration",
                             target,
                             m.has("Type") ? m.get("Type").getAsString() : "—",
@@ -407,9 +414,14 @@ public class github_pages_builder {
                 }
             }
         }
-        // sort: CRITICAL > HIGH > MEDIUM > LOW > UNKNOWN
-        findings.sort(Comparator.comparingInt((TrivyFinding f) -> severityOrder(f.severity)).reversed());
-        return findings;
+
+        // Sort both lists by severity
+        vulnerabilities
+                .sort(Comparator.comparingInt((TrivyFinding f) -> TrivySeverity.of(f.severity()).rank).reversed());
+        misconfigurations
+                .sort(Comparator.comparingInt((TrivyFinding f) -> TrivySeverity.of(f.severity()).rank).reversed());
+
+        return Map.of("vulnerabilities", vulnerabilities, "misconfigurations", misconfigurations);
     }
 
     private static List<SemgrepFinding> extractSemgrepFindings(JsonObject semgrepResult) {
@@ -433,93 +445,94 @@ public class github_pages_builder {
                 line = o.getAsJsonObject("start").get("line").getAsInt();
             findings.add(new SemgrepFinding(ruleId, severity, path, line, message));
         }
-        findings.sort(Comparator.comparingInt((SemgrepFinding f) -> semgrepOrder(f.severity)).reversed());
+        findings.sort(Comparator.comparingInt((SemgrepFinding f) -> SemgrepSeverity.of(f.severity()).rank).reversed());
         return findings;
     }
 
-    private static int severityOrder(String s) {
-        return switch (s == null ? "" : s.toUpperCase()) {
-            case "CRITICAL" -> 4;
-            case "HIGH" -> 3;
-            case "MEDIUM" -> 2;
-            case "LOW" -> 1;
-            default -> 0;
-        };
-    }
-
-    private static int semgrepOrder(String s) {
-        return switch (s == null ? "" : s.toUpperCase()) {
-            case "ERROR" -> 3;
-            case "WARNING" -> 2;
-            case "INFO" -> 1;
-            default -> 0;
-        };
-    }
-
-    private static Map<String, Object> trivyFindingToMap(TrivyFinding f) {
-        Map<String, Object> m = new HashMap<>();
-        m.put("type", f.type);
-        m.put("target", f.target);
-        m.put("pkg", f.pkg);
-        m.put("id", f.id);
-        m.put("severity", f.severity);
-        m.put("title", f.title);
-        m.put("installedVersion", f.installedVersion);
-        m.put("fixedVersion", f.fixedVersion);
-        return m;
-    }
-
-    private static Map<String, Object> semgrepFindingToMap(SemgrepFinding f) {
-        Map<String, Object> m = new HashMap<>();
-        m.put("ruleId", f.ruleId);
-        m.put("severity", f.severity);
-        m.put("path", f.path);
-        m.put("line", f.line);
-        m.put("message", f.message);
-        return m;
-    }
-
-    private static Map<String, Object> scanEntryToMap(ScanEntry s) {
-        Map<String, Object> m = new HashMap<>();
-        m.put("timestamp", s.timestamp);
-        m.put("timestampHuman", formatTimestamp(s.timestamp));
-        m.put("path", s.path);
-        m.put("branch", s.branch);
-        m.put("commit", s.commit);
-        m.put("repository", s.repository);
-        m.put("stats", scanStatsToMap(s.stats));
-        return m;
-    }
-
-    private static Map<String, Object> scanStatsToMap(ScanStats stats) {
-        if (stats == null)
-            return new HashMap<>();
-        Map<String, Object> m = new HashMap<>();
-        m.put("trivyFs", vulnStatsToMap(stats.trivyFs));
-        m.put("trivyFsMisconfig", vulnStatsToMap(stats.trivyFsMisconfig));
-        m.put("trivyImage", vulnStatsToMap(stats.trivyImage));
-        m.put("trivyImageMisconfig", vulnStatsToMap(stats.trivyImageMisconfig));
-        m.put("semgrepErrors", stats.semgrepErrors);
-        m.put("semgrepWarnings", stats.semgrepWarnings);
-        m.put("semgrepInfo", stats.semgrepInfo);
-        m.put("hasDependabot", stats.hasDependabot);
-        return m;
-    }
-
-    private static Map<String, Object> vulnStatsToMap(VulnStats vs) {
-        if (vs == null) {
-            vs = new VulnStats();
-        }
-        Map<String, Object> m = new HashMap<>();
-        m.put("critical", vs.critical);
-        m.put("high", vs.high);
-        m.put("medium", vs.medium);
-        m.put("low", vs.low);
-        m.put("scanned", vs.scanned);
-        return m;
-    }
-
     // --------- Stats & apurit ----------
+    enum TrivySeverity {
+        CRITICAL(4), HIGH(3), MEDIUM(2), LOW(1), UNKNOWN(0);
+
+        final int rank;
+
+        TrivySeverity(int rank) {
+            this.rank = rank;
+        }
+
+        static TrivySeverity of(String s) {
+            try {
+                return valueOf(Objects.requireNonNullElse(s, "UNKNOWN").toUpperCase());
+            } catch (Exception e) {
+                return UNKNOWN;
+            }
+        }
+    }
+
+    enum SemgrepSeverity {
+        ERROR(3), WARNING(2), INFO(1), UNKNOWN(0);
+
+        final int rank;
+
+        SemgrepSeverity(int rank) {
+            this.rank = rank;
+        }
+
+        static SemgrepSeverity of(String s) {
+            try {
+                return valueOf(Objects.requireNonNullElse(s, "UNKNOWN").toUpperCase());
+            } catch (Exception e) {
+                return UNKNOWN;
+            }
+        }
+    }
+
+    static class TrivyFinding {
+        public String type;
+        public String target;
+        public String pkg;
+        public String id;
+        public String severity;
+        public String title;
+        public String installedVersion;
+        public String fixedVersion;
+
+        TrivyFinding(String type, String target, String pkg, String id, String severity,
+                String title, String installedVersion, String fixedVersion) {
+            this.type = type;
+            this.target = target;
+            this.pkg = pkg;
+            this.id = id;
+            this.severity = severity;
+            this.title = title;
+            this.installedVersion = installedVersion;
+            this.fixedVersion = fixedVersion;
+        }
+
+        public String severity() {
+            return severity;
+        }
+    }
+
+    static class SemgrepFinding {
+        public String ruleId;
+        public String severity;
+        public String path;
+        public int line;
+        public String message;
+
+        SemgrepFinding(String ruleId, String severity, String path, int line, String message) {
+            this.ruleId = ruleId;
+            this.severity = severity;
+            this.path = path;
+            this.line = line;
+            this.message = message;
+        }
+
+        public String severity() {
+            return severity;
+        }
+    }
+
     static class ScanResults {
         JsonObject metadata;
         JsonObject trivyFs;
@@ -565,88 +578,6 @@ public class github_pages_builder {
 
         int total() {
             return critical + high + medium + low;
-        }
-    }
-
-    static class TrivyFinding {
-        public String type, target, pkg, id, severity, title, installedVersion, fixedVersion;
-
-        TrivyFinding(String type, String target, String pkg, String id, String severity, String title,
-                String installedVersion, String fixedVersion) {
-            this.type = type;
-            this.target = target;
-            this.pkg = pkg;
-            this.id = id;
-            this.severity = severity;
-            this.title = title;
-            this.installedVersion = installedVersion;
-            this.fixedVersion = fixedVersion;
-        }
-
-        public String getType() {
-            return type;
-        }
-
-        public String getTarget() {
-            return target;
-        }
-
-        public String getPkg() {
-            return pkg;
-        }
-
-        public String getId() {
-            return id;
-        }
-
-        public String getSeverity() {
-            return severity;
-        }
-
-        public String getTitle() {
-            return title;
-        }
-
-        public String getInstalledVersion() {
-            return installedVersion;
-        }
-
-        public String getFixedVersion() {
-            return fixedVersion;
-        }
-    }
-
-    static class SemgrepFinding {
-        public String ruleId, severity, path;
-        public int line;
-        public String message;
-
-        SemgrepFinding(String r, String s, String p, int l, String m) {
-            ruleId = r;
-            severity = s;
-            path = p;
-            line = l;
-            message = m;
-        }
-
-        public String getRuleId() {
-            return ruleId;
-        }
-
-        public String getSeverity() {
-            return severity;
-        }
-
-        public String getPath() {
-            return path;
-        }
-
-        public int getLine() {
-            return line;
-        }
-
-        public String getMessage() {
-            return message;
         }
     }
 
