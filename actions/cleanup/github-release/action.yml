@@ -12,6 +12,10 @@ inputs:
     description: "Delete releases older than N days (0 = unlimited)"
     required: false
     default: "0"
+  exclude_tag:
+    description: "Tag name to exclude from cleanup (typically the just-created release)"
+    required: false
+    default: ""
   github_token:
     description: "GitHub token with contents:write permission"
     required: false
@@ -29,8 +33,10 @@ runs:
         channel="${{ inputs.channel }}"
         keep="${{ inputs.retention_keep }}"
         days="${{ inputs.retention_days }}"
+        exclude="${{ inputs.exclude_tag }}"
 
         echo "🧹 Cleanup channel='${channel}' keep=${keep} days=${days}"
+        [ -n "$exclude" ] && echo "   Excluding tag: ${exclude}"
 
         # Skip if no retention policies
         if [ "$keep" = "0" ] && [ "$days" = "0" ]; then
@@ -70,6 +76,12 @@ runs:
             name=$(echo "$rel" | jq -r '.name')
             tag=$(echo "$rel" | jq -r '.tagName')
             created=$(echo "$rel" | jq -r '.createdAt')
+
+            # Skip excluded tag
+            if [ -n "$exclude" ] && [ "$tag" = "$exclude" ]; then
+              echo "⏭️  Skipping excluded tag: ${tag}"
+              continue
+            fi
 
             # Parse creation timestamp
             created_s=$(date -u -d "$created" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$created" +%s)

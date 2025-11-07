@@ -185,3 +185,4 @@ runs:
         retention_keep: ${{ inputs.retention_keep }}
         retention_days: ${{ inputs.retention_days }}
         github_token: ${{ inputs.github_token }}
+        exclude_tag: ${{ inputs.tag_name }}
