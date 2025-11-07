@@ -1,12 +1,6 @@
 ///usr/bin/env jbang "$0" "$@" ; exit $?
-//DEPS gg.jte:jte:3.1.12
 //DEPS com.google.code.gson:gson:2.10.1
 
-import gg.jte.ContentType;
-import gg.jte.TemplateEngine;
-import gg.jte.TemplateOutput;
-import gg.jte.output.StringOutput;
-import gg.jte.resolve.DirectoryCodeResolver;
 import com.google.gson.*;
 
 import java.io.*;
@@ -634,13 +628,16 @@ public class github_pages_builder {
 
     private static String formatTimestamp(String timestamp) {
         try {
-            // Format: 2025-11-07-033946Z -> 2025-11-07 03:39:46 UTC
-            String dateStr = timestamp.replace("Z", "").replace("-", " ", 3);
-            return dateStr.substring(0, 10) + " " +
-                    dateStr.substring(11, 13) + ":" +
-                    dateStr.substring(13, 15) + ":" +
-                    dateStr.substring(15, 17) + " UTC";
+            // Parse: 2025-11-07-033946Z -> OffsetDateTime in UTC
+            // Format: yyyy-MM-dd-HHmmssX (X handles Z as UTC offset)
+            DateTimeFormatter inputFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmssX");
+            OffsetDateTime odt = OffsetDateTime.parse(timestamp, inputFormat);
+
+            // Format output with explicit UTC zone info preserved
+            DateTimeFormatter outputFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss 'UTC'");
+            return odt.withOffsetSameInstant(ZoneOffset.UTC).format(outputFormat);
         } catch (Exception e) {
+            // If parsing fails, return original timestamp
             return timestamp;
         }
     }
