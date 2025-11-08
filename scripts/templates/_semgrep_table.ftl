@@ -11,13 +11,11 @@
     <tbody>
         <#list semgrepFindings as f>
             <tr>
-                <td class="rule-cell">${f.ruleId!"-"}</td>
-                <td class="severity-${(f.severity!"")?lower_case}">${f.severity!"UNKNOWN"}</td>
-                <td class="path-cell">${f.path!"-"}</td>
-                <td class="line-cell">
-                    <#if (f.line!0) gt 0>${f.line}<#else>—</#if>
-                </td>
-                <td class="message-cell">${f.message!"-"}</td>
+                <td class="rule-cell">${f.ruleId}</td>
+                <td class="${f.cssClass}">${f.severityText}</td>
+                <td class="path-cell">${f.path}</td>
+                <td class="line-cell">${f.lineDisplay}</td>
+                <td class="message-cell">${f.message}</td>
             </tr>
         </#list>
     </tbody>
