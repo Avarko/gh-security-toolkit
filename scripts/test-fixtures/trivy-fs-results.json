@@ -1,0 +1,38 @@
+{
+    "SchemaVersion": 2,
+    "Results": [
+        {
+            "Target": "package-lock.json",
+            "Class": "lang-pkgs",
+            "Type": "npm",
+            "Vulnerabilities": [
+                {
+                    "VulnerabilityID": "CVE-2024-1234",
+                    "PkgName": "example-package",
+                    "InstalledVersion": "1.0.0",
+                    "FixedVersion": "1.0.1",
+                    "Severity": "HIGH",
+                    "Title": "Example vulnerability in example-package",
+                    "Description": "This is a test vulnerability"
+                },
+                {
+                    "VulnerabilityID": "CVE-2024-5678",
+                    "PkgName": "another-package",
+                    "InstalledVersion": "2.0.0",
+                    "FixedVersion": "",
+                    "Severity": "CRITICAL",
+                    "Title": "Critical vulnerability in another-package"
+                }
+            ],
+            "Misconfigurations": [
+                {
+                    "ID": "TEST-001",
+                    "Type": "Dockerfile Security",
+                    "Severity": "MEDIUM",
+                    "Title": "Example misconfiguration",
+                    "Message": "Test misconfiguration message"
+                }
+            ]
+        }
+    ]
+}

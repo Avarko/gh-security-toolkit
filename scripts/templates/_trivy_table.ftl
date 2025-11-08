@@ -16,14 +16,14 @@
             <tbody>
                 <#list findings as f>
                     <tr>
-                        <td>${f.type!"-"}</td>
-                        <td class="target-cell">${f.target!"-"}</td>
-                        <td>${f.pkg!"-"}</td>
-                        <td class="id-cell">${f.id!"-"}</td>
-                        <td class="severity-${(f.severity!" unknown")?lower_case}">${f.severity!"UNKNOWN"}</td>
-                        <td class="title-cell">${f.title!"-"}</td>
-                        <td>${f.installedVersion!"-"}</td>
-                        <td>${f.fixedVersion!"-"}</td>
+                        <td>${f.type}</td>
+                        <td class="target-cell">${f.target}</td>
+                        <td>${f.pkg}</td>
+                        <td class="id-cell">${f.id}</td>
+                        <td class="${f.cssClass}">${f.severityText}</td>
+                        <td class="title-cell">${f.title}</td>
+                        <td>${f.installedVersion}</td>
+                        <td>${f.fixedVersion}</td>
                     </tr>
                 </#list>
             </tbody>

@@ -55,12 +55,14 @@
                                     <#if trivyFsVulns?size gt 0>
                                         <li style="margin: 0.25rem 0;"><a href="#trivy-fs-vulns"
                                                 style="text-decoration: none; color: #0366d6;">🔴 Vulnerabilities</a>
-                                            <span style="color: #586069;">(${trivyFsVulns?size})</span></li>
+                                            <span style="color: #586069;">(${trivyFsVulns?size})</span>
+                                        </li>
                                     </#if>
                                     <#if trivyFsMisconfigs?size gt 0>
                                         <li style="margin: 0.25rem 0;"><a href="#trivy-fs-misconfigs"
                                                 style="text-decoration: none; color: #0366d6;">⚙️ Misconfigurations</a>
-                                            <span style="color: #586069;">(${trivyFsMisconfigs?size})</span></li>
+                                            <span style="color: #586069;">(${trivyFsMisconfigs?size})</span>
+                                        </li>
                                     </#if>
                                 </ul>
                             </li>
@@ -74,27 +76,30 @@
                                     <#if trivyImageVulns?size gt 0>
                                         <li style="margin: 0.25rem 0;"><a href="#trivy-image-vulns"
                                                 style="text-decoration: none; color: #0366d6;">🔴 Vulnerabilities</a>
-                                            <span style="color: #586069;">(${trivyImageVulns?size})</span></li>
+                                            <span style="color: #586069;">(${trivyImageVulns?size})</span>
+                                        </li>
                                     </#if>
                                     <#if trivyImageMisconfigs?size gt 0>
                                         <li style="margin: 0.25rem 0;"><a href="#trivy-image-misconfigs"
                                                 style="text-decoration: none; color: #0366d6;">⚙️ Misconfigurations</a>
-                                            <span style="color: #586069;">(${trivyImageMisconfigs?size})</span></li>
+                                            <span style="color: #586069;">(${trivyImageMisconfigs?size})</span>
+                                        </li>
                                     </#if>
                                 </ul>
                             </li>
                         </#if>
                     </#if>
-                    <#if semgrepFindings?has_content>
+                    <#if hasSemgrepFindings>
                         <li style="margin: 0.5rem 0;"><a href="#semgrep"
                                 style="text-decoration: none; color: #0366d6; font-weight: 500;">🔍 Semgrep Results</a>
-                            <span style="color: #586069;">(${semgrepFindings?size} findings)</span></li>
+                            <span style="color: #586069;">(${semgrepFindings?size} findings)</span>
+                        </li>
                         <#elseif semgrepSummaryMd??>
                             <li style="margin: 0.5rem 0;"><a href="#semgrep"
                                     style="text-decoration: none; color: #0366d6; font-weight: 500;">🔍 Semgrep
                                     Results</a></li>
                     </#if>
-                    <#if dependabotSummaryMd??>
+                    <#if hasDependabot>
                         <li style="margin: 0.5rem 0;"><a href="#dependabot"
                                 style="text-decoration: none; color: #0366d6; font-weight: 500;">🤖 Dependabot
                                 Alerts</a></li>
@@ -152,7 +157,7 @@
                 </section>
             </#if>
 
-            <#if semgrepFindings?has_content>
+            <#if hasSemgrepFindings>
                 <section class="summary semgrep" id="semgrep">
                     <h2>Semgrep Results</h2>
                     <#include "_semgrep_table.ftl">
@@ -162,13 +167,8 @@
                 </section>
                 <#elseif semgrepSummaryMd??>
                     <section class="summary semgrep" id="semgrep">
-                        <h2>Semgrep Results</h2>
-                        <div class="markdown-content">
-                            <pre>${semgrepSummaryMd}</pre>
-                        </div>
-                        <#if jsonSemgrepPath??>
-                            <p><a href="${jsonSemgrepPath}" class="json-link">📄 View JSON</a></p>
-                        </#if>
+                        <h2>Semgrep Summary</h2>
+                        <pre>${semgrepSummaryMd}</pre>
                     </section>
             </#if>
 
@@ -181,7 +181,7 @@
                 </section>
             </#if>
 
-            <#if (!hasTrivy) && (!semgrepFindings?has_content) && (!dependabotSummaryMd??)>
+            <#if (!hasTrivy) && (!hasSemgrepFindings) && (!hasDependabot)>
                 <section class="no-issues">
                     <h2>✅ No Security Issues Found!</h2>
                     <p>All scans completed successfully with no vulnerabilities, misconfigurations, or alerts detected.
