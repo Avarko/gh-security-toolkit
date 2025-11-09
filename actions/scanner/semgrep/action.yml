@@ -1,0 +1,237 @@
+name: "Semgrep Scanner"
+description: "Runs Semgrep static analysis scans on source code"
+inputs:
+  filesystem_path:
+    description: "Path to source code to scan"
+    required: true
+  semgrep_output_dir:
+    description: "Directory for Semgrep JSON output"
+    required: true
+  semgrep_configs:
+    description: "Semgrep rulesets to use (comma-separated)"
+    required: false
+    default: "p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets"
+runs:
+  using: "composite"
+  steps:
+    - name: Prepare output directory
+      shell: bash
+      run: mkdir -p "${{ inputs.semgrep_output_dir }}"
+
+    - name: Setup Semgrep
+      shell: bash
+      run: |
+        python3 -m pip install --upgrade pip
+        pip3 install semgrep
+
+    - name: Create .semgrepignore
+      shell: bash
+      working-directory: ${{ inputs.filesystem_path }}
+      run: |
+        cat > .semgrepignore << 'EOF'
+        # Version control
+        .git/
+        .svn/
+        .hg/
+
+        # Dependencies
+        node_modules/
+        vendor/
+
+        # Build outputs (Java/JVM)
+        target/
+        build/
+        out/
+        bin/
+
+        # Build outputs (JavaScript/TypeScript)
+        dist/
+        .next/
+        .nuxt/
+
+        # Build outputs (Python)
+        __pycache__/
+        *.pyc
+        .pytest_cache/
+        venv/
+        .venv/
+
+        # Build outputs (Go)
+        *.exe
+        *.test
+
+        # Build outputs (.NET)
+        obj/
+
+        # IDE
+        .idea/
+        .vscode/
+        *.iml
+
+        # Test coverage
+        coverage/
+        .coverage
+        htmlcov/
+
+        # Generated files
+        *.min.js
+        *.min.css
+        *.map
+
+        # Lock files (often large, low value)
+        package-lock.json
+        yarn.lock
+        pnpm-lock.yaml
+        Gemfile.lock
+        Pipfile.lock
+        poetry.lock
+
+        # Documentation
+        docs/
+        documentation/
+        EOF
+
+        echo "Created .semgrepignore with common exclusions"
+
+    - name: Run Semgrep scan (JSON for parsing)
+      shell: bash
+      working-directory: ${{ inputs.filesystem_path }}
+      run: |
+        # Split comma-separated configs into --config flags
+        CONFIGS="${{ inputs.semgrep_configs }}"
+        CONFIG_FLAGS=""
+        IFS=',' read -ra CONFIG_ARRAY <<< "$CONFIGS"
+        for cfg in "${CONFIG_ARRAY[@]}"; do
+          CONFIG_FLAGS="$CONFIG_FLAGS --config $(echo $cfg | xargs)"
+        done
+
+        echo "Running Semgrep with configs: $CONFIG_FLAGS"
+
+        # Run Semgrep JSON output (quiet mode to suppress progress output)
+        semgrep scan \
+          $CONFIG_FLAGS \
+          --json \
+          --quiet \
+          --metrics=off \
+          --no-git-ignore \
+          . > "${{ inputs.semgrep_output_dir }}/semgrep-results.json" || true
+
+        echo "Semgrep JSON scan completed"
+
+    - name: Run Semgrep scan (text for full report)
+      shell: bash
+      working-directory: ${{ inputs.filesystem_path }}
+      run: |
+        # Split comma-separated configs into --config flags
+        CONFIGS="${{ inputs.semgrep_configs }}"
+        CONFIG_FLAGS=""
+        IFS=',' read -ra CONFIG_ARRAY <<< "$CONFIGS"
+        for cfg in "${CONFIG_ARRAY[@]}"; do
+          CONFIG_FLAGS="$CONFIG_FLAGS --config $(echo $cfg | xargs)"
+        done
+
+        # Run Semgrep text output for full report
+        semgrep scan \
+          $CONFIG_FLAGS \
+          --metrics=off \
+          --no-git-ignore \
+          . > "${{ inputs.semgrep_output_dir }}/semgrep-full-report.txt" 2>&1 || true
+
+    - name: Create full report markdown
+      shell: bash
+      run: |
+        FULL_REPORT="${{ inputs.semgrep_output_dir }}/semgrep-full-report.md"
+
+        echo "# Semgrep SAST Full Report" > "$FULL_REPORT"
+        echo "" >> "$FULL_REPORT"
+        echo '```' >> "$FULL_REPORT"
+        cat "${{ inputs.semgrep_output_dir }}/semgrep-full-report.txt" >> "$FULL_REPORT"
+        echo '```' >> "$FULL_REPORT"
+
+    - name: Create summary markdown (top 10)
+      id: summary
+      shell: bash
+      run: |
+        OUTPUT_FILE="${{ inputs.semgrep_output_dir }}/SEMGREP_SUMMARY.md"
+        JSON_FILE="${{ inputs.semgrep_output_dir }}/semgrep-results.json"
+
+        echo "## 🔍 Semgrep SAST Scan Results" > "$OUTPUT_FILE"
+        echo "" >> "$OUTPUT_FILE"
+
+        if [ ! -f "$JSON_FILE" ]; then
+          echo "⚠️ No Semgrep results available." >> "$OUTPUT_FILE"
+          echo "semgrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Validate JSON
+        if ! jq empty "$JSON_FILE" 2>/dev/null; then
+          echo "⚠️ Invalid Semgrep JSON output. Check semgrep-results.json for details." >> "$OUTPUT_FILE"
+          echo "semgrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Count findings by severity
+        TOTAL=$(jq '.results | length' "$JSON_FILE" 2>/dev/null || echo "0")
+        ERRORS=$(jq '[.results[] | select(.extra.severity == "ERROR")] | length' "$JSON_FILE" 2>/dev/null || echo "0")
+        WARNINGS=$(jq '[.results[] | select(.extra.severity == "WARNING")] | length' "$JSON_FILE" 2>/dev/null || echo "0")
+        INFO=$(jq '[.results[] | select(.extra.severity == "INFO")] | length' "$JSON_FILE" 2>/dev/null || echo "0")
+
+        echo "**Summary:** $TOTAL findings ($ERRORS errors, $WARNINGS warnings, $INFO info)" >> "$OUTPUT_FILE"
+        echo "" >> "$OUTPUT_FILE"
+
+        if [ "$TOTAL" -eq 0 ]; then
+          echo "✅ No issues found!" >> "$OUTPUT_FILE"
+          echo "semgrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Extract top 10 findings (errors first, then by severity)
+        echo "**Top 10 findings:**" >> "$OUTPUT_FILE"
+        echo "" >> "$OUTPUT_FILE"
+
+        jq -r '[.results[] | {
+          severity: .extra.severity,
+          check_id: .check_id,
+          message: .extra.message,
+          path: .path,
+          line: .start.line
+        }] |
+        sort_by(
+          if .severity == "ERROR" then 0
+          elif .severity == "WARNING" then 1
+          else 2 end
+        ) |
+        .[:10] |
+        .[] |
+        "### \(.severity): \(.check_id)\n- **File:** `\(.path):\(.line)`\n- **Message:** \(.message)\n"' "$JSON_FILE" >> "$OUTPUT_FILE"
+
+        echo "" >> "$OUTPUT_FILE"
+
+        # Show remaining count if more than 10
+        if [ "$TOTAL" -gt 10 ]; then
+          REMAINING=$((TOTAL - 10))
+          echo "**... and $REMAINING more findings**" >> "$OUTPUT_FILE"
+          echo "" >> "$OUTPUT_FILE"
+        fi
+
+        echo "📄 [View full Semgrep report](semgrep-full-report.md)" >> "$OUTPUT_FILE"
+
+        echo "semgrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+        echo "Semgrep summary created at $OUTPUT_FILE"
+
+    - name: Get Semgrep version
+      id: version
+      shell: bash
+      run: |
+        VERSION=$(semgrep --version | head -n1 | awk '{print $1}')
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "Semgrep version: $VERSION"
+
+outputs:
+  semgrep_summary:
+    description: "Semgrep summary markdown file path"
+    value: ${{ steps.summary.outputs.semgrep_summary }}
+  version:
+    description: "Semgrep version"
+    value: ${{ steps.version.outputs.version }}

@@ -1,0 +1,338 @@
+name: "Publisher (GitHub Pages)"
+description: "Publishes security scan results as static HTML pages to GitHub Pages"
+inputs:
+  # What to publish
+  outdir:
+    description: "Directory containing scan outputs (JSON/MD/etc.)"
+    required: true
+
+  # Metadata
+  metadata_timestamp:
+    description: "Timestamp of the scan"
+    required: true
+  metadata_branch:
+    description: "Branch name"
+    required: false
+    default: ""
+  metadata_repository:
+    description: "Repository name (owner/repo)"
+    required: false
+    default: ""
+  metadata_commit_sha:
+    description: "Commit SHA"
+    required: false
+    default: ""
+  metadata_image_name:
+    description: "Docker image name"
+    required: false
+    default: ""
+  metadata_scan_id:
+    description: "Scan run ID"
+    required: false
+    default: ""
+
+  # Footer metadata
+  app_docs_url:
+    description: "URL to application documentation"
+    required: false
+    default: ""
+  app_issues_url:
+    description: "URL to application issue tracker"
+    required: false
+    default: ""
+  ci_job_name:
+    description: "CI job name (e.g., 'security-scan')"
+    required: false
+    default: ""
+  ci_job_url:
+    description: "URL to CI job run"
+    required: false
+    default: ""
+  trivy_version:
+    description: "Trivy version"
+    required: false
+    default: ""
+  semgrep_version:
+    description: "Semgrep version"
+    required: false
+    default: ""
+  toolkit_version:
+    description: "gh-security-toolkit version"
+    required: false
+    default: ""
+
+  # Pages configuration
+  channel:
+    description: "Channel name for organizing scans (e.g., 'nightly-master', 'pr-123')"
+    required: true
+  pages_root:
+    description: "Root directory for GitHub Pages (e.g., 'docs')"
+    required: false
+    default: "docs"
+  retention_keep:
+    description: "Keep at most N scans per channel (0=unlimited)"
+    required: false
+    default: "50"
+  retention_days:
+    description: "Days to retain scan history artifact in GitHub (0=maximum allowed by GitHub)"
+    required: false
+    default: "30"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Check GitHub Pages visibility
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        echo "🔍 Checking GitHub Pages visibility..."
+
+        # Query GitHub Pages configuration (single API call)
+        echo "📡 DEBUG: Querying GitHub API for Pages configuration..."
+        FULL_RESPONSE=$(gh api \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "/repos/${{ github.repository }}/pages" 2>&1) || FULL_RESPONSE=""
+
+        echo "📦 DEBUG: Full API response:"
+        echo "$FULL_RESPONSE"
+        echo ""
+
+        # Extract .public field from response (handle null vs false properly)
+        if [ -n "$FULL_RESPONSE" ]; then
+          IS_PUBLIC=$(echo "$FULL_RESPONSE" | jq -r 'if .public == null then "unknown" else (.public | tostring) end' 2>/dev/null) || IS_PUBLIC="unknown"
+        else
+          IS_PUBLIC="unknown"
+        fi
+
+        echo "🔎 DEBUG: Extracted .public value: '$IS_PUBLIC'"
+        echo ""
+
+        if [ "$IS_PUBLIC" = "true" ]; then
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "❌ ERROR: GitHub Pages is configured as PUBLIC"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "Security scan results MUST NOT be published to a public Pages site."
+          echo ""
+          echo "To fix this:"
+          echo "  1. Go to: Settings → Pages"
+          echo "  2. Under 'Visibility', select 'Private'"
+          echo "  3. Click 'Save'"
+          echo ""
+          echo "Note: Private Pages requires GitHub Enterprise Cloud."
+          echo "      If not available, use 'publish_to: github-release' instead."
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          exit 1
+        elif [ "$IS_PUBLIC" = "false" ]; then
+          echo "✅ GitHub Pages is configured as Private - proceeding with deployment"
+        elif [ "$IS_PUBLIC" = "null" ] || [ "$IS_PUBLIC" = "unknown" ]; then
+          echo "⚠️  Warning: Could not query GitHub Pages configuration."
+          echo "   Pages may not be enabled yet, or visibility setting is not available."
+          echo "   Proceeding with deployment."
+          echo ""
+          echo "   ⚠️  IMPORTANT: After first deployment, verify in Settings → Pages that:"
+          echo "      • Pages is enabled and deployed from 'gh-pages' branch"
+          echo "      • Visibility is set to 'Private' (requires GitHub Enterprise Cloud)"
+          echo "      • If Private Pages is not available, use 'publish_to: github-release' instead"
+        else
+          echo "⚠️  Warning: Unexpected visibility value: $IS_PUBLIC"
+          echo "   Proceeding with deployment, but please verify Pages configuration."
+        fi
+
+    - name: Setup JBang
+      uses: jbangdev/setup-jbang@main
+
+    - name: Create metadata JSON
+      id: metadata
+      shell: bash
+      run: |
+        set -euo pipefail
+        META_FILE="${{ inputs.outdir }}/scan-metadata.json"
+        jq -n \
+          --arg ts "${{ inputs.metadata_timestamp }}" \
+          --arg branch "${{ inputs.metadata_branch }}" \
+          --arg repo "${{ inputs.metadata_repository }}" \
+          --arg sha "${{ inputs.metadata_commit_sha }}" \
+          --arg image "${{ inputs.metadata_image_name }}" \
+          --arg scan_id "${{ inputs.metadata_scan_id }}" \
+          --arg app_docs_url "${{ inputs.app_docs_url }}" \
+          --arg app_issues_url "${{ inputs.app_issues_url }}" \
+          --arg ci_job_name "${{ inputs.ci_job_name }}" \
+          --arg ci_job_url "${{ inputs.ci_job_url }}" \
+          --arg trivy_version "${{ inputs.trivy_version }}" \
+          --arg semgrep_version "${{ inputs.semgrep_version }}" \
+          --arg toolkit_version "${{ inputs.toolkit_version }}" \
+          '{
+            timestamp: $ts,
+            branch: $branch,
+            repository: $repo,
+            commit_sha: $sha,
+            image_name: $image,
+            scan_run_id: $scan_id,
+            footer: {
+              app_docs_url: $app_docs_url,
+              app_issues_url: $app_issues_url,
+              ci_job_name: $ci_job_name,
+              ci_job_url: $ci_job_url,
+              trivy_version: $trivy_version,
+              semgrep_version: $semgrep_version,
+              toolkit_version: $toolkit_version
+            }
+          }' > "$META_FILE"
+        echo "meta_json=$META_FILE" >> "$GITHUB_OUTPUT"
+
+    - name: Download scan history artifact
+      uses: dawidd6/action-download-artifact@v6
+      continue-on-error: true
+      id: download_history
+      with:
+        name: _gh_security_toolkit_scan_history_${{ inputs.channel }}
+        path: /tmp/scan-history-artifact
+        workflow_conclusion: success
+        repo: ${{ github.repository }}
+        check_artifacts: true
+        search_artifacts: true
+        if_no_artifact_found: ignore
+
+    - name: Restore scan history
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        PAGES_ROOT="${{ inputs.pages_root }}"
+        HISTORY_ARCHIVE="/tmp/scan-history-artifact/scan-history.tar.gz"
+
+        if [ -f "$HISTORY_ARCHIVE" ]; then
+          echo "📦 Restoring scan history from artifact..."
+          mkdir -p "$PAGES_ROOT"
+          tar -xzf "$HISTORY_ARCHIVE" -C "$PAGES_ROOT"
+
+          # Count existing scans
+          if [ -d "$PAGES_ROOT/scans" ]; then
+            TOTAL_SCANS=$(find "$PAGES_ROOT/scans" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
+            CHANNELS=$(find "$PAGES_ROOT/scans" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+            echo "   ✅ Restored $TOTAL_SCANS scans across $CHANNELS channels"
+          fi
+        else
+          echo "ℹ️  No existing scan history found - starting fresh"
+          mkdir -p "$PAGES_ROOT/scans/${{ inputs.channel }}"
+        fi
+
+    - name: Apply retention policy
+      if: ${{ inputs.retention_keep != '0' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        CHANNEL="${{ inputs.channel }}"
+        KEEP="${{ inputs.retention_keep }}"
+        PAGES_ROOT="${{ inputs.pages_root }}"
+        CHANNEL_PATH="$PAGES_ROOT/scans/$CHANNEL"
+        NEW_SCAN="${{ inputs.metadata_timestamp }}"
+
+        echo "🧹 Applying retention policy for channel: $CHANNEL (keep=$KEEP)"
+
+        if [ ! -d "$CHANNEL_PATH" ]; then
+          echo "   ⏭️  No existing scans - retention not needed"
+          exit 0
+        fi
+
+        # List all scan directories including the new one we're about to add
+        mapfile -t scans < <(find "$CHANNEL_PATH" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -r)
+
+        # Add new scan to the list for retention calculation
+        scans=("$NEW_SCAN" "${scans[@]}")
+
+        # Remove duplicates and sort
+        mapfile -t scans < <(printf '%s\n' "${scans[@]}" | sort -u -r)
+
+        total=${#scans[@]}
+        echo "   Total scans (including new): $total"
+        echo "   Retention limit: $KEEP"
+
+        if [ "$total" -le "$KEEP" ]; then
+          echo "   ✅ No cleanup needed (total=$total, keep=$KEEP)"
+          exit 0
+        fi
+
+        # Delete old scans beyond retention limit
+        deleted=0
+        for ((i=KEEP; i<total; i++)); do
+          scan="${scans[$i]}"
+          if [ "$scan" != "$NEW_SCAN" ] && [ -d "$CHANNEL_PATH/$scan" ]; then
+            echo "   🗑️  Deleting old scan: $scan"
+            rm -rf "$CHANNEL_PATH/$scan"
+            deleted=$((deleted + 1))
+          fi
+        done
+
+        echo "   ✅ Deleted $deleted old scans, keeping $KEEP newest"
+
+    - name: Build GitHub Pages
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "🏗️  Building GitHub Pages (incremental update)..."
+
+        jbang "${{ github.action_path }}/../../../scripts/github_pages_builder.java" \
+          "${{ inputs.outdir }}" \
+          "${{ inputs.pages_root }}" \
+          "${{ inputs.metadata_timestamp }}" \
+          "${{ inputs.channel }}" \
+          "${{ steps.metadata.outputs.meta_json }}"
+
+    - name: Archive scan history
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        PAGES_ROOT="${{ inputs.pages_root }}"
+        ARCHIVE_DIR="/tmp/scan-history-output"
+
+        echo "📦 Archiving scan history..."
+
+        mkdir -p "$ARCHIVE_DIR"
+
+        # Archive scans directory (JSON data + scan detail HTML pages)
+        # Note: Channel index and main index are NOT archived (they're regenerated each time)
+        if [ -d "$PAGES_ROOT/scans" ]; then
+          tar -czf "$ARCHIVE_DIR/scan-history.tar.gz" -C "$PAGES_ROOT" scans/
+
+          SIZE=$(du -h "$ARCHIVE_DIR/scan-history.tar.gz" | cut -f1)
+          SCAN_COUNT=$(find "$PAGES_ROOT/scans" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
+          echo "   ✅ Archived $SCAN_COUNT scans ($SIZE)"
+        else
+          echo "   ⚠️  No scans directory to archive"
+        fi
+
+    - name: Upload scan history artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: _gh_security_toolkit_scan_history_${{ inputs.channel }}
+        path: /tmp/scan-history-output/scan-history.tar.gz
+        retention-days: ${{ inputs.retention_days }}
+        overwrite: true
+
+    - name: Setup Pages
+      uses: actions/configure-pages@v5
+
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ${{ inputs.pages_root }}
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+
+outputs:
+  pages_url:
+    description: "URL to the deployed GitHub Pages site"
+    value: ${{ steps.deployment.outputs.page_url }}

@@ -1,0 +1,126 @@
+name: "Cleanup GitHub Releases"
+description: "Removes old GitHub releases based on channel, count, and age retention policies"
+inputs:
+  channel:
+    description: "Channel prefix to filter releases (e.g., 'security-scan-nightly-master'). Only releases with matching tag prefix will be cleaned."
+    required: true
+  retention_keep:
+    description: "Maximum number of releases to keep in this channel (0 = unlimited)"
+    required: false
+    default: "10"
+  retention_days:
+    description: "Delete releases older than N days (0 = unlimited)"
+    required: false
+    default: "0"
+  exclude_tag:
+    description: "Tag name to exclude from cleanup (typically the just-created release)"
+    required: false
+    default: ""
+  github_token:
+    description: "GitHub token with contents:write permission"
+    required: false
+    default: "${{ github.token }}"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Cleanup old releases
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -euo pipefail
+        channel="${{ inputs.channel }}"
+        keep="${{ inputs.retention_keep }}"
+        days="${{ inputs.retention_days }}"
+        exclude="${{ inputs.exclude_tag }}"
+
+        echo "🧹 Cleanup channel='${channel}' keep=${keep} days=${days}"
+        [ -n "$exclude" ] && echo "   Excluding tag: ${exclude}"
+
+        # Skip if no retention policies
+        if [ "$keep" = "0" ] && [ "$days" = "0" ]; then
+          echo "⏭️  No retention policies configured, skipping cleanup"
+          exit 0
+        fi
+
+        # List all releases
+        echo "📋 Fetching releases..."
+        releases_json=$(gh release list --limit 200 --json tagName,name,createdAt)
+
+        # Filter by TAG prefix (not name!)
+        echo "🔍 Filtering releases with tag prefix: ${channel}"
+        filtered=$(echo "$releases_json" | jq --arg ch "$channel" '[.[] | select(.tagName | startswith($ch))]')
+
+        count=$(echo "$filtered" | jq 'length')
+        echo "   Found ${count} releases in channel"
+
+        if [ "$count" = "0" ]; then
+          echo "✅ No releases to clean up"
+          exit 0
+        fi
+
+        # Sort by creation time (newest first)
+        sorted=$(echo "$filtered" | jq 'sort_by(.createdAt) | reverse')
+
+        # Calculate current timestamp
+        now_s=$(date -u +%s)
+
+        # Process releases
+        deleted=0
+        kept=0
+
+        echo "$sorted" | jq -c '.[]' | {
+          index=0
+          while IFS= read -r rel; do
+            name=$(echo "$rel" | jq -r '.name')
+            tag=$(echo "$rel" | jq -r '.tagName')
+            created=$(echo "$rel" | jq -r '.createdAt')
+
+            # Skip excluded tag
+            if [ -n "$exclude" ] && [ "$tag" = "$exclude" ]; then
+              echo "⏭️  Skipping excluded tag: ${tag}"
+              continue
+            fi
+
+            # Parse creation timestamp
+            created_s=$(date -u -d "$created" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$created" +%s)
+            age_days=$(( (now_s - created_s) / 86400 ))
+
+            delete_reason=""
+
+            # Check if exceeds count limit
+            if [ "$keep" != "0" ] && [ $index -ge "$keep" ]; then
+              delete_reason="exceeds keep limit (position $index >= $keep)"
+            fi
+
+            # Check if exceeds age limit
+            if [ -z "$delete_reason" ] && [ "$days" != "0" ] && [ $age_days -gt "$days" ]; then
+              delete_reason="older than ${days} day(s) (age=${age_days}d)"
+            fi
+
+            # Delete or keep
+            if [ -n "$delete_reason" ]; then
+              echo "🗑️  Deleting: ${tag} -> ${delete_reason}"
+
+              # Delete release (this also deletes the tag on GitHub)
+              if gh release delete "$tag" -y --cleanup-tag 2>/dev/null; then
+                echo "   ✅ Deleted release and tag"
+              else
+                echo "   ⚠️  Failed to delete release"
+              fi
+
+              deleted=$((deleted + 1))
+            else
+              echo "✅ Keeping: ${tag} (age=${age_days}d, position=$index)"
+              kept=$((kept + 1))
+            fi
+
+            index=$((index + 1))
+          done
+
+          echo ""
+          echo "📊 Cleanup summary:"
+          echo "   • Kept: ${kept}"
+          echo "   • Deleted: ${deleted}"
+        }

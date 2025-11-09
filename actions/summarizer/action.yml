@@ -1,5 +1,5 @@
 name: "Summarizer"
-description: "Runs JBang-based summarizer for FS/Image JSONs and returns a combined Markdown body."
+description: "Runs JBang-based summarizer for Trivy and Semgrep results and returns a combined Markdown body."
 inputs:
   fs_json:
     description: "Filesystem scan JSON"
@@ -9,9 +9,21 @@ inputs:
     description: "Image scan JSON"
     required: false
     default: ""
+  semgrep_summary:
+    description: "Semgrep summary markdown file"
+    required: false
+    default: ""
+  dependabot_summary:
+    description: "Dependabot summary markdown file"
+    required: false
+    default: ""
   outdir:
     description: "Output directory"
     required: true
+  maxlength:
+    description: "Maximum total length of release notes body in characters"
+    required: false
+    default: "30000"
   title_vuln_fs:
     description: "Title for FS vulnerabilities section"
     required: false
@@ -28,6 +40,10 @@ inputs:
     description: "Title for Image misconfiguration section"
     required: false
     default: "Trivy (image) misconfiguration summary"
+  title_semgrep:
+    description: "Title for Semgrep SAST section"
+    required: false
+    default: "Semgrep SAST summary"
   max_rows:
     description: "Max rows in summaries"
     required: false
@@ -45,28 +61,160 @@ runs:
         TITLE_VULN: ${{ inputs.title_vuln_fs }}
         TITLE_MIS:  ${{ inputs.title_mis_fs }}
       run: |
-        jbang "$GITHUB_WORKSPACE/scripts/trivy_summarize.java" \
+        jbang "${{ github.action_path }}/../../scripts/trivy_summarize.java" \
           "${{ inputs.fs_json }}" "${{ inputs.max_rows }}" "${{ inputs.outdir }}"
+        # Rename to temp file to avoid overwrite (if file was created)
+        [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY.md" ] && \
+          mv "${{ inputs.outdir }}/TRIVY_SUMMARY.md" "${{ inputs.outdir }}/TRIVY_SUMMARY_FS.md" || \
+          echo "No TRIVY_SUMMARY.md created for FS scan"
 
-    - name: Summarize Image (if provided)
+    - name: Summarize image (if provided)
       if: ${{ inputs.image_json != '' }}
       shell: bash
       env:
         TITLE_VULN: ${{ inputs.title_vuln_img }}
         TITLE_MIS:  ${{ inputs.title_mis_img }}
       run: |
-        jbang "$GITHUB_WORKSPACE/scripts/trivy_summarize.java" \
+        jbang "${{ github.action_path }}/../../scripts/trivy_summarize.java" \
           "${{ inputs.image_json }}" "${{ inputs.max_rows }}" "${{ inputs.outdir }}"
+        # Rename to temp file (if file was created)
+        [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY.md" ] && \
+          mv "${{ inputs.outdir }}/TRIVY_SUMMARY.md" "${{ inputs.outdir }}/TRIVY_SUMMARY_IMAGE.md" || \
+          echo "No TRIVY_SUMMARY.md created for Image scan"
+
+    - name: Combine Trivy summaries
+      shell: bash
+      run: |
+        summary="${{ inputs.outdir }}/TRIVY_SUMMARY.md"
+        > "$summary"  # Create empty file
+
+        # Append FS summary if exists
+        if [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY_FS.md" ]; then
+          cat "${{ inputs.outdir }}/TRIVY_SUMMARY_FS.md" >> "$summary"
+          echo "" >> "$summary"
+        fi
+
+        # Append Image summary if exists
+        if [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY_IMAGE.md" ]; then
+          cat "${{ inputs.outdir }}/TRIVY_SUMMARY_IMAGE.md" >> "$summary"
+          echo "" >> "$summary"
+        fi
 
     - name: Combine summaries to release body
       id: combine
       shell: bash
       run: |
-        out="${{ inputs.outdir }}/RELEASE_BODY.md"
-        echo "## 🔍 Security Scan Summary" > "$out"
-        for f in "${{ inputs.outdir }}/TRIVY_SUMMARY.md"; do
-          [ -f "$f" ] && { echo "" >> "$out"; cat "$f" >> "$out"; }
+        set -euo pipefail
+
+        outdir="${{ inputs.outdir }}"
+        maxlength="${{ inputs.maxlength }}"
+        out="${outdir}/RELEASE_BODY.md"
+        header="## 🔍 Security Scan Summary"
+
+        # Collect all section files (only non-empty ones)
+        declare -a sections=()
+        declare -a section_files=()
+
+        if [ -f "${outdir}/TRIVY_SUMMARY.md" ] && [ -s "${outdir}/TRIVY_SUMMARY.md" ]; then
+          sections+=("TRIVY")
+          section_files+=("${outdir}/TRIVY_SUMMARY.md")
+        fi
+
+        if [ -f "${outdir}/SEMGREP_SUMMARY.md" ] && [ -s "${outdir}/SEMGREP_SUMMARY.md" ]; then
+          sections+=("SEMGREP")
+          section_files+=("${outdir}/SEMGREP_SUMMARY.md")
+        fi
+
+        if [ -f "${outdir}/DEPENDABOT_SUMMARY.md" ] && [ -s "${outdir}/DEPENDABOT_SUMMARY.md" ]; then
+          sections+=("DEPENDABOT")
+          section_files+=("${outdir}/DEPENDABOT_SUMMARY.md")
+        fi
+
+        # If no sections, create minimal output
+        if [ ${#sections[@]} -eq 0 ]; then
+          echo "$header" > "$out"
+          echo "" >> "$out"
+          echo "✅ **No security issues found!**" >> "$out"
+          echo "" >> "$out"
+          echo "All scans completed successfully with no vulnerabilities, misconfigurations, or alerts detected." >> "$out"
+          echo "release_body=$out" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Calculate total length with header
+        header_len=$(echo -e "${header}\n" | wc -c)
+        total_len=$header_len
+
+        # Read each section and calculate lengths
+        declare -a section_contents=()
+        declare -a section_lengths=()
+
+        for file in "${section_files[@]}"; do
+          content=$(cat "$file")
+          section_contents+=("$content")
+          # Add 1 for newline separator
+          len=$(($(echo -e "$content\n" | wc -c)))
+          section_lengths+=("$len")
+          total_len=$((total_len + len))
         done
+
+        echo "📊 Total length: ${total_len} / ${maxlength} characters"
+
+        # Check if truncation needed
+        if [ $total_len -le $maxlength ]; then
+          # No truncation needed, combine as-is
+          echo "$header" > "$out"
+          echo "" >> "$out"
+          for content in "${section_contents[@]}"; do
+            echo "$content" >> "$out"
+            echo "" >> "$out"
+          done
+        else
+          # Truncation needed - calculate how much to trim from each section
+          echo "⚠️  Truncation needed (current: ${total_len}, max: ${maxlength})"
+
+          overflow=$((total_len - maxlength))
+          section_count=${#sections[@]}
+
+          # Calculate trim amount per section (equal distribution)
+          # Add 3 for "..." suffix per section
+          trim_per_section=$(( (overflow + (section_count * 3)) / section_count ))
+
+          echo "   Trimming ~${trim_per_section} chars from each of ${section_count} sections"
+
+          # Write header
+          echo "$header" > "$out"
+          echo "" >> "$out"
+
+          # Write each section (truncated if needed)
+          for i in "${!sections[@]}"; do
+            content="${section_contents[$i]}"
+            original_len="${section_lengths[$i]}"
+
+            if [ $trim_per_section -ge $((original_len - 100)) ]; then
+              # Section would be too short, keep minimum 100 chars + ellipsis
+              target_len=100
+              truncated=$(echo "$content" | head -c $target_len)
+              echo "${truncated}..." >> "$out"
+              echo "" >> "$out"
+              echo "   ${sections[$i]}: truncated to ${target_len} chars (from ${original_len})"
+            else
+              # Normal truncation
+              target_len=$((original_len - trim_per_section - 3))
+              if [ $target_len -lt 100 ]; then
+                target_len=100
+              fi
+              truncated=$(echo "$content" | head -c $target_len)
+              echo "${truncated}..." >> "$out"
+              echo "" >> "$out"
+              echo "   ${sections[$i]}: truncated to ${target_len} chars (from ${original_len})"
+            fi
+          done
+
+          final_len=$(wc -c < "$out")
+          echo "✅ Final length: ${final_len} characters"
+        fi
+
         echo "release_body=$out" >> "$GITHUB_OUTPUT"
 outputs:
   release_body_markdown:
