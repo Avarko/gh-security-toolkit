@@ -107,6 +107,7 @@ permissions:
   contents: write    # Required: gh release create/delete, commit to docs/ folder
   pages: write       # Required: deploy-pages action (if publish_to contains 'github-pages')
   id-token: write    # Required: deploy-pages OIDC authentication (if publish_to contains 'github-pages')
+  actions: read      # Required: dawidd6/action-download-artifact to list workflow runs
 
 # Concurrency: one scan per channel at a time
 # Queue new scans instead of canceling - let each scan complete

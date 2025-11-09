@@ -194,7 +194,6 @@ runs:
       with:
         name: _gh_security_toolkit_scan_history_${{ inputs.channel }}
         path: /tmp/scan-history-artifact
-        workflow: ${{ github.workflow }}
         workflow_conclusion: success
         repo: ${{ github.repository }}
         check_artifacts: true
