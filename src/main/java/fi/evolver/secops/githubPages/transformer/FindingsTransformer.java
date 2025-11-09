@@ -163,11 +163,26 @@ public class FindingsTransformer {
             return ScanMetadata.empty(timestamp);
         }
 
+        // Extract footer metadata if present
+        ScanMetadata.FooterMetadata footer = ScanMetadata.FooterMetadata.empty();
+        if (metadataJson.has("footer") && metadataJson.get("footer").isJsonObject()) {
+            JsonObject footerJson = metadataJson.getAsJsonObject("footer");
+            footer = new ScanMetadata.FooterMetadata(
+                    getString(footerJson, "app_docs_url", ""),
+                    getString(footerJson, "app_issues_url", ""),
+                    getString(footerJson, "ci_job_name", ""),
+                    getString(footerJson, "ci_job_url", ""),
+                    getString(footerJson, "trivy_version", ""),
+                    getString(footerJson, "semgrep_version", ""),
+                    getString(footerJson, "toolkit_version", ""));
+        }
+
         return new ScanMetadata(
                 getString(metadataJson, "branch", null),
                 getString(metadataJson, "commit_sha", null),
                 getString(metadataJson, "repository", null),
-                timestamp);
+                timestamp,
+                footer);
     }
 
     public ScanStats extractStats(JsonObject trivyFs, JsonObject trivyImage, JsonObject semgrep,

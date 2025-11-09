@@ -31,6 +31,36 @@ inputs:
     required: false
     default: ""
 
+  # Footer metadata
+  app_docs_url:
+    description: "URL to application documentation"
+    required: false
+    default: ""
+  app_issues_url:
+    description: "URL to application issue tracker"
+    required: false
+    default: ""
+  ci_job_name:
+    description: "CI job name (e.g., 'security-scan')"
+    required: false
+    default: ""
+  ci_job_url:
+    description: "URL to CI job run"
+    required: false
+    default: ""
+  trivy_version:
+    description: "Trivy version"
+    required: false
+    default: ""
+  semgrep_version:
+    description: "Semgrep version"
+    required: false
+    default: ""
+  toolkit_version:
+    description: "gh-security-toolkit version"
+    required: false
+    default: ""
+
   # Pages configuration
   channel:
     description: "Channel name for organizing scans (e.g., 'nightly-master', 'pr-123')"
@@ -56,19 +86,26 @@ runs:
 
         echo "🔍 Checking GitHub Pages visibility..."
 
-        # Query GitHub Pages configuration
-        RESPONSE=$(gh api \
+        # Query GitHub Pages configuration (single API call)
+        echo "📡 DEBUG: Querying GitHub API for Pages configuration..."
+        FULL_RESPONSE=$(gh api \
           -H "Accept: application/vnd.github+json" \
           -H "X-GitHub-Api-Version: 2022-11-28" \
-          "/repos/${{ github.repository }}/pages" 2>&1) || {
-          echo "⚠️  Warning: Could not query GitHub Pages configuration."
-          echo "   Pages may not be enabled yet. Will proceed with deployment."
-          echo "   After first deployment, ensure Pages is configured as Private in Settings → Pages."
-          exit 0
-        }
+          "/repos/${{ github.repository }}/pages" 2>&1) || FULL_RESPONSE=""
 
-        # Extract 'public' field from response
-        IS_PUBLIC=$(echo "$RESPONSE" | jq -r '.public // "unknown"')
+        echo "📦 DEBUG: Full API response:"
+        echo "$FULL_RESPONSE"
+        echo ""
+
+        # Extract .public field from response
+        if [ -n "$FULL_RESPONSE" ]; then
+          IS_PUBLIC=$(echo "$FULL_RESPONSE" | jq -r '.public // "null"' 2>/dev/null) || IS_PUBLIC="unknown"
+        else
+          IS_PUBLIC="unknown"
+        fi
+
+        echo "🔎 DEBUG: Extracted .public value: '$IS_PUBLIC'"
+        echo ""
 
         if [ "$IS_PUBLIC" = "true" ]; then
           echo ""
@@ -90,9 +127,18 @@ runs:
           exit 1
         elif [ "$IS_PUBLIC" = "false" ]; then
           echo "✅ GitHub Pages is configured as Private - proceeding with deployment"
+        elif [ "$IS_PUBLIC" = "null" ] || [ "$IS_PUBLIC" = "unknown" ]; then
+          echo "⚠️  Warning: Could not query GitHub Pages configuration."
+          echo "   Pages may not be enabled yet, or visibility setting is not available."
+          echo "   Proceeding with deployment."
+          echo ""
+          echo "   ⚠️  IMPORTANT: After first deployment, verify in Settings → Pages that:"
+          echo "      • Pages is enabled and deployed from 'gh-pages' branch"
+          echo "      • Visibility is set to 'Private' (requires GitHub Enterprise Cloud)"
+          echo "      • If Private Pages is not available, use 'publish_to: github-release' instead"
         else
-          echo "⚠️  Warning: Could not determine Pages visibility (got: $IS_PUBLIC)"
-          echo "   Proceeding with deployment, but please verify Pages is Private."
+          echo "⚠️  Warning: Unexpected visibility value: $IS_PUBLIC"
+          echo "   Proceeding with deployment, but please verify Pages configuration."
         fi
 
     - name: Setup JBang
@@ -111,13 +157,29 @@ runs:
           --arg sha "${{ inputs.metadata_commit_sha }}" \
           --arg image "${{ inputs.metadata_image_name }}" \
           --arg scan_id "${{ inputs.metadata_scan_id }}" \
+          --arg app_docs_url "${{ inputs.app_docs_url }}" \
+          --arg app_issues_url "${{ inputs.app_issues_url }}" \
+          --arg ci_job_name "${{ inputs.ci_job_name }}" \
+          --arg ci_job_url "${{ inputs.ci_job_url }}" \
+          --arg trivy_version "${{ inputs.trivy_version }}" \
+          --arg semgrep_version "${{ inputs.semgrep_version }}" \
+          --arg toolkit_version "${{ inputs.toolkit_version }}" \
           '{
             timestamp: $ts,
             branch: $branch,
             repository: $repo,
             commit_sha: $sha,
             image_name: $image,
-            scan_run_id: $scan_id
+            scan_run_id: $scan_id,
+            footer: {
+              app_docs_url: $app_docs_url,
+              app_issues_url: $app_issues_url,
+              ci_job_name: $ci_job_name,
+              ci_job_url: $ci_job_url,
+              trivy_version: $trivy_version,
+              semgrep_version: $semgrep_version,
+              toolkit_version: $toolkit_version
+            }
           }' > "$META_FILE"
         echo "meta_json=$META_FILE" >> "$GITHUB_OUTPUT"
 

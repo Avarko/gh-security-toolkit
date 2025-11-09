@@ -79,6 +79,25 @@ on:
         required: false
         default: ''
 
+      # === FOOTER METADATA ===
+      app_docs_url:
+        description: 'URL to application documentation (displayed in report footer)'
+        type: string
+        required: false
+        default: ''
+
+      app_issues_url:
+        description: 'URL to application issue tracker (displayed in report footer)'
+        type: string
+        required: false
+        default: ''
+
+      toolkit_version:
+        description: 'gh-security-toolkit version (displayed in report footer)'
+        type: string
+        required: false
+        default: ''
+
     secrets:
       SLACK_BOT_TOKEN:
         description: 'Slack OAuth token (xoxb-...) for notifications'
@@ -257,3 +276,10 @@ jobs:
           channel: ${{ inputs.channel }}
           pages_root: docs
           retention_keep: ${{ inputs.retention_keep }}
+          app_docs_url: ${{ inputs.app_docs_url }}
+          app_issues_url: ${{ inputs.app_issues_url }}
+          ci_job_name: ${{ github.workflow }}
+          ci_job_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          trivy_version: ${{ steps.trivy.outputs.version }}
+          semgrep_version: ${{ steps.semgrep.outputs.version }}
+          toolkit_version: ${{ inputs.toolkit_version }}
