@@ -1,0 +1,142 @@
+name: "Dependabot Scanner"
+description: "Fetches Dependabot alerts from GitHub API and creates summary"
+inputs:
+  repository:
+    description: "Repository name in format owner/repo"
+    required: true
+  github_token:
+    description: "GitHub token with security_events scope. For public repos, must be a PAT (Personal Access Token). For private repos, GITHUB_TOKEN works."
+    required: true
+  dependabot_output_dir:
+    description: "Directory for Dependabot output"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Prepare output directory
+      shell: bash
+      run: mkdir -p "${{ inputs.dependabot_output_dir }}"
+
+    - name: Fetch Dependabot alerts
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        echo "Fetching Dependabot alerts for ${{ inputs.repository }}"
+
+        # Fetch open alerts from GitHub API
+        HTTP_CODE=$(curl -s -w "%{http_code}" -o "${{ inputs.dependabot_output_dir }}/dependabot-alerts.json" \
+          -H "Authorization: Bearer $GH_TOKEN" \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "https://api.github.com/repos/${{ inputs.repository }}/dependabot/alerts?state=open&per_page=100")
+
+        echo "API response code: $HTTP_CODE"
+
+        # If 403, create error JSON to be handled in next step
+        if [ "$HTTP_CODE" = "403" ]; then
+          echo '{"error": "403", "message": "Access denied. For public repos, use a Personal Access Token (PAT) with security_events scope instead of GITHUB_TOKEN."}' \
+            > "${{ inputs.dependabot_output_dir }}/dependabot-alerts.json"
+        elif [ "$HTTP_CODE" != "200" ]; then
+          echo "{\"error\": \"$HTTP_CODE\", \"message\": \"API request failed with HTTP $HTTP_CODE\"}" \
+            > "${{ inputs.dependabot_output_dir }}/dependabot-alerts.json"
+        fi
+
+    - name: Parse and create summary
+      shell: bash
+      run: |
+        JSON_FILE="${{ inputs.dependabot_output_dir }}/dependabot-alerts.json"
+        SUMMARY_FILE="${{ inputs.dependabot_output_dir }}/DEPENDABOT_SUMMARY.md"
+
+        echo "## 🤖 Dependabot Security Alerts" > "$SUMMARY_FILE"
+        echo "" >> "$SUMMARY_FILE"
+
+        # Check for error in response
+        ERROR=$(jq -r '.error // empty' "$JSON_FILE" 2>/dev/null)
+        if [ -n "$ERROR" ]; then
+          ERROR_MSG=$(jq -r '.message // "Unknown error"' "$JSON_FILE" 2>/dev/null)
+          echo "⚠️ **Unable to fetch Dependabot alerts**" >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+          echo "$ERROR_MSG" >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+          echo "> **Note:** For public repositories, you need to use a Personal Access Token (PAT) with \`security_events\` scope." >> "$SUMMARY_FILE"
+          echo "> The default \`GITHUB_TOKEN\` doesn't have access to Dependabot alerts on public repos." >> "$SUMMARY_FILE"
+          exit 0
+        fi
+
+        # Check if valid JSON array
+        if ! jq -e 'type == "array"' "$JSON_FILE" >/dev/null 2>&1; then
+          echo "⚠️ Invalid API response format" >> "$SUMMARY_FILE"
+          exit 0
+        fi
+
+        # Count alerts by severity
+        TOTAL=$(jq 'length' "$JSON_FILE" 2>/dev/null || echo "0")
+        CRITICAL=$(jq '[.[] | select(.security_advisory.severity == "critical")] | length' "$JSON_FILE" 2>/dev/null || echo "0")
+        HIGH=$(jq '[.[] | select(.security_advisory.severity == "high")] | length' "$JSON_FILE" 2>/dev/null || echo "0")
+        MEDIUM=$(jq '[.[] | select(.security_advisory.severity == "medium")] | length' "$JSON_FILE" 2>/dev/null || echo "0")
+        LOW=$(jq '[.[] | select(.security_advisory.severity == "low")] | length' "$JSON_FILE" 2>/dev/null || echo "0")
+
+        echo "**Summary:** $TOTAL open alerts" >> "$SUMMARY_FILE"
+        echo "" >> "$SUMMARY_FILE"
+
+        if [ "$TOTAL" -eq 0 ]; then
+          echo "✅ No open Dependabot alerts!" >> "$SUMMARY_FILE"
+        else
+          echo "| Severity | Count |" >> "$SUMMARY_FILE"
+          echo "|----------|-------|" >> "$SUMMARY_FILE"
+          echo "| 🔴 Critical | $CRITICAL |" >> "$SUMMARY_FILE"
+          echo "| 🟠 High | $HIGH |" >> "$SUMMARY_FILE"
+          echo "| 🟡 Medium | $MEDIUM |" >> "$SUMMARY_FILE"
+          echo "| ⚪ Low | $LOW |" >> "$SUMMARY_FILE"
+          echo "" >> "$SUMMARY_FILE"
+
+          # Show top 10 alerts
+          if [ "$TOTAL" -gt 0 ]; then
+            echo "**Top alerts (by severity):**" >> "$SUMMARY_FILE"
+            echo "" >> "$SUMMARY_FILE"
+
+            jq -r '[.[] | {
+              severity: .security_advisory.severity,
+              package: .security_vulnerability.package.name,
+              cve: .security_advisory.cve_id,
+              summary: .security_advisory.summary,
+              url: .html_url
+            }] |
+            sort_by(
+              if .severity == "critical" then 0
+              elif .severity == "high" then 1
+              elif .severity == "medium" then 2
+              else 3 end
+            ) |
+            .[:10] |
+            .[] |
+            "### \(.severity | ascii_upcase): \(.package)\n- **CVE:** \(.cve // "N/A")\n- **Summary:** \(.summary)\n- **URL:** \(.url)\n"' "$JSON_FILE" >> "$SUMMARY_FILE" 2>/dev/null || true
+
+            if [ "$TOTAL" -gt 10 ]; then
+              REMAINING=$((TOTAL - 10))
+              echo "" >> "$SUMMARY_FILE"
+              echo "**... and $REMAINING more alerts**" >> "$SUMMARY_FILE"
+            fi
+          fi
+
+          echo "" >> "$SUMMARY_FILE"
+          echo "🔗 [View all alerts on GitHub](https://github.com/${{ inputs.repository }}/security/dependabot)" >> "$SUMMARY_FILE"
+        fi
+
+        echo "Dependabot summary created at $SUMMARY_FILE"
+
+    - name: Set output
+      id: output
+      shell: bash
+      run: |
+        SUMMARY_FILE="${{ inputs.dependabot_output_dir }}/DEPENDABOT_SUMMARY.md"
+        if [ -f "$SUMMARY_FILE" ]; then
+          echo "dependabot_summary=$SUMMARY_FILE" >> "$GITHUB_OUTPUT"
+        fi
+
+outputs:
+  dependabot_summary:
+    description: "Dependabot summary markdown file path"
+    value: ${{ steps.output.outputs.dependabot_summary }}

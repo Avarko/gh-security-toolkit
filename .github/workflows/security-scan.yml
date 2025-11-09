@@ -1,126 +1,287 @@
-name: Security Scan
+name: Security scan
 
 on:
   workflow_call:
     inputs:
-      branch:
-        description: "Branch to scan"
-        required: false
-        default: "master"
-        type: string
-      image_name:
-        description: "Local image name to build/scan"
-        required: false
-        default: "ciam-backend"
-        type: string
-      mvn_module_path:
-        description: "Path to Maven module"
-        required: false
-        default: "ciam-backend"
-        type: string
+      # === TRIVY CONFIGURATION ===
       trivy_config:
-        description: "Path to .trivy.yaml"
-        required: false
-        default: ".trivy.yaml"
+        description: 'Path to .trivy.yaml config file (relative to filesystem_artifact root)'
         type: string
-      retention_days_main:
-        description: "Retention days for main artifacts"
         required: false
-        default: 90
+        default: ''
+
+      trivy_severity:
+        description: 'Minimum severity to report (UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL)'
+        type: string
+        required: false
+        default: 'MEDIUM,HIGH,CRITICAL'
+
+      # === RESULT RETENTION ===
+      retention_days:
+        description: 'Days to retain scan results'
         type: number
-      retention_days_latest:
-        description: "Retention days for latest alias"
         required: false
         default: 30
+
+      retention_keep:
+        description: 'Results per channel to retain scan results'
         type: number
-    secrets:
-      GH_TOKEN:
         required: false
-      SLACK_WEBHOOK_URL:
+        default: 10
+
+      # === RELEASE NOTES ===
+      release_notes_maxlength:
+        description: 'Maximum length of release notes body (characters). GitHub limit is 125000, but shorter is more readable.'
+        type: number
+        required: false
+        default: 30000
+
+      # === PUBLISHING ===
+      publish_to:
+        description: 'Where to publish results: "github-release", "github-pages", or "github-release,github-pages" for both'
+        type: string
+        required: false
+        default: 'github-release'
+
+      # === METADATA FOR REPORTING ===
+      channel:
+        description: 'Channel name for release grouping (tag-friendly, e.g., "master", "dev", "prod"). Used in tags and release retention.'
+        type: string
+        required: true
+
+      branch:
+        description: 'Git branch name (for reports/notifications, can contain slashes)'
+        type: string
+        required: false
+        default: ''
+
+      repository:
+        description: 'Repository name (owner/repo, for reports)'
+        type: string
+        required: false
+        default: ''
+
+      commit_sha:
+        description: 'Git commit SHA (for reports)'
+        type: string
+        required: false
+        default: ''
+
+      image_name:
+        description: 'Docker image name (for reports)'
+        type: string
+        required: false
+        default: ''
+
+      dependabot_gh_token:
+        description: 'GitHub Personal Access Token (PAT) with security_events scope for Dependabot API. Optional - if not provided, Dependabot scan is skipped.'
+        type: string
+        required: false
+        default: ''
+
+      # === FOOTER METADATA ===
+      app_docs_url:
+        description: 'URL to application documentation (displayed in report footer)'
+        type: string
+        required: false
+        default: ''
+
+      app_issues_url:
+        description: 'URL to application issue tracker (displayed in report footer)'
+        type: string
+        required: false
+        default: ''
+
+      toolkit_version:
+        description: 'gh-security-toolkit version (displayed in report footer)'
+        type: string
+        required: false
+        default: ''
+
+    secrets:
+      SLACK_BOT_TOKEN:
+        description: 'Slack OAuth token (xoxb-...) for notifications'
         required: false
 
 permissions:
-  contents: read
-  actions: write
-  security-events: write
+  contents: write    # Required: gh release create/delete, commit to docs/ folder
+  pages: write       # Required: deploy-pages action (if publish_to contains 'github-pages')
+  id-token: write    # Required: deploy-pages OIDC authentication (if publish_to contains 'github-pages')
+  actions: read      # Required: dawidd6/action-download-artifact to list workflow runs
+
+# Concurrency: one scan per channel at a time
+# Queue new scans instead of canceling - let each scan complete
+concurrency:
+  group: "security-scan-${{ inputs.channel }}"
+  cancel-in-progress: false
 
 jobs:
   security-scan:
     runs-on: ubuntu-latest
+    # Note: All action references use @improvements for testing.
+    # When merging to main, update all @improvements refs to @main or use version tags like @v1.0.0
     steps:
-      - name: Setup output directory
+      - name: Setup directories
         id: setup
         run: |
-          OUTPUT_DIR="${RUNNER_TEMP}/gh-security-toolkit-${{ github.run_id }}"
-          mkdir -p "$OUTPUT_DIR"
+          OUTPUT_DIR="${RUNNER_TEMP}/scan-output-${{ github.run_id }}"
+          WORK_DIR="${RUNNER_TEMP}/scan-workspace-${{ github.run_id }}"
+          mkdir -p "$OUTPUT_DIR" "$WORK_DIR"
           echo "output_dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
+          echo "work_dir=$WORK_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Timestamp
         id: ts
-        run: echo "ts=$(date -u +%Y-%m-%d-%H%M%S)" >> "$GITHUB_OUTPUT"
-
-      - name: Scanner
-        id: scan
-        uses: ./actions/scanner/trivy
-        with:
-          trivy_output_dir: ${{ steps.setup.outputs.output_dir }}
-          timestamp: ${{ steps.ts.outputs.ts }}
-          branch: ${{ inputs.branch }}
-          image_name: ${{ inputs.image_name }}
-          mvn_module_path: ${{ inputs.mvn_module_path }}
-          trivy_config: ${{ inputs.trivy_config }}
-
-      - name: Check previous exists
-        id: hasprev
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
-        shell: bash
         run: |
-          if gh api repos/${{ github.repository }}/actions/artifacts \
-             --jq '.artifacts[] | select(.name=="security-scan-latest") | .id' 2>/dev/null | grep -q .; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
+          # Always use current time for unique releases
+          echo "ts=$(date -u +%Y-%m-%d-%H%M%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Validate channel name
+        run: |
+          CHANNEL="${{ inputs.channel }}"
+
+          # Check if empty
+          if [ -z "$CHANNEL" ]; then
+            echo "❌ Error: channel is required but empty"
+            exit 1
           fi
 
-      - name: Download previous
-        if: steps.hasprev.outputs.exists == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: security-scan-latest
-          path: ./previous-scan/
+          # Check length (max 35 characters)
+          if [ ${#CHANNEL} -gt 35 ]; then
+            echo "❌ Error: channel name too long (max 35 characters): '$CHANNEL'"
+            exit 1
+          fi
 
-      - name: Diff (if previous)
-        if: steps.hasprev.outputs.exists == 'true'
-        id: diff
-        uses: ./actions/diff
-        with:
-          current_fs: ${{ steps.scan.outputs.fs_json }}
-          current_image: ${{ steps.scan.outputs.image_json }}
-          previous_dir: ./previous-scan/${{ steps.setup.outputs.output_dir }}
-          outdir: ${{ steps.setup.outputs.output_dir }}
+          # Check for invalid characters (only allow: a-z, A-Z, 0-9, dash, underscore)
+          if ! echo "$CHANNEL" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+            echo "❌ Error: channel contains invalid characters: '$CHANNEL'"
+            echo "   Allowed: a-z, A-Z, 0-9, dash (-), underscore (_)"
+            exit 1
+          fi
 
+          # Check it doesn't start/end with dash or underscore
+          if echo "$CHANNEL" | grep -qE '^[-_]|[-_]$'; then
+            echo "❌ Error: channel cannot start or end with dash/underscore: '$CHANNEL'"
+            exit 1
+          fi
+
+          echo "✅ Channel name is valid: '$CHANNEL'"
+
+      # === DOWNLOAD ARTIFACTS ===
+      - name: Download filesystem artifact
+        id: download_fs
+        continue-on-error: true
+        uses: actions/download-artifact@v6
+        with:
+          name: __gh_security_toolkit__filesystem__
+          path: ${{ steps.setup.outputs.work_dir }}/filesystem
+
+      - name: Download docker image artifact
+        id: download_image
+        continue-on-error: true
+        uses: actions/download-artifact@v6
+        with:
+          name: __gh_security_toolkit__docker_image__
+          path: ${{ steps.setup.outputs.work_dir }}/image
+
+      - name: Find Docker image tar
+        if: ${{ steps.download_image.outcome == 'success' }}
+        id: find_tar
+        run: |
+          TAR_FILE=$(find "${{ steps.setup.outputs.work_dir }}/image" -name "*.tar" -type f | head -n1)
+          echo "tar_path=$TAR_FILE" >> "$GITHUB_OUTPUT"
+
+      # === RUN TRIVY SCANS ===
+      - name: Run Trivy scans
+        id: trivy
+        uses: Avarko/gh-security-toolkit/actions/scanner/trivy@improvements
+        with:
+          filesystem_path: ${{ steps.download_fs.outcome == 'success' && format('{0}/filesystem', steps.setup.outputs.work_dir) || '' }}
+          docker_image_tar: ${{ steps.download_image.outcome == 'success' && steps.find_tar.outputs.tar_path || '' }}
+          trivy_config: ${{ inputs.trivy_config != '' && format('{0}/filesystem/{1}', steps.setup.outputs.work_dir, inputs.trivy_config) || '' }}
+          trivy_severity: ${{ inputs.trivy_severity }}
+          trivy_output_dir: ${{ steps.setup.outputs.output_dir }}
+
+      # === RUN SEMGREP SCAN ===
+      - name: Run Semgrep scan
+        id: semgrep
+        if: ${{ steps.download_fs.outcome == 'success' }}
+        uses: Avarko/gh-security-toolkit/actions/scanner/semgrep@improvements
+        with:
+          filesystem_path: ${{ format('{0}/filesystem', steps.setup.outputs.work_dir) }}
+          semgrep_output_dir: ${{ steps.setup.outputs.output_dir }}
+          semgrep_configs: "p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets"
+
+      # === FETCH DEPENDABOT ALERTS ===
+      - name: Fetch Dependabot alerts
+        id: dependabot
+        if: ${{ inputs.dependabot_gh_token != '' }}
+        uses: Avarko/gh-security-toolkit/actions/scanner/dependabot@improvements
+        with:
+          repository: ${{ inputs.repository }}
+          github_token: ${{ inputs.dependabot_gh_token }}
+          dependabot_output_dir: ${{ steps.setup.outputs.output_dir }}
+
+      # === SUMMARIZE RESULTS ===
       - name: Summarizer
         id: sum
-        uses: ./actions/summarizer
+        uses: Avarko/gh-security-toolkit/actions/summarizer@improvements
         with:
-          fs_json: ${{ steps.scan.outputs.fs_json }}
-          image_json: ${{ steps.scan.outputs.image_json }}
+          fs_json: ${{ steps.trivy.outputs.fs_json || '' }}
+          image_json: ${{ steps.trivy.outputs.image_json || '' }}
+          semgrep_summary: ${{ steps.semgrep.outputs.semgrep_summary || '' }}
+          dependabot_summary: ${{ steps.dependabot.outputs.dependabot_summary || '' }}
           outdir: ${{ steps.setup.outputs.output_dir }}
+          maxlength: ${{ inputs.release_notes_maxlength }}
+          title_vuln_fs: "Trivy (filesystem) vulnerability summary"
+          title_mis_fs: "Trivy (filesystem) misconfiguration summary"
+          title_vuln_img: "Trivy (image) vulnerability summary"
+          title_mis_img: "Trivy (image) misconfiguration summary"
 
-      - name: Publisher (GitHub Release)
-        uses: ./actions/publisher/github-release
+      # === PUBLISH TO GITHUB RELEASE ===
+      - name: Publish to GitHub Release
+        if: contains(inputs.publish_to, 'github-release')
+        uses: Avarko/gh-security-toolkit/actions/publisher/github-release@improvements
         with:
           outdir: ${{ steps.setup.outputs.output_dir }}
-          meta_json: ${{ steps.scan.outputs.meta_json }}
-          release_name: "nightly-${{ inputs.branch }} ${{
-            steps.ts.outputs.ts }}"
-          tag_name: "secscan-${{ inputs.branch }}-${{ steps.ts.outputs.ts }}"
+          metadata_timestamp: ${{ steps.ts.outputs.ts }}
+          metadata_branch: ${{ inputs.branch }}
+          metadata_repository: ${{ inputs.repository }}
+          metadata_commit_sha: ${{ inputs.commit_sha }}
+          metadata_image_name: ${{ inputs.image_name }}
+          metadata_scan_id: ${{ github.run_id }}
+          release_name: "Security scan ${{ inputs.channel }} ${{ steps.ts.outputs.ts }}"
+          tag_name: "security-scan-${{ inputs.channel }}-${{ steps.ts.outputs.ts }}"
           body_file: ${{ steps.sum.outputs.release_body_markdown }}
           draft: "false"
-          prerelease: "false"
+          prerelease: "true"
           overwrite_tag: "false"
-          channel: "nightly-${{ inputs.branch }}"
-          retention_keep: "10"          # keep last 10 releases for that channel
-          retention_days: "0"           # or set e.g. 180
+          channel: "security-scan-${{ inputs.channel }}"
+          retention_keep: "${{ inputs.retention_keep }}"
+          retention_days: "${{ inputs.retention_days }}"
+          github_token: ${{ secrets.GH_TOKEN || github.token }}
+
+      # === PUBLISH TO GITHUB PAGES ===
+      - name: Publish to GitHub Pages
+        if: contains(inputs.publish_to, 'github-pages')
+        id: pages
+        uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@improvements
+        with:
+          outdir: ${{ steps.setup.outputs.output_dir }}
+          metadata_timestamp: ${{ steps.ts.outputs.ts }}
+          metadata_branch: ${{ inputs.branch }}
+          metadata_repository: ${{ inputs.repository }}
+          metadata_commit_sha: ${{ inputs.commit_sha }}
+          metadata_image_name: ${{ inputs.image_name }}
+          metadata_scan_id: ${{ github.run_id }}
+          channel: ${{ inputs.channel }}
+          pages_root: docs
+          retention_keep: ${{ inputs.retention_keep }}
+          retention_days: ${{ inputs.retention_days }}
+          app_docs_url: ${{ inputs.app_docs_url }}
+          app_issues_url: ${{ inputs.app_issues_url }}
+          ci_job_name: ${{ github.workflow }}
+          ci_job_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          trivy_version: ${{ steps.trivy.outputs.version }}
+          semgrep_version: ${{ steps.semgrep.outputs.version }}
+          toolkit_version: ${{ inputs.toolkit_version }}

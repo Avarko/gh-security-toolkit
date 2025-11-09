@@ -1,0 +1,28 @@
+{
+    "results": [
+        {
+            "check_id": "javascript.lang.security.audit.xss",
+            "path": "src/app.js",
+            "start": {
+                "line": 42,
+                "col": 5
+            },
+            "extra": {
+                "severity": "ERROR",
+                "message": "Potential XSS vulnerability"
+            }
+        },
+        {
+            "check_id": "javascript.express.security.audit.no-rate-limit",
+            "path": "src/server.js",
+            "start": {
+                "line": 15,
+                "col": 1
+            },
+            "extra": {
+                "severity": "WARNING",
+                "message": "No rate limiting detected"
+            }
+        }
+    ]
+}

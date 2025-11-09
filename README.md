@@ -117,7 +117,7 @@ jbang scripts/trivy_summarize.java .trivy-output/trivy-results.json 50 .trivy-ou
 ### GitHub Workflow
 
 ```
-name: Nightly Security Scan
+name: Nightly security scan
 on:
   schedule:
     - cron: '0 2 * * *'
