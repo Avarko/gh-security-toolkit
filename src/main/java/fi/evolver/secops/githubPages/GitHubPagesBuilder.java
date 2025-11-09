@@ -134,6 +134,7 @@ public class GitHubPagesBuilder {
                 String ts = scanDir.getFileName().toString();
                 if (Files.exists(scanDir.resolve("index.html"))) {
                     ScanEntry e = new ScanEntry(ts, "scans/" + channel + "/" + ts);
+                    e.linkHref = ts + "/index.html"; // For channel index page
                     e.stats = loadScanStats(transformer, scanDir);
 
                     // Load metadata for commit linking
@@ -177,6 +178,7 @@ public class GitHubPagesBuilder {
                             String ts = scanDir.getFileName().toString();
                             if (Files.exists(scanDir.resolve("index.html"))) {
                                 ScanEntry e = new ScanEntry(ts, "scans/" + ch + "/" + ts);
+                                e.linkHref = e.path + "/index.html"; // For main index page
                                 e.stats = loadScanStats(transformer, scanDir);
 
                                 // Enrich with metadata
