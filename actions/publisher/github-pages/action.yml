@@ -210,6 +210,9 @@ runs:
 
         echo "   Found Pages URL: $PAGES_URL"
 
+        # Remove trailing slash from PAGES_URL to avoid double slashes
+        PAGES_URL="${PAGES_URL%/}"
+
         # Download existing channel scans metadata
         CHANNEL_URL="$PAGES_URL/scans/$CHANNEL"
         echo "   Checking for existing scans at: $CHANNEL_URL"
