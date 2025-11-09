@@ -97,9 +97,9 @@ runs:
         echo "$FULL_RESPONSE"
         echo ""
 
-        # Extract .public field from response (without -r to preserve false/true)
+        # Extract .public field from response (handle null vs false properly)
         if [ -n "$FULL_RESPONSE" ]; then
-          IS_PUBLIC=$(echo "$FULL_RESPONSE" | jq '.public // "unknown"' 2>/dev/null) || IS_PUBLIC="unknown"
+          IS_PUBLIC=$(echo "$FULL_RESPONSE" | jq -r 'if .public == null then "unknown" else (.public | tostring) end' 2>/dev/null) || IS_PUBLIC="unknown"
         else
           IS_PUBLIC="unknown"
         fi
