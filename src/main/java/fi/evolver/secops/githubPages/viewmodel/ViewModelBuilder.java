@@ -149,6 +149,7 @@ public class ViewModelBuilder {
         public String branch;
         public String commit;
         public String repository;
+        public String linkHref;
 
         public ScanEntry(String timestamp, String path) {
             this.timestamp = timestamp;
