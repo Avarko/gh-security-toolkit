@@ -53,6 +53,29 @@
   </div>
 
   <div class="footer-section">
+    Raw data:
+    <#if jsonFsPath??>
+      <a href="${jsonFsPath}" target="_json_fs">📄 Trivy FS</a>
+    <#else>
+      <span class="footer-missing" title="Trivy FS scan not available">📄 Trivy FS</span>
+    </#if>
+    |
+    <#if jsonImagePath??>
+      <a href="${jsonImagePath}" target="_json_image">📄 Trivy Image</a>
+    <#else>
+      <span class="footer-missing" title="Trivy Image scan not available">📄 Trivy Image</span>
+    </#if>
+    |
+    <#if jsonSemgrepPath??>
+      <a href="${jsonSemgrepPath}" target="_json_semgrep">📄 Semgrep</a>
+    <#else>
+      <span class="footer-missing" title="Semgrep scan not available">📄 Semgrep</span>
+    </#if>
+    |
+    <a href="scan-metadata.json" target="_json_metadata">📄 Metadata</a>
+  </div>
+
+  <div class="footer-section">
     Application:
     <#if footer.app_docs_url?has_content>
       <a href="${footer.app_docs_url}" target="_app_docs">📘 Docs</a>

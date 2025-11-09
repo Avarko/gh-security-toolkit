@@ -22,7 +22,7 @@ public class ViewModelBuilder {
             TransformedScanData data,
             String timestamp,
             String channel,
-            Path scanPath) {
+            Path outputDir) {
         var model = new HashMap<String, Object>();
 
         // Basic info
@@ -85,13 +85,13 @@ public class ViewModelBuilder {
         model.put("linkAllScans", "../../../index.html");
         model.put("linkChannelIndex", "../index.html");
 
-        // JSON file paths (only if they exist)
+        // JSON file paths (only if they exist in output directory)
         model.put("jsonFsPath",
-                Files.exists(scanPath.resolve("trivy-fs-results.json")) ? "trivy-fs-results.json" : null);
+                Files.exists(outputDir.resolve("trivy-fs-results.json")) ? "trivy-fs-results.json" : null);
         model.put("jsonImagePath",
-                Files.exists(scanPath.resolve("trivy-image-results.json")) ? "trivy-image-results.json" : null);
+                Files.exists(outputDir.resolve("trivy-image-results.json")) ? "trivy-image-results.json" : null);
         model.put("jsonSemgrepPath",
-                Files.exists(scanPath.resolve("semgrep-results.json")) ? "semgrep-results.json" : null);
+                Files.exists(outputDir.resolve("semgrep-results.json")) ? "semgrep-results.json" : null);
 
         return model;
     }

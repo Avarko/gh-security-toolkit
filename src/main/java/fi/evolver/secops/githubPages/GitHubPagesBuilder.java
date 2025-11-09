@@ -87,7 +87,7 @@ public class GitHubPagesBuilder {
                 transformedData,
                 timestamp,
                 channel,
-                scanPath);
+                Path.of(outputDir));
 
         // === LAYER 4: RENDER & WRITE ===
 
