@@ -276,6 +276,7 @@ jobs:
           channel: ${{ inputs.channel }}
           pages_root: docs
           retention_keep: ${{ inputs.retention_keep }}
+          retention_days: ${{ inputs.retention_days }}
           app_docs_url: ${{ inputs.app_docs_url }}
           app_issues_url: ${{ inputs.app_issues_url }}
           ci_job_name: ${{ github.workflow }}
