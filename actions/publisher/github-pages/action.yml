@@ -73,6 +73,10 @@ inputs:
     description: "Keep at most N scans per channel (0=unlimited)"
     required: false
     default: "50"
+  retention_days:
+    description: "Days to retain scan history artifact in GitHub (0=maximum allowed by GitHub)"
+    required: false
+    default: "30"
 
 runs:
   using: "composite"
@@ -184,12 +188,18 @@ runs:
         echo "meta_json=$META_FILE" >> "$GITHUB_OUTPUT"
 
     - name: Download scan history artifact
-      uses: actions/download-artifact@v4
+      uses: dawidd6/action-download-artifact@v6
       continue-on-error: true
       id: download_history
       with:
-        name: _gh_security_toolkit_scan_history
+        name: _gh_security_toolkit_scan_history_${{ inputs.channel }}
         path: /tmp/scan-history-artifact
+        workflow: ${{ github.workflow }}
+        workflow_conclusion: success
+        repo: ${{ github.repository }}
+        check_artifacts: true
+        search_artifacts: true
+        if_no_artifact_found: ignore
 
     - name: Restore scan history
       shell: bash
@@ -306,9 +316,9 @@ runs:
     - name: Upload scan history artifact
       uses: actions/upload-artifact@v4
       with:
-        name: _gh_security_toolkit_scan_history
+        name: _gh_security_toolkit_scan_history_${{ inputs.channel }}
         path: /tmp/scan-history-output/scan-history.tar.gz
-        retention-days: 90
+        retention-days: ${{ inputs.retention_days }}
         overwrite: true
 
     - name: Setup Pages
