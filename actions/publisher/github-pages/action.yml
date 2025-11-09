@@ -183,21 +183,85 @@ runs:
           }' > "$META_FILE"
         echo "meta_json=$META_FILE" >> "$GITHUB_OUTPUT"
 
-    - name: Build GitHub Pages
+    - name: Fetch existing GitHub Pages content
       shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
 
-        echo "🏗️  Building GitHub Pages..."
+        echo "📥 Fetching existing GitHub Pages content..."
 
-        jbang "${{ github.action_path }}/../../../scripts/github_pages_builder.java" \
-          "${{ inputs.outdir }}" \
-          "${{ inputs.pages_root }}" \
-          "${{ inputs.metadata_timestamp }}" \
-          "${{ inputs.channel }}" \
-          "${{ steps.metadata.outputs.meta_json }}"
+        # Get Pages URL from API response
+        PAGES_URL=$(gh api \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "/repos/${{ github.repository }}/pages" \
+          --jq '.html_url' 2>/dev/null) || PAGES_URL=""
 
-    - name: Cleanup old scans (retention)
+        PAGES_ROOT="${{ inputs.pages_root }}"
+        CHANNEL="${{ inputs.channel }}"
+
+        if [ -z "$PAGES_URL" ] || [ "$PAGES_URL" = "null" ]; then
+          echo "   ℹ️  No existing Pages site found - starting fresh"
+          mkdir -p "$PAGES_ROOT/scans/$CHANNEL"
+          exit 0
+        fi
+
+        echo "   Found Pages URL: $PAGES_URL"
+
+        # Download existing channel scans metadata
+        CHANNEL_URL="$PAGES_URL/scans/$CHANNEL"
+        echo "   Checking for existing scans at: $CHANNEL_URL"
+
+        mkdir -p "$PAGES_ROOT/scans/$CHANNEL"
+
+        # Try to fetch existing scan list by checking channel index
+        if curl -f -s -L "$CHANNEL_URL/" -o /dev/null 2>/dev/null; then
+          echo "   📦 Downloading existing scans from channel: $CHANNEL"
+
+          # Download channel directory listing (we'll parse scan timestamps from HTML)
+          CHANNEL_HTML=$(curl -f -s -L "$CHANNEL_URL/" 2>/dev/null || echo "")
+
+          if [ -n "$CHANNEL_HTML" ]; then
+            # Extract scan timestamps from HTML links (format: YYYY-MM-DD-HHMMSS+ZZZZ)
+            SCAN_DIRS=$(echo "$CHANNEL_HTML" | grep -oP 'href="[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}\+[0-9]{4}/"' | sed 's/href="//;s/\/"$//' | sort -r || echo "")
+
+            if [ -n "$SCAN_DIRS" ]; then
+              echo "   Found existing scans:"
+              echo "$SCAN_DIRS" | head -5
+
+              # Download each existing scan
+              while IFS= read -r scan_ts; do
+                if [ -n "$scan_ts" ]; then
+                  SCAN_URL="$CHANNEL_URL/$scan_ts"
+                  SCAN_DIR="$PAGES_ROOT/scans/$CHANNEL/$scan_ts"
+                  mkdir -p "$SCAN_DIR"
+
+                  # Download scan metadata and results
+                  for file in scan-metadata.json index.html trivy-fs-results.json trivy-image-results.json semgrep-results.json; do
+                    if curl -f -s -L "$SCAN_URL/$file" -o "$SCAN_DIR/$file" 2>/dev/null; then
+                      echo "      ✓ $scan_ts/$file"
+                    fi
+                  done
+                fi
+              done <<< "$SCAN_DIRS"
+            else
+              echo "   ℹ️  No existing scans found in channel"
+            fi
+          fi
+        else
+          echo "   ℹ️  Channel not found - starting fresh"
+        fi
+
+        # Also download global assets if they exist
+        for file in style.css index.html; do
+          if curl -f -s -L "$PAGES_URL/$file" -o "$PAGES_ROOT/$file" 2>/dev/null; then
+            echo "   ✓ Downloaded global $file"
+          fi
+        done
+
+    - name: Apply retention policy
       if: ${{ inputs.retention_keep != '0' }}
       shell: bash
       run: |
@@ -206,36 +270,60 @@ runs:
         CHANNEL="${{ inputs.channel }}"
         KEEP="${{ inputs.retention_keep }}"
         PAGES_ROOT="${{ inputs.pages_root }}"
-        CHANNEL_PATH="${PAGES_ROOT}/scans/${CHANNEL}"
+        CHANNEL_PATH="$PAGES_ROOT/scans/$CHANNEL"
+        NEW_SCAN="${{ inputs.metadata_timestamp }}"
+
+        echo "🧹 Applying retention policy for channel: $CHANNEL (keep=$KEEP)"
 
         if [ ! -d "$CHANNEL_PATH" ]; then
-          echo "⏭️  No scans to clean up in channel: $CHANNEL"
+          echo "   ⏭️  No existing scans - retention not needed"
           exit 0
         fi
 
-        echo "🧹 Cleaning up old scans in channel: $CHANNEL (keep=$KEEP)"
-
-        # List all scan directories (sorted by name, newest first)
+        # List all scan directories including the new one we're about to add
         mapfile -t scans < <(find "$CHANNEL_PATH" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -r)
 
+        # Add new scan to the list for retention calculation
+        scans=("$NEW_SCAN" "${scans[@]}")
+
+        # Remove duplicates and sort
+        mapfile -t scans < <(printf '%s\n' "${scans[@]}" | sort -u -r)
+
         total=${#scans[@]}
-        echo "   Found $total scans in channel"
+        echo "   Total scans (including new): $total"
+        echo "   Retention limit: $KEEP"
 
         if [ "$total" -le "$KEEP" ]; then
           echo "   ✅ No cleanup needed (total=$total, keep=$KEEP)"
           exit 0
         fi
 
-        # Delete old scans
+        # Delete old scans beyond retention limit
         deleted=0
         for ((i=KEEP; i<total; i++)); do
           scan="${scans[$i]}"
-          echo "   🗑️  Deleting old scan: $scan"
-          rm -rf "$CHANNEL_PATH/$scan"
-          deleted=$((deleted + 1))
+          if [ "$scan" != "$NEW_SCAN" ] && [ -d "$CHANNEL_PATH/$scan" ]; then
+            echo "   🗑️  Deleting old scan: $scan"
+            rm -rf "$CHANNEL_PATH/$scan"
+            deleted=$((deleted + 1))
+          fi
         done
 
-        echo "   ✅ Deleted $deleted old scans, kept $KEEP newest"
+        echo "   ✅ Deleted $deleted old scans, keeping $KEEP newest"
+
+    - name: Build GitHub Pages
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "🏗️  Building GitHub Pages (incremental update)..."
+
+        jbang "${{ github.action_path }}/../../../scripts/github_pages_builder.java" \
+          "${{ inputs.outdir }}" \
+          "${{ inputs.pages_root }}" \
+          "${{ inputs.metadata_timestamp }}" \
+          "${{ inputs.channel }}" \
+          "${{ steps.metadata.outputs.meta_json }}"
 
     - name: Setup Pages
       uses: actions/configure-pages@v5
