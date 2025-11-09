@@ -179,7 +179,7 @@ runs:
 
     - name: Cleanup old releases
       if: ${{ inputs.channel != '' && (inputs.retention_keep != '0' || inputs.retention_days != '0') }}
-      uses: Avarko/gh-security-toolkit/actions/cleanup/github-release@improvements
+      uses: Avarko/gh-security-toolkit/actions/cleanup/github-release@v1.0.0
       with:
         channel: ${{ inputs.channel }}
         retention_keep: ${{ inputs.retention_keep }}
