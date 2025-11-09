@@ -37,8 +37,22 @@ public class ViewModelBuilder {
             putIfNotNull(md, "branch", data.metadata.branch);
             putIfNotNull(md, "commit_sha", data.metadata.commitSha);
             putIfNotNull(md, "repository", data.metadata.repository);
+            md.put("timestamp", timestamp);
         }
         model.put("metadata", md);
+
+        // Footer metadata
+        var footer = new HashMap<String, Object>();
+        if (data.metadata != null && data.metadata.footer != null) {
+            putIfNotNull(footer, "app_docs_url", data.metadata.footer.app_docs_url);
+            putIfNotNull(footer, "app_issues_url", data.metadata.footer.app_issues_url);
+            putIfNotNull(footer, "ci_job_name", data.metadata.footer.ci_job_name);
+            putIfNotNull(footer, "ci_job_url", data.metadata.footer.ci_job_url);
+            putIfNotNull(footer, "trivy_version", data.metadata.footer.trivy_version);
+            putIfNotNull(footer, "semgrep_version", data.metadata.footer.semgrep_version);
+            putIfNotNull(footer, "toolkit_version", data.metadata.footer.toolkit_version);
+        }
+        model.put("footer", footer);
 
         // Trivy findings with boolean flags
         model.put("hasTrivyFsVulns", !data.trivyFsVulns.isEmpty());
@@ -91,6 +105,8 @@ public class ViewModelBuilder {
         model.put("rootCss", "../../style.css");
         model.put("linkAllChannels", "../../index.html");
         model.put("scans", scans);
+        model.put("metadata", new HashMap<String, Object>()); // Empty metadata for index pages
+        model.put("footer", new HashMap<String, Object>()); // Empty footer for index pages
         return model;
     }
 
@@ -100,6 +116,8 @@ public class ViewModelBuilder {
         model.put("title", "Security Scan Reports");
         model.put("rootCss", "style.css");
         model.put("channels", channels);
+        model.put("metadata", new HashMap<String, Object>()); // Empty metadata for index pages
+        model.put("footer", new HashMap<String, Object>()); // Empty footer for index pages
         return model;
     }
 

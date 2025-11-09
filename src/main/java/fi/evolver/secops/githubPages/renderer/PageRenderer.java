@@ -144,6 +144,13 @@ public class PageRenderer {
                 .findings-table th{ background:#34495e; }
                 .target-cell,.path-cell{ font-family:'Courier New',monospace; font-size:.85rem; max-width:300px; word-break:break-all; text-align:left !important; }
                 .id-cell,.rule-cell{ font-family:'Courier New',monospace; font-size:.85rem; white-space:nowrap; }
+
+                /* Footer */
+                .report-footer{ background:#ecf0f1; padding:1.5rem; margin-top:3rem; border-top:3px solid #3498db; text-align:center; font-size:.9rem; }
+                .report-footer .footer-section{ margin:.5rem 0; }
+                .report-footer a{ color:#3498db; text-decoration:none; }
+                .report-footer a:hover{ text-decoration:underline; }
+                .report-footer .footer-missing{ color:#95a5a6; text-decoration:line-through; cursor:help; }
                 """;
         Files.writeString(pagesPath.resolve("style.css"), css, StandardCharsets.UTF_8);
     }

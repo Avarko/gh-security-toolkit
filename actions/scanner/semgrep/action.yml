@@ -220,7 +220,18 @@ runs:
         echo "semgrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
         echo "Semgrep summary created at $OUTPUT_FILE"
 
+    - name: Get Semgrep version
+      id: version
+      shell: bash
+      run: |
+        VERSION=$(semgrep --version | head -n1 | awk '{print $1}')
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        echo "Semgrep version: $VERSION"
+
 outputs:
   semgrep_summary:
     description: "Semgrep summary markdown file path"
     value: ${{ steps.summary.outputs.semgrep_summary }}
+  version:
+    description: "Semgrep version"
+    value: ${{ steps.version.outputs.version }}
