@@ -183,86 +183,37 @@ runs:
           }' > "$META_FILE"
         echo "meta_json=$META_FILE" >> "$GITHUB_OUTPUT"
 
-    - name: Fetch existing GitHub Pages content
+    - name: Download scan history artifact
+      uses: actions/download-artifact@v4
+      continue-on-error: true
+      id: download_history
+      with:
+        name: _gh_security_toolkit_scan_history
+        path: /tmp/scan-history-artifact
+
+    - name: Restore scan history
       shell: bash
-      env:
-        GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
 
-        echo "📥 Fetching existing GitHub Pages content..."
-
-        # Get Pages URL from API response
-        PAGES_URL=$(gh api \
-          -H "Accept: application/vnd.github+json" \
-          -H "X-GitHub-Api-Version: 2022-11-28" \
-          "/repos/${{ github.repository }}/pages" \
-          --jq '.html_url' 2>/dev/null) || PAGES_URL=""
-
         PAGES_ROOT="${{ inputs.pages_root }}"
-        CHANNEL="${{ inputs.channel }}"
+        HISTORY_ARCHIVE="/tmp/scan-history-artifact/scan-history.tar.gz"
 
-        if [ -z "$PAGES_URL" ] || [ "$PAGES_URL" = "null" ]; then
-          echo "   ℹ️  No existing Pages site found - starting fresh"
-          mkdir -p "$PAGES_ROOT/scans/$CHANNEL"
-          exit 0
-        fi
+        if [ -f "$HISTORY_ARCHIVE" ]; then
+          echo "📦 Restoring scan history from artifact..."
+          mkdir -p "$PAGES_ROOT"
+          tar -xzf "$HISTORY_ARCHIVE" -C "$PAGES_ROOT"
 
-        echo "   Found Pages URL: $PAGES_URL"
-
-        # Remove trailing slash from PAGES_URL to avoid double slashes
-        PAGES_URL="${PAGES_URL%/}"
-
-        # Download existing channel scans metadata
-        CHANNEL_URL="$PAGES_URL/scans/$CHANNEL"
-        echo "   Checking for existing scans at: $CHANNEL_URL"
-
-        mkdir -p "$PAGES_ROOT/scans/$CHANNEL"
-
-        # Try to fetch existing scan list by checking channel index
-        if curl -f -s -L "$CHANNEL_URL/" -o /dev/null 2>/dev/null; then
-          echo "   📦 Downloading existing scans from channel: $CHANNEL"
-
-          # Download channel directory listing (we'll parse scan timestamps from HTML)
-          CHANNEL_HTML=$(curl -f -s -L "$CHANNEL_URL/" 2>/dev/null || echo "")
-
-          if [ -n "$CHANNEL_HTML" ]; then
-            # Extract scan timestamps from HTML links (format: YYYY-MM-DD-HHMMSS+ZZZZ)
-            SCAN_DIRS=$(echo "$CHANNEL_HTML" | grep -oP 'href="[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}\+[0-9]{4}/"' | sed 's/href="//;s/\/"$//' | sort -r || echo "")
-
-            if [ -n "$SCAN_DIRS" ]; then
-              echo "   Found existing scans:"
-              echo "$SCAN_DIRS" | head -5
-
-              # Download each existing scan
-              while IFS= read -r scan_ts; do
-                if [ -n "$scan_ts" ]; then
-                  SCAN_URL="$CHANNEL_URL/$scan_ts"
-                  SCAN_DIR="$PAGES_ROOT/scans/$CHANNEL/$scan_ts"
-                  mkdir -p "$SCAN_DIR"
-
-                  # Download scan metadata and results
-                  for file in scan-metadata.json index.html trivy-fs-results.json trivy-image-results.json semgrep-results.json; do
-                    if curl -f -s -L "$SCAN_URL/$file" -o "$SCAN_DIR/$file" 2>/dev/null; then
-                      echo "      ✓ $scan_ts/$file"
-                    fi
-                  done
-                fi
-              done <<< "$SCAN_DIRS"
-            else
-              echo "   ℹ️  No existing scans found in channel"
-            fi
+          # Count existing scans
+          if [ -d "$PAGES_ROOT/scans" ]; then
+            TOTAL_SCANS=$(find "$PAGES_ROOT/scans" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
+            CHANNELS=$(find "$PAGES_ROOT/scans" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+            echo "   ✅ Restored $TOTAL_SCANS scans across $CHANNELS channels"
           fi
         else
-          echo "   ℹ️  Channel not found - starting fresh"
+          echo "ℹ️  No existing scan history found - starting fresh"
+          mkdir -p "$PAGES_ROOT/scans/${{ inputs.channel }}"
         fi
-
-        # Also download global assets if they exist
-        for file in style.css index.html; do
-          if curl -f -s -L "$PAGES_URL/$file" -o "$PAGES_ROOT/$file" 2>/dev/null; then
-            echo "   ✓ Downloaded global $file"
-          fi
-        done
 
     - name: Apply retention policy
       if: ${{ inputs.retention_keep != '0' }}
@@ -327,6 +278,38 @@ runs:
           "${{ inputs.metadata_timestamp }}" \
           "${{ inputs.channel }}" \
           "${{ steps.metadata.outputs.meta_json }}"
+
+    - name: Archive scan history
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        PAGES_ROOT="${{ inputs.pages_root }}"
+        ARCHIVE_DIR="/tmp/scan-history-output"
+
+        echo "📦 Archiving scan history..."
+
+        mkdir -p "$ARCHIVE_DIR"
+
+        # Archive scans directory (JSON data + scan detail HTML pages)
+        # Note: Channel index and main index are NOT archived (they're regenerated each time)
+        if [ -d "$PAGES_ROOT/scans" ]; then
+          tar -czf "$ARCHIVE_DIR/scan-history.tar.gz" -C "$PAGES_ROOT" scans/
+
+          SIZE=$(du -h "$ARCHIVE_DIR/scan-history.tar.gz" | cut -f1)
+          SCAN_COUNT=$(find "$PAGES_ROOT/scans" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
+          echo "   ✅ Archived $SCAN_COUNT scans ($SIZE)"
+        else
+          echo "   ⚠️  No scans directory to archive"
+        fi
+
+    - name: Upload scan history artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: _gh_security_toolkit_scan_history
+        path: /tmp/scan-history-output/scan-history.tar.gz
+        retention-days: 90
+        overwrite: true
 
     - name: Setup Pages
       uses: actions/configure-pages@v5
