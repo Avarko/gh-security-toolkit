@@ -145,11 +145,45 @@ public class PageRenderer {
                 .target-cell,.path-cell{ font-family:'Courier New',monospace; font-size:.85rem; max-width:300px; word-break:break-all; text-align:left !important; }
                 .id-cell,.rule-cell{ font-family:'Courier New',monospace; font-size:.85rem; white-space:nowrap; }
 
-                /* Footer */
-                .report-footer{ background:#ecf0f1; padding:1.5rem; margin-top:3rem; border-top:3px solid #3498db; text-align:center; font-size:.9rem; }
-                .report-footer .footer-section{ margin:.5rem 0; }
+                /* Body padding for sticky footer */
+                body{ padding-bottom:5rem; }
+
+                /* Sticky hovering footer */
+                .report-footer{
+                  position:fixed;
+                  bottom:0;
+                  left:0;
+                  width:100%;
+                  background:rgba(44,62,80,0.95);
+                  color:#ecf0f1;
+                  text-align:center;
+                  font-size:.8rem;
+                  padding:.4rem 1rem;
+                  box-shadow:0 -2px 10px rgba(0,0,0,0.3);
+                  transition:all 0.3s ease;
+                  overflow:hidden;
+                  max-height:2rem;
+                  z-index:1000;
+                  backdrop-filter:blur(5px);
+                }
+                .report-footer:hover{
+                  max-height:10rem;
+                  padding:1rem;
+                  font-size:.85rem;
+                }
+                .report-footer .footer-section{
+                  margin:.3rem 0;
+                  line-height:1.6;
+                  white-space:nowrap;
+                  overflow:hidden;
+                  text-overflow:ellipsis;
+                }
+                .report-footer:hover .footer-section{
+                  white-space:normal;
+                  overflow:visible;
+                }
                 .report-footer a{ color:#3498db; text-decoration:none; }
-                .report-footer a:hover{ text-decoration:underline; }
+                .report-footer a:hover{ text-decoration:underline; color:#5dade2; }
                 .report-footer .footer-missing{ color:#95a5a6; text-decoration:line-through; cursor:help; }
                 """;
         Files.writeString(pagesPath.resolve("style.css"), css, StandardCharsets.UTF_8);

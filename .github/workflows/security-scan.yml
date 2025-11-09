@@ -192,7 +192,7 @@ jobs:
 
       # === RUN TRIVY SCANS ===
       - name: Run Trivy scans
-        id: scan
+        id: trivy
         uses: Avarko/gh-security-toolkit/actions/scanner/trivy@improvements
         with:
           filesystem_path: ${{ steps.download_fs.outcome == 'success' && format('{0}/filesystem', steps.setup.outputs.work_dir) || '' }}
@@ -226,8 +226,8 @@ jobs:
         id: sum
         uses: Avarko/gh-security-toolkit/actions/summarizer@improvements
         with:
-          fs_json: ${{ steps.scan.outputs.fs_json || '' }}
-          image_json: ${{ steps.scan.outputs.image_json || '' }}
+          fs_json: ${{ steps.trivy.outputs.fs_json || '' }}
+          image_json: ${{ steps.trivy.outputs.image_json || '' }}
           semgrep_summary: ${{ steps.semgrep.outputs.semgrep_summary || '' }}
           dependabot_summary: ${{ steps.dependabot.outputs.dependabot_summary || '' }}
           outdir: ${{ steps.setup.outputs.output_dir }}

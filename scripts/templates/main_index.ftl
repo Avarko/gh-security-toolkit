@@ -112,7 +112,6 @@
                 </#list>
         </#if>
     </main>
-    <#include "_footer.ftl">
 </body>
 
 </html>
