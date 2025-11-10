@@ -1,0 +1,6 @@
+# Ignore everything by default
+*
+
+# Only include verified binaries
+!verified-binaries/
+!verified-binaries/*
