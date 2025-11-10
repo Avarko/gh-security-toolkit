@@ -232,6 +232,7 @@ jobs:
     # Writes an OCI attestation alongside the image in GHCR
     permissions:
       contents: read
+      actions: read
       id-token: write    # OIDC for signing
       packages: write    # push attestation to GHCR
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
