@@ -7,7 +7,7 @@ ARG CRANE_VER
 FROM cgr.dev/chainguard/wolfi-base:latest
 
 RUN apk update && apk add --no-cache \
-    bash ca-certificates curl jq git python3 py3-pip busybox \
+    bash ca-certificates curl jq git python3 py3-pip \
     && update-ca-certificates
 
 # Pre-verified binaries copied from CI
@@ -36,10 +36,16 @@ ARG VEXHUB_ARCHIVE_URL="https://github.com/aquasecurity/vexhub/archive/refs/head
 RUN mkdir -p /var/www/.well-known /var/www/vex /opt/trivy-cache /workspace \
     && chown -R ghst:ghst /var/www /opt/trivy-cache /workspace
 
-# Download VEX Hub data
-RUN curl -fsSL -o /var/www/vex/main.zip "${VEXHUB_ARCHIVE_URL}" \
+# Download and extract VEX Hub data
+RUN apk add --no-cache unzip \
+    && curl -fsSL -o /tmp/vexhub.zip "${VEXHUB_ARCHIVE_URL}" \
+    && unzip -q /tmp/vexhub.zip -d /tmp \
+    && mv /tmp/vexhub-main /var/www/vex/vexhub \
+    && rm /tmp/vexhub.zip \
     && curl -fsSL -o /var/www/.well-known/vex-repository.json "${VEXHUB_MANIFEST_URL}" \
-    && sed -i 's#"url": *".*"#"url": "http://127.0.0.1:8080/vex/main.zip"#' /var/www/.well-known/vex-repository.json
+    && sed -i 's#"url": *".*"#"url": "http://127.0.0.1:8080/vex/vexhub"#' /var/www/.well-known/vex-repository.json \
+    && chown -R ghst:ghst /var/www \
+    && apk del unzip
 
 # Copy Trivy DBs for offline use
 ENV TRIVY_CACHE_DIR=/opt/trivy-cache \
@@ -60,7 +66,8 @@ COPY --chown=ghst:ghst <<'EOF' /usr/local/bin/entrypoint.sh
 set -euo pipefail
 
 if [ "${GHST_VEX_SERVE:-0}" = "1" ]; then
-  busybox httpd -f -p "${GHST_VEX_PORT}" -h /var/www &
+  # Use Python's built-in HTTP server (available in python3 package)
+  cd /var/www && python3 -m http.server "${GHST_VEX_PORT}" &
   echo "VEX Hub served at http://127.0.0.1:${GHST_VEX_PORT}/.well-known/vex-repository.json"
 fi
 
