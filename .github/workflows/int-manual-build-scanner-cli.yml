@@ -1,0 +1,295 @@
+name: "[Internal] Release CLI (image + SLSA v3 + GitHub Attestations)"
+
+on:
+  workflow_dispatch:
+    inputs:
+      docker-image-tag:
+        description: 'Release tag (e.g., v1.2.3)'
+        required: true
+        default: 'manual-latest'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: Avarko/gh-security-toolkit
+  CONTEXT: ./cli
+
+jobs:
+  build:
+    name: Build & push image
+    if: github.repository == 'Avarko/gh-security-toolkit'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write       # push to GHCR
+    outputs:
+      image_ref: ${{ steps.expose.outputs.image_ref }}
+      image_digest: ${{ steps.build.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
+      labels: ${{ steps.meta.outputs.labels }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Add support for more platforms with QEMU (optional)
+      # https://github.com/docker/setup-qemu-action
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata (tags/labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ github.event.inputs.docker-image-tag }}
+            type=raw,value=latest
+            type=sha
+
+      - name: Expose image ref for downstream jobs
+        id: expose
+        run: echo "image_ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" >> "$GITHUB_OUTPUT"
+
+      # ---------- Resolve, verify, and download tool binaries ----------
+
+      - name: Install SLSA verifier
+        run: |
+          curl -sL https://github.com/slsa-framework/slsa-verifier/releases/latest/download/slsa-verifier-linux-amd64 \
+            -o /usr/local/bin/slsa-verifier && chmod +x /usr/local/bin/slsa-verifier
+
+      - name: Prepare binaries directory
+        run: mkdir -p ${{ env.CONTEXT }}/verified-binaries
+
+      - name: Install jq & openssl
+        run: sudo apt-get update && sudo apt-get install -y jq openssl
+
+      - name: Setup go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25.x'
+
+      # https://docs.sigstore.dev/cosign/system_config/installation/
+      - name: Resolve & verify Cosign (bundle)
+        id: cosign
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ver_cosign=$(gh api repos/sigstore/cosign/releases/latest --jq .tag_name)
+          echo "ver_cosign=$ver_cosign" >> "$GITHUB_OUTPUT"
+
+          go install github.com/theupdateframework/go-tuf/cmd/tuf-client@latest
+          curl -o sigstore-root.json https://raw.githubusercontent.com/sigstore/root-signing/refs/heads/main/metadata/root_history/10.root.json
+          tuf-client init https://tuf-repo-cdn.sigstore.dev sigstore-root.json
+
+          tuf-client get https://tuf-repo-cdn.sigstore.dev artifact.pub > artifact.pub
+
+          curl -o cosign-kms.sigstore.json -L https://github.com/sigstore/cosign/releases/download/${ver_cosign}/cosign-linux-amd64-kms.sigstore.json
+          cat cosign-kms.sigstore.json | jq -r .messageSignature.signature | base64 -d > cosign-kms.sig.decoded
+
+          curl -o cosign -L https://github.com/sigstore/cosign/releases/download/${ver_cosign}/cosign-linux-amd64
+
+          openssl dgst -sha256 -verify artifact.pub -signature cosign-kms.sig.decoded cosign
+
+          install -m 0755 cosign "${{ env.CONTEXT }}/verified-binaries/cosign"
+
+      - name: Initialize Sigstore TUF and archive cache (for offline / air gapped image)
+        run: |
+          set -euo pipefail
+          COSIGN_BIN="${{ env.CONTEXT }}/verified-binaries/cosign"
+          COSIGN_HOME="${{ env.CONTEXT }}/verified-binaries/cosign-home"
+          mkdir -p "$COSIGN_HOME"
+          HOME="$COSIGN_HOME" "$COSIGN_BIN" initialize --output-file "$COSIGN_HOME/cosign-init.log"
+          tar -C "$COSIGN_HOME" -czf "${{ env.CONTEXT }}/verified-binaries/tuf-cache.tgz" .sigstore cosign-init.log
+
+      - name: Resolve & verify Crane (SLSA provenance)
+        id: crane
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ver_crane=$(gh api repos/google/go-containerregistry/releases/latest --jq .tag_name)
+          echo "ver_crane=$ver_crane" >> "$GITHUB_OUTPUT"
+
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/${ver_crane}/go-containerregistry_Linux_x86_64.tar.gz" -o crane.tgz
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/${ver_crane}/multiple.intoto.jsonl" -o crane-provenance.intoto.jsonl
+
+          slsa-verifier verify-artifact crane.tgz \
+            --provenance-path crane-provenance.intoto.jsonl \
+            --source-uri github.com/google/go-containerregistry \
+            --source-tag "${ver_crane}"
+
+          tar -xzf crane.tgz crane
+          install -m 0755 crane  ${{ env.CONTEXT }}/verified-binaries/crane
+
+      - name: Resolve Trivy
+        id: trivy
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          COSIGN_BIN="${{ env.CONTEXT }}/verified-binaries/cosign"
+
+          ver_trivy=$(gh api repos/aquasecurity/trivy/releases/latest --jq .tag_name)
+          echo "ver_trivy=$ver_trivy" >> "$GITHUB_OUTPUT"
+
+          curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/trivy_${ver_trivy#v}_Linux-64bit.tar.gz" -o trivy.tgz
+          curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/trivy_${ver_trivy#v}_Linux-64bit.tar.gz.sig" -o trivy.tgz.sig
+          curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/trivy_${ver_trivy#v}_Linux-64bit.tar.gz.pem" -o trivy.tgz.pem
+
+          "$COSIGN_BIN" verify-blob trivy.tgz \
+            --certificate trivy.tgz.pem \
+            --signature trivy.tgz.sig \
+            --certificate-identity-regexp 'https://github\.com/aquasecurity/trivy/\.github/workflows/.+' \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+          tar -xzf trivy.tgz trivy
+          install -m 0755 trivy ${{ env.CONTEXT }}/verified-binaries/trivy
+
+      - name: Resolve TruffleHog
+        id: trufflehog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          COSIGN_BIN="${{ env.CONTEXT }}/verified-binaries/cosign"
+          ver_trufflehog=$(gh api repos/trufflesecurity/trufflehog/releases/latest --jq .tag_name)
+          echo "ver_trufflehog=$ver_trufflehog" >> "$GITHUB_OUTPUT"
+
+          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/trufflehog_${ver_trufflehog#v}_linux_amd64.tar.gz" -o trufflehog.tgz
+          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/trufflehog_${ver_trufflehog#v}_checksums.txt" -o trufflehog-checksums.txt
+          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/trufflehog_${ver_trufflehog#v}_checksums.txt.sig" -o trufflehog-checksums.txt.sig
+          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/trufflehog_${ver_trufflehog#v}_checksums.txt.pem" -o trufflehog-checksums.txt.pem
+
+          "$COSIGN_BIN" verify-blob trufflehog-checksums.txt \
+            --certificate trufflehog-checksums.txt.pem \
+            --signature trufflehog-checksums.txt.sig \
+            --certificate-identity-regexp 'https://github\.com/trufflesecurity/trufflehog/\.github/workflows/.+' \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+          sha256sum --ignore-missing -c trufflehog-checksums.txt
+
+          tar -xzf trufflehog.tgz trufflehog
+          install -m 0755 trufflehog ${{ env.CONTEXT }}/verified-binaries/trufflehog
+
+      # ---------- Build & push with verified binaries ----------
+      - name: Build & push (provenance disabled here)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.CONTEXT }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          build-args: |
+            TRIVY_VER=${{ steps.trivy.outputs.ver_trivy }}
+            TRUFFLEHOG_VER=${{ steps.trufflehog.outputs.ver_trufflehog }}
+            COSIGN_VER=${{ steps.cosign.outputs.ver_cosign }}
+            CRANE_VER=${{ steps.crane.outputs.ver_crane }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+  sbom:
+    name: Generate SBOM and attestation
+    if: github.repository == 'Avarko/gh-security-toolkit'
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write      # push SBOM to GHCR
+      id-token: write      # OIDC for signing
+      attestations: write  # GitHub Attestations store
+    steps:
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ needs.build.outputs.image_ref }}@${{ needs.build.outputs.image_digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Generate SBOM attestation
+        uses: actions/attest-sbom@v2
+        with:
+          subject-name: ${{ needs.build.outputs.image_ref }}
+          subject-digest: ${{ needs.build.outputs.image_digest }}
+          sbom-path: sbom.spdx.json
+          push-to-registry: true
+
+  provenance_oci:
+    name: Generate SLSA v3 OCI provenance
+    if: github.repository == 'Avarko/gh-security-toolkit'
+    needs: [build]
+    # Writes an OCI attestation alongside the image in GHCR
+    permissions:
+      contents: read
+      id-token: write    # OIDC for signing
+      packages: write    # push attestation to GHCR
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+    with:
+      image: ${{ needs.build.outputs.image_ref }}
+      digest: ${{ needs.build.outputs.image_digest }}
+      registry-username: ${{ github.actor }}
+    secrets:
+      registry-password: ${{ secrets.GITHUB_TOKEN }}
+
+  provenance_github_store:
+    name: GitHub Attestations store (duplicate provenance)
+    if: github.repository == 'Avarko/gh-security-toolkit'
+    needs: [build]
+    runs-on: ubuntu-latest
+    # Persists provenance in GitHub's Attestations store, useful for GH UI/API & org policies
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ needs.build.outputs.image_ref }}
+          subject-digest: ${{ needs.build.outputs.image_digest }}
+
+  verify:
+    name: Verify OCI provenance
+    if: github.repository == 'Avarko/gh-security-toolkit'
+    needs: [build, provenance_oci]
+    runs-on: ubuntu-latest
+    permissions: read-all
+    steps:
+      - name: Install SLSA verifier
+        uses: slsa-framework/slsa-verifier/actions/installer@v2.7.1
+
+      - name: Verify OCI provenance
+        run: |
+          set -euo pipefail
+          IMG="${{ needs.build.outputs.image_ref }}@${{ needs.build.outputs.image_digest }}"
+          echo "Verifying SLSA provenance for $IMG"
+          slsa-verifier verify-image "$IMG" \
+            --source-uri "github.com/${{ github.repository }}" \
+            --source-tag "${{ github.event.inputs.docker-image-tag }}"
+
+  verify_github_store:
+    name: Verify GitHub Attestations presence
+    if: github.repository == 'Avarko/gh-security-toolkit'
+    needs: [provenance_github_store]
+    runs-on: ubuntu-latest
+    permissions: read-all
+    steps:
+      - name: Check attestation presence via GH API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Lists latest attestations; you can refine with filters when GH expands the API
+          gh api repos/${{ github.repository }}/attestations \
+            --method GET --jq '.[] | .predicateType' \
+            | grep -q 'slsa.dev/provenance' && echo "Attestation present ✅" || (echo "No provenance in GH store" && exit 1)
