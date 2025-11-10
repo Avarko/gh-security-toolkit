@@ -41,13 +41,11 @@ RUN curl -fsSL -o /var/www/vex/main.zip "${VEXHUB_ARCHIVE_URL}" \
     && curl -fsSL -o /var/www/.well-known/vex-repository.json "${VEXHUB_MANIFEST_URL}" \
     && sed -i 's#"url": *".*"#"url": "http://127.0.0.1:8080/vex/main.zip"#' /var/www/.well-known/vex-repository.json
 
-# Download Trivy DBs for offline use
+# Copy Trivy DBs for offline use
 ENV TRIVY_CACHE_DIR=/opt/trivy-cache \
     TRIVY_SKIP_DB_UPDATE=true \
     TRIVY_OFFLINE_SCAN=true
-
-RUN trivy --download-db-only --cache-dir /opt/trivy-cache --no-progress \
-    && trivy --download-java-db-only --cache-dir /opt/trivy-cache --no-progress
+COPY verified-binaries/trivy-db/ "${TRIVY_CACHE_DIR}/"
 
 # Non-root user
 USER ghst

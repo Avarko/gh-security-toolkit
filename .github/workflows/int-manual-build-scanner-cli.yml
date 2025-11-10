@@ -155,6 +155,17 @@ jobs:
           tar -xzf trivy.tgz trivy
           install -m 0755 trivy ${{ env.CONTEXT }}/verified-binaries/trivy
 
+      - name: Download Trivy DBs
+        id: trivy-db
+        run: |
+          set -euo pipefail
+          TRIVY_BIN="${{ env.CONTEXT }}/verified-binaries/trivy"
+          TRIVY_DB_DIR="${{ env.CONTEXT }}/verified-binaries/trivy-db"
+
+          mkdir -p "$TRIVY_DB_DIR"
+          "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" image --download-db-only
+          "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" image --download-java-db-only
+
       - name: Resolve TruffleHog
         id: trufflehog
         env:
