@@ -165,7 +165,10 @@ jobs:
           ver_trufflehog=$(gh api repos/trufflesecurity/trufflehog/releases/latest --jq .tag_name)
           echo "ver_trufflehog=$ver_trufflehog" >> "$GITHUB_OUTPUT"
 
-          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/trufflehog_${ver_trufflehog#v}_linux_amd64.tar.gz" -o trufflehog.tgz
+          # Download with exact filename from checksums.txt
+          TRUFFLEHOG_FILE="trufflehog_${ver_trufflehog#v}_linux_amd64.tar.gz"
+
+          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/${TRUFFLEHOG_FILE}" -o "${TRUFFLEHOG_FILE}"
           curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/trufflehog_${ver_trufflehog#v}_checksums.txt" -o trufflehog-checksums.txt
           curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/trufflehog_${ver_trufflehog#v}_checksums.txt.sig" -o trufflehog-checksums.txt.sig
           curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/trufflehog_${ver_trufflehog#v}_checksums.txt.pem" -o trufflehog-checksums.txt.pem
@@ -178,7 +181,7 @@ jobs:
 
           sha256sum --ignore-missing -c trufflehog-checksums.txt
 
-          tar -xzf trufflehog.tgz trufflehog
+          tar -xzf "${TRUFFLEHOG_FILE}" trufflehog
           install -m 0755 trufflehog ${{ env.CONTEXT }}/verified-binaries/trufflehog
 
       # ---------- Build & push with verified binaries ----------
