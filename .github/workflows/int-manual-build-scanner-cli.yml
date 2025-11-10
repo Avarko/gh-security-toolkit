@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: Avarko/gh-security-toolkit
+  IMAGE_NAME: avarko/gh-security-toolkit
   CONTEXT: ./cli
 
 jobs:
