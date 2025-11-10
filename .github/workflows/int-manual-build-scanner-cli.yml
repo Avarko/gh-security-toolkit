@@ -306,21 +306,31 @@ jobs:
   verify_github_store:
     name: Verify GitHub Attestations presence
     if: github.repository == 'Avarko/gh-security-toolkit'
-    needs: [build, provenance_github_store]
+    needs: [build, provenance_github_store, sbom]
     runs-on: ubuntu-latest
-    permissions: read-all
+    permissions:
+      contents: read
+      packages: read
+      attestations: read
     steps:
-      - name: Check attestation via GH CLI
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify attestations via GH CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # GitHub Attestations API requires subject digest
-          SUBJECT="${{ needs.build.outputs.image_ref }}@${{ needs.build.outputs.image_digest }}"
+          # Use oci:// prefix for container images
+          SUBJECT="oci://${{ needs.build.outputs.image_ref }}@${{ needs.build.outputs.image_digest }}"
 
-          echo "Checking attestations for: $SUBJECT"
+          echo "Verifying attestations for: $SUBJECT"
 
-          # List attestations for this specific image digest
+          # Verify attestation (checks both provenance and SBOM)
           gh attestation verify "$SUBJECT" \
             --owner ${{ github.repository_owner }} \
-            && echo "✅ Attestation verified successfully!" \
+            && echo "✅ Attestations verified successfully!" \
             || (echo "❌ No valid attestation found" && exit 1)
