@@ -224,6 +224,13 @@ jobs:
       id-token: write      # OIDC for signing
       attestations: write  # GitHub Attestations store
     steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
@@ -289,22 +296,31 @@ jobs:
           set -euo pipefail
           IMG="${{ needs.build.outputs.image_ref }}@${{ needs.build.outputs.image_digest }}"
           echo "Verifying SLSA provenance for $IMG"
+
+          # SLSA verifier requires either a git tag or uses commit SHA
+          # Since manual-latest is not a git tag, verify against commit SHA
           slsa-verifier verify-image "$IMG" \
             --source-uri "github.com/${{ github.repository }}" \
-            --source-tag "${{ github.event.inputs.docker-image-tag }}"
+            --print-provenance
 
   verify_github_store:
     name: Verify GitHub Attestations presence
     if: github.repository == 'Avarko/gh-security-toolkit'
-    needs: [provenance_github_store]
+    needs: [build, provenance_github_store]
     runs-on: ubuntu-latest
     permissions: read-all
     steps:
-      - name: Check attestation presence via GH API
+      - name: Check attestation via GH CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Lists latest attestations; you can refine with filters when GH expands the API
-          gh api repos/${{ github.repository }}/attestations \
-            --method GET --jq '.[] | .predicateType' \
-            | grep -q 'slsa.dev/provenance' && echo "Attestation present ✅" || (echo "No provenance in GH store" && exit 1)
+          # GitHub Attestations API requires subject digest
+          SUBJECT="${{ needs.build.outputs.image_ref }}@${{ needs.build.outputs.image_digest }}"
+
+          echo "Checking attestations for: $SUBJECT"
+
+          # List attestations for this specific image digest
+          gh attestation verify "$SUBJECT" \
+            --owner ${{ github.repository_owner }} \
+            && echo "✅ Attestation verified successfully!" \
+            || (echo "❌ No valid attestation found" && exit 1)
