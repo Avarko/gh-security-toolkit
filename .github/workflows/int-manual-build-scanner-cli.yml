@@ -1,4 +1,4 @@
-name: "[Internal] Release CLI (image + SLSA v3 + GitHub Attestations)"
+name: "[Internal] Release CLI Docker image manually"
 
 on:
   workflow_dispatch:
