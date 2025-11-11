@@ -10,20 +10,19 @@ RUN apk update && apk add --no-cache \
     bash ca-certificates curl jq git python3 py3-pip \
     && update-ca-certificates
 
-# Pre-verified binaries copied from CI
-COPY verified-binaries/trivy /usr/local/bin/trivy
-COPY verified-binaries/trufflehog /usr/local/bin/trufflehog
-COPY verified-binaries/cosign /usr/local/bin/cosign
-COPY verified-binaries/crane /usr/local/bin/crane
-
-# Cosign TUF cache (for offline use)
-# CI provides verified-binaries/tuf-cache.tgz containing .sigstore/ + cosign-init.log
-# Extract it to the user's HOME so that cosign can find the roots without network.
-# Note: The user is created first so that HOME exists.
 RUN adduser -D -u 10001 ghst \
     && mkdir -p /home/ghst \
     && chown -R ghst:ghst /home/ghst
 
+# Pre-verified binaries copied from CI
+COPY --chown=ghst:ghst verified-binaries/trivy /usr/local/bin/trivy
+COPY --chown=ghst:ghst verified-binaries/trufflehog /usr/local/bin/trufflehog
+COPY --chown=ghst:ghst verified-binaries/cosign /usr/local/bin/cosign
+COPY --chown=ghst:ghst verified-binaries/crane /usr/local/bin/crane
+
+# Cosign TUF cache (for offline use)
+# CI provides verified-binaries/tuf-cache.tgz containing .sigstore/ + cosign-init.log
+# Extract it to the user's HOME so that cosign can find the roots without network.
 COPY verified-binaries/tuf-cache.tgz /tmp/tuf-cache.tgz
 RUN tar -xzf /tmp/tuf-cache.tgz -C /home/ghst \
     && rm /tmp/tuf-cache.tgz \
@@ -51,7 +50,7 @@ RUN apk add --no-cache unzip \
 ENV TRIVY_CACHE_DIR=/opt/trivy-cache \
     TRIVY_SKIP_DB_UPDATE=true \
     TRIVY_OFFLINE_SCAN=true
-COPY verified-binaries/trivy-db/ "${TRIVY_CACHE_DIR}/"
+COPY --chown=ghst:ghst verified-binaries/trivy-db/ "${TRIVY_CACHE_DIR}/"
 
 # Non-root user
 USER ghst
