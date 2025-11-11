@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: Avarko/gh-security-toolkit
+  IMAGE_NAME: avarko/gh-security-toolkit
   CONTEXT: ./cli
 
 jobs:
@@ -155,6 +155,17 @@ jobs:
           tar -xzf trivy.tgz trivy
           install -m 0755 trivy ${{ env.CONTEXT }}/verified-binaries/trivy
 
+      - name: Download Trivy DBs
+        id: trivy-db
+        run: |
+          set -euo pipefail
+          TRIVY_BIN="${{ env.CONTEXT }}/verified-binaries/trivy"
+          TRIVY_DB_DIR="${{ env.CONTEXT }}/verified-binaries/trivy-db"
+
+          mkdir -p "$TRIVY_DB_DIR"
+          "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" image --download-db-only
+          "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" image --download-java-db-only
+
       - name: Resolve TruffleHog
         id: trufflehog
         env:
@@ -165,7 +176,10 @@ jobs:
           ver_trufflehog=$(gh api repos/trufflesecurity/trufflehog/releases/latest --jq .tag_name)
           echo "ver_trufflehog=$ver_trufflehog" >> "$GITHUB_OUTPUT"
 
-          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/trufflehog_${ver_trufflehog#v}_linux_amd64.tar.gz" -o trufflehog.tgz
+          # Download with exact filename from checksums.txt
+          TRUFFLEHOG_FILE="trufflehog_${ver_trufflehog#v}_linux_amd64.tar.gz"
+
+          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/${TRUFFLEHOG_FILE}" -o "${TRUFFLEHOG_FILE}"
           curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/trufflehog_${ver_trufflehog#v}_checksums.txt" -o trufflehog-checksums.txt
           curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/trufflehog_${ver_trufflehog#v}_checksums.txt.sig" -o trufflehog-checksums.txt.sig
           curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/trufflehog_${ver_trufflehog#v}_checksums.txt.pem" -o trufflehog-checksums.txt.pem
@@ -178,7 +192,7 @@ jobs:
 
           sha256sum --ignore-missing -c trufflehog-checksums.txt
 
-          tar -xzf trufflehog.tgz trufflehog
+          tar -xzf "${TRUFFLEHOG_FILE}" trufflehog
           install -m 0755 trufflehog ${{ env.CONTEXT }}/verified-binaries/trufflehog
 
       # ---------- Build & push with verified binaries ----------
@@ -210,6 +224,13 @@ jobs:
       id-token: write      # OIDC for signing
       attestations: write  # GitHub Attestations store
     steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
@@ -232,6 +253,7 @@ jobs:
     # Writes an OCI attestation alongside the image in GHCR
     permissions:
       contents: read
+      actions: read
       id-token: write    # OIDC for signing
       packages: write    # push attestation to GHCR
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
@@ -274,22 +296,41 @@ jobs:
           set -euo pipefail
           IMG="${{ needs.build.outputs.image_ref }}@${{ needs.build.outputs.image_digest }}"
           echo "Verifying SLSA provenance for $IMG"
+
+          # SLSA verifier requires either a git tag or uses commit SHA
+          # Since manual-latest is not a git tag, verify against commit SHA
           slsa-verifier verify-image "$IMG" \
             --source-uri "github.com/${{ github.repository }}" \
-            --source-tag "${{ github.event.inputs.docker-image-tag }}"
+            --print-provenance
 
   verify_github_store:
     name: Verify GitHub Attestations presence
     if: github.repository == 'Avarko/gh-security-toolkit'
-    needs: [provenance_github_store]
+    needs: [build, provenance_github_store, sbom]
     runs-on: ubuntu-latest
-    permissions: read-all
+    permissions:
+      contents: read
+      packages: read
+      attestations: read
     steps:
-      - name: Check attestation presence via GH API
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify attestations via GH CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Lists latest attestations; you can refine with filters when GH expands the API
-          gh api repos/${{ github.repository }}/attestations \
-            --method GET --jq '.[] | .predicateType' \
-            | grep -q 'slsa.dev/provenance' && echo "Attestation present ✅" || (echo "No provenance in GH store" && exit 1)
+          # Use oci:// prefix for container images
+          SUBJECT="oci://${{ needs.build.outputs.image_ref }}@${{ needs.build.outputs.image_digest }}"
+
+          echo "Verifying attestations for: $SUBJECT"
+
+          # Verify attestation (checks both provenance and SBOM)
+          gh attestation verify "$SUBJECT" \
+            --owner ${{ github.repository_owner }} \
+            && echo "✅ Attestations verified successfully!" \
+            || (echo "❌ No valid attestation found" && exit 1)
