@@ -5,46 +5,40 @@
 # All commands are namespaced under sec/ to avoid conflicts
 # ============================================================================
 
-GHST_VERSION ?= v1.0.0
-GHST_IMAGE ?= ghcr.io/avarko/gh-security-toolkit:$(GHST_VERSION)
-DOCKER_CMD ?= docker
+__GHST_VERSION ?= v1.0.0
+__GHST_IMAGE ?= ghcr.io/avarko/gh-security-toolkit:$(__GHST_VERSION)
+__GHST_DOCKER_CMD ?= docker
 
 # Docker options: Mount only current directory (read-only option available)
-GHST_MOUNT_RO ?= true
-ifeq ($(GHST_MOUNT_RO),true)
-	GHST_DOCKER_OPTS := --rm -v $(PWD):/workspace:ro -w /workspace
+__GHST_MOUNT_RO ?= true
+ifeq ($(__GHST_MOUNT_RO),true)
+	__GHST_DOCKER_OPTS := --rm -v $(PWD):/workspace:ro -w /workspace
 else
-	GHST_DOCKER_OPTS := --rm -v $(PWD):/workspace -w /workspace
+	__GHST_DOCKER_OPTS := --rm -v $(PWD):/workspace -w /workspace
 endif
 
 # Output format options
-TRIVY_FORMAT ?= table
-TRIVY_TIMEOUT ?= 5m
+__GHST_TRIVY_FORMAT ?= table
+__GHST_TRIVY_TIMEOUT ?= 5m
 
 # ============================================================================
 # Trivy - Automatically uses .trivy.yaml if present
 # ============================================================================
 
-.PHONY: sec/trivy/fs
-sec/trivy/fs: ## Scan filesystem (uses .trivy.yaml config)
+.PHONY: sec/scan/trivy/fs
+sec/scan/trivy/fs: # Scan filesystem (uses .trivy.yaml config)
 	@echo "🔍 Scanning filesystem with Trivy..."
 	@test -f .trivy.yaml && echo "ℹ️  Using .trivy.yaml configuration" || true
-	$(DOCKER_CMD) run $(GHST_DOCKER_OPTS) $(GHST_IMAGE) \
-	trivy fs . --format $(TRIVY_FORMAT) --timeout $(TRIVY_TIMEOUT)
+	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) $(__GHST_IMAGE) \
+	trivy fs . --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
-.PHONY: sec/trivy/image
-sec/trivy/image: ## Scan Docker image (IMAGE=name:tag)
+.PHONY: sec/scan/trivy/img
+sec/scan/trivy/img: # Scan Docker image (IMAGE=name:tag)
 	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/trivy/image IMAGE=name:tag" && exit 1)
 	@echo "🔍 Scanning image $(IMAGE)..."
-	$(DOCKER_CMD) run $(GHST_DOCKER_OPTS) \
+	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	-v /var/run/docker.sock:/var/run/docker.sock \
-	$(GHST_IMAGE) trivy image $(IMAGE) --format $(TRIVY_FORMAT)
-
-# Quick scans (override config for fast pre-push checks)
-.PHONY: sec/trivy/critical
-sec/trivy/critical: ## Quick: CRITICAL vulnerabilities only
-	$(DOCKER_CMD) run $(GHST_DOCKER_OPTS) $(GHST_IMAGE) \
-	trivy fs . --severity CRITICAL --format table
+	$(__GHST_IMAGE) trivy image $(IMAGE) --format $(__GHST_TRIVY_FORMAT)
 
 # ============================================================================
 # Semgrep - Automatically uses .semgrep.yaml if present
@@ -53,16 +47,16 @@ sec/trivy/critical: ## Quick: CRITICAL vulnerabilities only
 SEMGREP_IMAGE_TAG ?= latest
 SEMGREP_DOCKER_OPTS := --rm -v $(PWD):/src:ro -w /src
 
-.PHONY: sec/semgrep
-sec/semgrep: ## Scan code with Semgrep (uses .semgrep.yaml config)
+.PHONY: sec/scan/semgrep
+sec/scan/semgrep: # Scan code with Semgrep (uses .semgrep.yaml config)
 	@echo "🔍 Scanning code with Semgrep..."
 	@if [ -f .semgrep.yaml ] || [ -f .semgrep.yml ]; then \
 		echo "ℹ️  Using .semgrep.yaml configuration"; \
-		$(DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) semgrep/semgrep:$(SEMGREP_IMAGE_TAG) \
+		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) semgrep/semgrep:$(SEMGREP_IMAGE_TAG) \
 			semgrep scan --config=.semgrep.yaml --metrics=off .; \
 	else \
 		echo "ℹ️  Using default rulesets"; \
-		$(DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) semgrep/semgrep:$(SEMGREP_IMAGE_TAG) \
+		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) semgrep/semgrep:$(SEMGREP_IMAGE_TAG) \
 			semgrep scan \
 			--config p/owasp-top-ten \
 			--config p/java \
@@ -78,32 +72,28 @@ sec/semgrep: ## Scan code with Semgrep (uses .semgrep.yaml config)
 # Combined Scans
 # ============================================================================
 
-.PHONY: sec/scan-all
-sec/scan-all: sec/trivy/fs sec/semgrep ## Run all security scanners
+.PHONY: sec/scan
+sec/scan: sec/scan/trivy/fs sec/scan/semgrep ## Full scan. Subcommands: sec/scan/[trivy/fs,trivy/img IMAGE=<Docker img tag>,/semgrep,/clean,/help].
 	@echo "✅ All scans complete"
-
-.PHONY: sec/scan-quick
-sec/scan-quick: sec/trivy/critical ## Quick pre-push check
-	@echo "✅ Quick check complete"
 
 # ============================================================================
 # Maintenance
 # ============================================================================
 
-.PHONY: sec/clean-docker
-sec/clean: ## Clean Docker: remove gh-security-toolkit image
+.PHONY: sec/scan/clean
+sec/scan/clean: # Remove gh-security-toolkit image
 	@echo "🧹 Cleaning gh-security-toolkit Docker image..."
-	@$(DOCKER_CMD) ps -a -q --filter "ancestor=$(GHST_IMAGE)" | xargs -r $(DOCKER_CMD) stop 2>/dev/null || true
-	@$(DOCKER_CMD) ps -a -q --filter "ancestor=$(GHST_IMAGE)" | xargs -r $(DOCKER_CMD) rm 2>/dev/null || true
-	@$(DOCKER_CMD) rmi -f $(GHST_IMAGE) 2>/dev/null || echo "ℹ️  Image $(GHST_IMAGE) not found (already clean)"
+	@$(__GHST_DOCKER_CMD) ps -a -q --filter "ancestor=$(__GHST_IMAGE)" | xargs -r $(__GHST_DOCKER_CMD) stop 2>/dev/null || true
+	@$(__GHST_DOCKER_CMD) ps -a -q --filter "ancestor=$(__GHST_IMAGE)" | xargs -r $(__GHST_DOCKER_CMD) rm 2>/dev/null || true
+	@$(__GHST_DOCKER_CMD) rmi -f $(__GHST_IMAGE) 2>/dev/null || echo "ℹ️  Image $(__GHST_IMAGE) not found (already clean)"
 	@echo "✅ Docker cleanup complete. Next run will pull fresh image."
 
 # ============================================================================
 # Help
 # ============================================================================
 
-.PHONY: sec/help
-sec/help: ## Show security scanner commands
+.PHONY: sec/scan/help
+sec/scan/help: # Print help
 	@echo "gh-security-toolkit commands (sec/ namespace):"
-	@grep -E '^sec/[a-zA-Z_/-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+	@grep -E '^sec/[a-zA-Z_/-]+:.*?# .*$$' $(MAKEFILE_LIST) | \
 	awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
