@@ -48,7 +48,7 @@ sec/scan/trivy/img: # Scan Docker image (IMAGE=name:tag)
 # ============================================================================
 
 SEMGREP_IMAGE_TAG ?= latest
-SEMGREP_DOCKER_OPTS := --rm --network=none -v $(PWD):/src:ro -w /src
+SEMGREP_DOCKER_OPTS := --rm -v $(PWD):/src:ro -w /src
 
 .PHONY: sec/scan/semgrep
 sec/scan/semgrep: # Scan code with Semgrep (uses .semgrep.yaml config)
