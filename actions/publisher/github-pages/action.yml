@@ -52,8 +52,8 @@ inputs:
     description: "Trivy version"
     required: false
     default: ""
-  semgrep_version:
-    description: "Semgrep version"
+  opengrep_version:
+    description: "Opengrep version"
     required: false
     default: ""
   toolkit_version:
@@ -166,7 +166,7 @@ runs:
           --arg ci_job_name "${{ inputs.ci_job_name }}" \
           --arg ci_job_url "${{ inputs.ci_job_url }}" \
           --arg trivy_version "${{ inputs.trivy_version }}" \
-          --arg semgrep_version "${{ inputs.semgrep_version }}" \
+          --arg opengrep_version "${{ inputs.opengrep_version }}" \
           --arg toolkit_version "${{ inputs.toolkit_version }}" \
           '{
             timestamp: $ts,
@@ -181,7 +181,7 @@ runs:
               ci_job_name: $ci_job_name,
               ci_job_url: $ci_job_url,
               trivy_version: $trivy_version,
-              semgrep_version: $semgrep_version,
+              opengrep_version: $opengrep_version,
               toolkit_version: $toolkit_version
             }
           }' > "$META_FILE"

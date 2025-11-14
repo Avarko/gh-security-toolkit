@@ -231,10 +231,10 @@ public class GitHubPagesBuilder {
         try {
             JsonObject trivyFs = loadJson(scanPath.resolve("trivy-fs-results.json"));
             JsonObject trivyImage = loadJson(scanPath.resolve("trivy-image-results.json"));
-            JsonObject semgrep = loadJson(scanPath.resolve("semgrep-results.json"));
+            JsonObject opengrep = loadJson(scanPath.resolve("opengrep-results.json"));
             boolean hasDependabot = Files.exists(scanPath.resolve("DEPENDABOT_SUMMARY.md"));
 
-            return transformer.extractStats(trivyFs, trivyImage, semgrep, hasDependabot);
+            return transformer.extractStats(trivyFs, trivyImage, opengrep, hasDependabot);
         } catch (Exception e) {
             System.err.println("⚠️  Failed to load stats for " + scanPath + ": " + e.getMessage());
             return new ScanStats();

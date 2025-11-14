@@ -8,9 +8,9 @@ public class ScanStats {
     public VulnStats trivyFsMisconfig = new VulnStats();
     public VulnStats trivyImage = new VulnStats();
     public VulnStats trivyImageMisconfig = new VulnStats();
-    public int semgrepErrors = 0;
-    public int semgrepWarnings = 0;
-    public int semgrepInfo = 0;
+    public int opengrepErrors = 0;
+    public int opengrepWarnings = 0;
+    public int opengrepInfo = 0;
     public boolean hasDependabot = false;
 
     public static class VulnStats {

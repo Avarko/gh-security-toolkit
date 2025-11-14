@@ -39,10 +39,10 @@
       <span class="footer-missing" title="Trivy version not provided">trivy</span>
     </#if>
 
-    <#if footer.semgrep_version?has_content>
-      | <a href="https://github.com/semgrep/semgrep" target="_semgrep">semgrep ${footer.semgrep_version}</a>
+    <#if footer.opengrep_version?has_content>
+      | <a href="https://github.com/opengrep/opengrep" target="_opengrep">opengrep ${footer.opengrep_version}</a>
     <#else>
-      | <span class="footer-missing" title="Semgrep version not provided">semgrep</span>
+      | <span class="footer-missing" title="Opengrep version not provided">opengrep</span>
     </#if>
 
     <#if footer.toolkit_version?has_content>
@@ -66,10 +66,10 @@
       <span class="footer-missing" title="Trivy Image scan not available">📄 Trivy Image</span>
     </#if>
     |
-    <#if jsonSemgrepPath??>
-      <a href="${jsonSemgrepPath}" target="_json_semgrep">📄 Semgrep</a>
+    <#if jsonOpengrepPath??>
+      <a href="${jsonOpengrepPath}" target="_json_opengrep">📄 Opengrep</a>
     <#else>
-      <span class="footer-missing" title="Semgrep scan not available">📄 Semgrep</span>
+      <span class="footer-missing" title="Opengrep scan not available">📄 Opengrep</span>
     </#if>
     |
     <a href="scan-metadata.json" target="_json_metadata">📄 Metadata</a>

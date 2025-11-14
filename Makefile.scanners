@@ -10,12 +10,19 @@ __GHST_IMAGE ?= ghcr.io/avarko/gh-security-toolkit:$(__GHST_VERSION)
 __GHST_DOCKER_CMD ?= docker
 
 # Docker options: Mount only current directory (read-only option available)
-# Network isolation: --network=none ensures air-gapped execution (no data leaves your machine)
 __GHST_MOUNT_RO ?= true
+
+# Mount Maven and Gradle caches if they exist
+__M2_EXISTS        := $(shell [ -d "$$HOME/.m2/repository" ] && echo yes || echo no)
+__GRADLE_EXISTS    := $(shell [ -d "$$HOME/.gradle/caches/modules-2" ] && echo yes || echo no)
+__M2_MOUNT       := $(if $(filter yes,$(__M2_EXISTS)),-v $$HOME/.m2/repository:/home/ghst/.m2/repository:ro,)
+__GRADLE_MOUNT   := $(if $(filter yes,$(__GRADLE_EXISTS)),-v $$HOME/.gradle/caches/modules-2:/home/ghst/.gradle/caches/modules-2:ro,)
+
+# Network isolation: --network=none ensures air-gapped execution (no data leaves your machine)
 ifeq ($(__GHST_MOUNT_RO),true)
-	__GHST_DOCKER_OPTS := --rm --network=none -v $(PWD):/workspace:ro -w /workspace
+	__GHST_DOCKER_OPTS := --rm --network=none  -v $(PWD):/workspace:ro $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
 else
-	__GHST_DOCKER_OPTS := --rm --network=none -v $(PWD):/workspace -w /workspace
+	__GHST_DOCKER_OPTS := --rm --network=none-v $(PWD):/workspace $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
 endif
 
 # Output format options
@@ -28,39 +35,43 @@ __GHST_TRIVY_TIMEOUT ?= 5m
 
 .PHONY: sec/scan/trivy/fs
 sec/scan/trivy/fs: # Scan filesystem (uses .trivy.yaml config)
-	@echo "🔍 Scanning filesystem with Trivy..."
+	@echo "🔍 Scanning filesystem with Trivy (offline mode)..."
 	@test -f .trivy.yaml && echo "ℹ️  Using .trivy.yaml configuration" || true
-	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) $(__GHST_IMAGE) \
-	trivy fs . --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
+	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
+	-e TRIVY_SKIP_DB_UPDATE=true \
+	-e TRIVY_OFFLINE_SCAN=true \
+	$(__GHST_IMAGE) trivy fs . --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/img
 sec/scan/trivy/img: # Scan Docker image (IMAGE=name:tag)
 	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" && exit 1)
-	@echo "🔍 Scanning image $(IMAGE)..."
+	@echo "🔍 Scanning image $(IMAGE) (offline mode)..."
 	@echo "ℹ️  Note: Docker socket access required (network isolation disabled for this scan)"
-	$(__GHST_DOCKER_CMD) run --rm \
+	$(__GHST_DOCKER_CMD) run --rm --network=none \
 	-v /var/run/docker.sock:/var/run/docker.sock \
 	-v $(PWD):/workspace:ro -w /workspace \
+	-e TRIVY_SKIP_DB_UPDATE=true \
+	-e TRIVY_OFFLINE_SCAN=true \
 	$(__GHST_IMAGE) trivy image $(IMAGE) --format $(__GHST_TRIVY_FORMAT)
 
 # ============================================================================
-# Semgrep - Automatically uses .semgrep.yaml if present
+# Opengrep - Automatically uses .opengrep.yaml if present
 # ============================================================================
 
 SEMGREP_IMAGE_TAG ?= latest
 SEMGREP_DOCKER_OPTS := --rm -v $(PWD):/src:ro -w /src
 
-.PHONY: sec/scan/semgrep
-sec/scan/semgrep: # Scan code with Semgrep (uses .semgrep.yaml config)
-	@echo "🔍 Scanning code with Semgrep..."
-	@if [ -f .semgrep.yaml ] || [ -f .semgrep.yml ]; then \
-		echo "ℹ️  Using .semgrep.yaml configuration"; \
-		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) semgrep/semgrep:$(SEMGREP_IMAGE_TAG) \
-			semgrep scan --config=.semgrep.yaml --metrics=off .; \
+.PHONY: sec/scan/opengrep
+sec/scan/opengrep: # Scan code with Opengrep (uses .opengrep.yaml config)
+	@echo "🔍 Scanning code with Opengrep..."
+	@if [ -f .opengrep.yaml ] || [ -f .opengrep.yml ]; then \
+		echo "ℹ️  Using .opengrep.yaml configuration"; \
+		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) opengrep/opengrep:$(SEMGREP_IMAGE_TAG) \
+			opengrep scan --config=.opengrep.yaml --metrics=off .; \
 	else \
 		echo "ℹ️  Using default rulesets"; \
-		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) semgrep/semgrep:$(SEMGREP_IMAGE_TAG) \
-			semgrep scan \
+		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) opengrep/opengrep:$(SEMGREP_IMAGE_TAG) \
+			opengrep scan \
 			--config p/owasp-top-ten \
 			--config p/java \
 			--config p/javascript \
@@ -76,7 +87,7 @@ sec/scan/semgrep: # Scan code with Semgrep (uses .semgrep.yaml config)
 # ============================================================================
 
 .PHONY: sec/scan
-sec/scan: sec/scan/trivy/fs sec/scan/semgrep ## Full scan. Subcommands: sec/scan/[trivy/fs,trivy/img IMAGE=<Docker img tag>,/semgrep,/clean,/help].
+sec/scan: sec/scan/trivy/fs sec/scan/opengrep ## Full scan. Subcommands: sec/scan/[trivy/fs,trivy/img IMAGE=<Docker img tag>,/opengrep,/clean,/help].
 	@echo "✅ All scans complete"
 
 # ============================================================================

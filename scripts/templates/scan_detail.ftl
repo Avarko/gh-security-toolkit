@@ -89,14 +89,14 @@
                             </li>
                         </#if>
                     </#if>
-                    <#if hasSemgrepFindings>
-                        <li style="margin: 0.5rem 0;"><a href="#semgrep"
-                                style="text-decoration: none; color: #0366d6; font-weight: 500;">🔍 Semgrep Results</a>
-                            <span style="color: #586069;">(${semgrepFindings?size} findings)</span>
+                    <#if hasOpengrepFindings>
+                        <li style="margin: 0.5rem 0;"><a href="#opengrep"
+                                style="text-decoration: none; color: #0366d6; font-weight: 500;">🔍 Opengrep Results</a>
+                            <span style="color: #586069;">(${opengrepFindings?size} findings)</span>
                         </li>
-                        <#elseif semgrepSummaryMd??>
-                            <li style="margin: 0.5rem 0;"><a href="#semgrep"
-                                    style="text-decoration: none; color: #0366d6; font-weight: 500;">🔍 Semgrep
+                        <#elseif opengrepSummaryMd??>
+                            <li style="margin: 0.5rem 0;"><a href="#opengrep"
+                                    style="text-decoration: none; color: #0366d6; font-weight: 500;">🔍 Opengrep
                                     Results</a></li>
                     </#if>
                     <#if hasDependabot>
@@ -157,18 +157,18 @@
                 </section>
             </#if>
 
-            <#if hasSemgrepFindings>
-                <section class="summary semgrep" id="semgrep">
-                    <h2>Semgrep Results</h2>
-                    <#include "_semgrep_table.ftl">
-                        <#if jsonSemgrepPath??>
-                            <p><a href="${jsonSemgrepPath}" class="json-link">📄 View JSON</a></p>
+            <#if hasOpengrepFindings>
+                <section class="summary opengrep" id="opengrep">
+                    <h2>Opengrep Results</h2>
+                    <#include "_opengrep_table.ftl">
+                        <#if jsonOpengrepPath??>
+                            <p><a href="${jsonOpengrepPath}" class="json-link">📄 View JSON</a></p>
                         </#if>
                 </section>
-                <#elseif semgrepSummaryMd??>
-                    <section class="summary semgrep" id="semgrep">
-                        <h2>Semgrep Summary</h2>
-                        <pre>${semgrepSummaryMd}</pre>
+                <#elseif opengrepSummaryMd??>
+                    <section class="summary opengrep" id="opengrep">
+                        <h2>Opengrep Summary</h2>
+                        <pre>${opengrepSummaryMd}</pre>
                     </section>
             </#if>
 
@@ -181,7 +181,7 @@
                 </section>
             </#if>
 
-            <#if (!hasTrivy) && (!hasSemgrepFindings) && (!hasDependabot)>
+            <#if (!hasTrivy) && (!hasOpengrepFindings) && (!hasDependabot)>
                 <section class="no-issues">
                     <h2>✅ No Security Issues Found!</h2>
                     <p>All scans completed successfully with no vulnerabilities, misconfigurations, or alerts detected.

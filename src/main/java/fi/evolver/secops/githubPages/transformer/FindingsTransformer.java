@@ -24,15 +24,15 @@ public class FindingsTransformer {
         result.trivyImageVulns = extractTrivyVulnerabilities(raw.trivyImage);
         result.trivyImageMisconfigs = extractTrivyMisconfigurations(raw.trivyImage);
 
-        // Transform Semgrep findings
-        result.semgrepFindings = extractSemgrepFindings(raw.semgrep);
+        // Transform Opengrep findings
+        result.opengrepFindings = extractOpengrepFindings(raw.opengrep);
 
         // Extract metadata
         result.metadata = extractMetadata(raw.metadata, "");
 
         // Copy summaries as-is
         result.trivySummary = raw.trivySummary;
-        result.semgrepSummary = raw.semgrepSummary;
+        result.opengrepSummary = raw.opengrepSummary;
         result.dependabotSummary = raw.dependabotSummary;
 
         return result;
@@ -114,14 +114,14 @@ public class FindingsTransformer {
         return findings;
     }
 
-    private List<SemgrepFinding> extractSemgrepFindings(JsonObject semgrepResult) {
-        List<SemgrepFinding> findings = new ArrayList<>();
-        if (semgrepResult == null || !semgrepResult.has("results")) {
+    private List<OpengrepFinding> extractOpengrepFindings(JsonObject opengrepResult) {
+        List<OpengrepFinding> findings = new ArrayList<>();
+        if (opengrepResult == null || !opengrepResult.has("results")) {
             return findings;
         }
 
         try {
-            JsonArray results = semgrepResult.getAsJsonArray("results");
+            JsonArray results = opengrepResult.getAsJsonArray("results");
             for (JsonElement e : results) {
                 JsonObject o = e.getAsJsonObject();
                 String ruleId = getString(o, "check_id", null);
@@ -143,7 +143,7 @@ public class FindingsTransformer {
                     message = getString(extra, "message", null);
                 }
 
-                findings.add(new SemgrepFinding(
+                findings.add(new OpengrepFinding(
                         ruleId,
                         Severity.parse(severityStr),
                         path,
@@ -151,10 +151,10 @@ public class FindingsTransformer {
                         message));
             }
         } catch (Exception e) {
-            System.err.println("⚠️  Failed to parse Semgrep findings: " + e.getMessage());
+            System.err.println("⚠️  Failed to parse Opengrep findings: " + e.getMessage());
         }
 
-        findings.sort(Comparator.comparingInt((SemgrepFinding f) -> f.severity.getRank()).reversed());
+        findings.sort(Comparator.comparingInt((OpengrepFinding f) -> f.severity.getRank()).reversed());
         return findings;
     }
 
@@ -173,7 +173,7 @@ public class FindingsTransformer {
                     getString(footerJson, "ci_job_name", ""),
                     getString(footerJson, "ci_job_url", ""),
                     getString(footerJson, "trivy_version", ""),
-                    getString(footerJson, "semgrep_version", ""),
+                    getString(footerJson, "opengrep_version", ""),
                     getString(footerJson, "toolkit_version", ""));
         }
 
@@ -185,7 +185,7 @@ public class FindingsTransformer {
                 footer);
     }
 
-    public ScanStats extractStats(JsonObject trivyFs, JsonObject trivyImage, JsonObject semgrep,
+    public ScanStats extractStats(JsonObject trivyFs, JsonObject trivyImage, JsonObject opengrep,
             boolean hasDependabot) {
         ScanStats stats = new ScanStats();
 
@@ -194,22 +194,22 @@ public class FindingsTransformer {
         stats.trivyImage = parseTrivyVulnStats(trivyImage);
         stats.trivyImageMisconfig = parseTrivyMisconfigStats(trivyImage);
 
-        if (semgrep != null && semgrep.has("results")) {
+        if (opengrep != null && opengrep.has("results")) {
             try {
-                JsonArray results = semgrep.getAsJsonArray("results");
+                JsonArray results = opengrep.getAsJsonArray("results");
                 for (JsonElement e : results) {
                     JsonObject extra = e.getAsJsonObject().getAsJsonObject("extra");
                     if (extra != null && extra.has("severity")) {
                         String sev = extra.get("severity").getAsString().toUpperCase();
                         switch (sev) {
-                            case "ERROR" -> stats.semgrepErrors++;
-                            case "WARNING" -> stats.semgrepWarnings++;
-                            case "INFO" -> stats.semgrepInfo++;
+                            case "ERROR" -> stats.opengrepErrors++;
+                            case "WARNING" -> stats.opengrepWarnings++;
+                            case "INFO" -> stats.opengrepInfo++;
                         }
                     }
                 }
             } catch (Exception e) {
-                System.err.println("⚠️  Failed to parse Semgrep stats: " + e.getMessage());
+                System.err.println("⚠️  Failed to parse Opengrep stats: " + e.getMessage());
             }
         }
 
@@ -303,10 +303,10 @@ public class FindingsTransformer {
         public List<TrivyFinding> trivyFsMisconfigs = new ArrayList<>();
         public List<TrivyFinding> trivyImageVulns = new ArrayList<>();
         public List<TrivyFinding> trivyImageMisconfigs = new ArrayList<>();
-        public List<SemgrepFinding> semgrepFindings = new ArrayList<>();
+        public List<OpengrepFinding> opengrepFindings = new ArrayList<>();
         public ScanMetadata metadata;
         public String trivySummary;
-        public String semgrepSummary;
+        public String opengrepSummary;
         public String dependabotSummary;
     }
 }
