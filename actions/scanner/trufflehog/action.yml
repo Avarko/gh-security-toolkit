@@ -1,0 +1,214 @@
+name: "TruffleHog Scanner"
+description: "Lightweight wrapper for TruffleHog to scan Git repositories for leaked credentials and secrets. Suitable for PR checks and pre-commit hooks."
+
+inputs:
+  path:
+    description: "Path to Git repository or directory to scan"
+    required: false
+    default: "."
+
+  base:
+    description: "Base commit/branch to scan from (for incremental scans, e.g., 'main' or commit SHA)"
+    required: false
+    default: ""
+
+  head:
+    description: "Head commit/branch to scan to (defaults to current HEAD)"
+    required: false
+    default: "HEAD"
+
+  scan_type:
+    description: "Scan type: 'git' (git history), 'filesystem' (current files only), or 'auto' (detect)"
+    required: false
+    default: "auto"
+
+  only_verified:
+    description: "Only show verified secrets (true/false)"
+    required: false
+    default: "false"
+
+  fail_on_findings:
+    description: "Fail the workflow if secrets are found (true/false)"
+    required: false
+    default: "true"
+
+  extra_args:
+    description: "Additional arguments to pass to TruffleHog CLI"
+    required: false
+    default: ""
+
+outputs:
+  findings_count:
+    description: "Number of secrets found"
+    value: ${{ steps.scan.outputs.findings_count }}
+
+  has_verified:
+    description: "Whether verified secrets were found (true/false)"
+    value: ${{ steps.scan.outputs.has_verified }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Determine scan configuration
+      id: config
+      shell: bash
+      run: |
+        SCAN_PATH="${{ inputs.path }}"
+        SCAN_TYPE="${{ inputs.scan_type }}"
+
+        # Auto-detect scan type
+        if [ "$SCAN_TYPE" = "auto" ]; then
+          if [ -d "$SCAN_PATH/.git" ]; then
+            SCAN_TYPE="git"
+            echo "ℹ️  Auto-detected: Git repository scan"
+          else
+            SCAN_TYPE="filesystem"
+            echo "ℹ️  Auto-detected: Filesystem scan"
+          fi
+        fi
+
+        echo "scan_type=$SCAN_TYPE" >> "$GITHUB_OUTPUT"
+
+        # Determine if this is an incremental scan
+        if [ -n "${{ inputs.base }}" ] && [ "$SCAN_TYPE" = "git" ]; then
+          echo "incremental=true" >> "$GITHUB_OUTPUT"
+          echo "📈 Incremental scan: ${{ inputs.base }}..${{ inputs.head }}"
+        else
+          echo "incremental=false" >> "$GITHUB_OUTPUT"
+          if [ "$SCAN_TYPE" = "git" ]; then
+            echo "📜 Full Git history scan"
+          else
+            echo "📁 Filesystem scan (current files only)"
+          fi
+        fi
+
+        # Build results filter
+        if [ "${{ inputs.only_verified }}" = "true" ]; then
+          echo "results_filter=verified" >> "$GITHUB_OUTPUT"
+          echo "🔍 Filter: Verified secrets only"
+        else
+          echo "results_filter=verified,unknown" >> "$GITHUB_OUTPUT"
+          echo "🔍 Filter: Verified + Unknown"
+        fi
+
+    - name: Run TruffleHog scan
+      id: scan
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      run: |
+        set +e  # Don't exit on TruffleHog findings
+
+        SCAN_TYPE="${{ steps.config.outputs.scan_type }}"
+        RESULTS_FILTER="${{ steps.config.outputs.results_filter }}"
+        BASE="${{ inputs.base }}"
+        HEAD="${{ inputs.head }}"
+        EXTRA_ARGS="${{ inputs.extra_args }}"
+
+        # Build TruffleHog command
+        if [ "$SCAN_TYPE" = "git" ]; then
+          if [ -n "$BASE" ]; then
+            # Incremental Git scan
+            CMD="trufflehog git file://. --since-commit=$BASE --branch=$HEAD --json --results=$RESULTS_FILTER $EXTRA_ARGS"
+          else
+            # Full Git history scan
+            CMD="trufflehog git file://. --branch=$HEAD --json --results=$RESULTS_FILTER $EXTRA_ARGS"
+          fi
+        else
+          # Filesystem scan
+          CMD="trufflehog filesystem . --json --results=$RESULTS_FILTER $EXTRA_ARGS"
+        fi
+
+        echo "🔐 Running TruffleHog..."
+        echo "Command: $CMD"
+
+        # Run scan and capture output
+        TEMP_OUTPUT=$(mktemp)
+        eval "$CMD" > "$TEMP_OUTPUT" 2>&1
+        EXIT_CODE=$?
+
+        # Count findings
+        FINDINGS_COUNT=0
+        VERIFIED_COUNT=0
+
+        if [ -f "$TEMP_OUTPUT" ]; then
+          # Count total findings (JSON lines)
+          FINDINGS_COUNT=$(grep -c '{"SourceMetadata"' "$TEMP_OUTPUT" 2>/dev/null || echo "0")
+
+          # Count verified findings
+          VERIFIED_COUNT=$(grep '"Verified":true' "$TEMP_OUTPUT" 2>/dev/null | wc -l || echo "0")
+
+          # Show findings in output
+          if [ "$FINDINGS_COUNT" -gt 0 ]; then
+            echo ""
+            echo "⚠️  Found $FINDINGS_COUNT potential secret(s) ($VERIFIED_COUNT verified)"
+            echo ""
+            cat "$TEMP_OUTPUT"
+          else
+            echo "✅ No secrets found"
+          fi
+        fi
+
+        # Set outputs
+        echo "findings_count=$FINDINGS_COUNT" >> "$GITHUB_OUTPUT"
+
+        if [ "$VERIFIED_COUNT" -gt 0 ]; then
+          echo "has_verified=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "has_verified=false" >> "$GITHUB_OUTPUT"
+        fi
+
+        # Cleanup
+        rm -f "$TEMP_OUTPUT"
+
+        # Exit with appropriate code
+        if [ "${{ inputs.fail_on_findings }}" = "true" ] && [ "$FINDINGS_COUNT" -gt 0 ]; then
+          echo ""
+          echo "❌ Scan failed: Secrets detected"
+          exit 1
+        fi
+
+        exit 0
+
+    - name: Display summary
+      shell: bash
+      if: always()
+      run: |
+        echo "### 🔐 TruffleHog Secret Scan" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        # Scan configuration
+        echo "**Configuration:**" >> $GITHUB_STEP_SUMMARY
+        echo "- Scan type: ${{ steps.config.outputs.scan_type }}" >> $GITHUB_STEP_SUMMARY
+
+        if [ "${{ steps.config.outputs.incremental }}" = "true" ]; then
+          echo "- Mode: Incremental (\`${{ inputs.base }}..${{ inputs.head }}\`)" >> $GITHUB_STEP_SUMMARY
+        else
+          if [ "${{ steps.config.outputs.scan_type }}" = "git" ]; then
+            echo "- Mode: Full Git history" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Mode: Filesystem (current files)" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+
+        echo "- Filter: ${{ steps.config.outputs.results_filter }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        # Results
+        FINDINGS="${{ steps.scan.outputs.findings_count }}"
+        HAS_VERIFIED="${{ steps.scan.outputs.has_verified }}"
+
+        echo "**Results:**" >> $GITHUB_STEP_SUMMARY
+
+        if [ "$FINDINGS" = "0" ]; then
+          echo "✅ No secrets found" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️  Found **$FINDINGS** potential secret(s)" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$HAS_VERIFIED" = "true" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "🚨 **Verified secrets detected!** These are confirmed credentials." >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the [action logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details." >> $GITHUB_STEP_SUMMARY
+        fi

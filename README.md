@@ -305,7 +305,25 @@ severity:
 
 ---
 
-## 🔐 Security considerations
+## 🔐 Security considerations and data privacy
+
+### Data privacy and air-gapped execution
+
+**Your data stays with you — no external communication during scans:**
+
+**Local development (Makefile):**
+- ✅ **Air-gapped filesystem scans**: `make sec/scan/trivy/fs` and `make sec/scan/semgrep` run with `--network=none` Docker isolation
+- ✅ **Offline vulnerability databases**: The toolkit Docker image includes pre-downloaded Trivy DB, VEX Hub, and Cosign TUF cache
+- ✅ **Read-only workspace mounts**: Your source code is mounted read-only (`:ro`) by default
+- ✅ **No telemetry**: Scanners run with metrics disabled (`--metrics=off` for Semgrep, offline mode for Trivy)
+- ⚠️ **Docker image scans** (`make sec/scan/trivy/img`): Requires Docker socket access for local convenience (network isolation disabled for this target only)
+
+**GitHub Actions CI/CD:**
+- ✅ **Air-gapped image scanning**: Docker images are saved as `.tar` files and scanned without Docker socket access
+- ✅ **Network communication only for publishing**: Results are published to GitHub Releases/Pages (within your repository)
+- ✅ **Optional integrations**: Slack notifications (if `SLACK_BOT_TOKEN` configured) and Dependabot API (if `dependabot_gh_token` provided)
+
+**When you run `make sec/scan/trivy/fs` or `make sec/scan/semgrep` locally, nothing leaves your machine.**
 
 ### Private Pages enforcement
 
@@ -381,7 +399,7 @@ with:
 
 ---
 
-## 🛠️ Local development
+## 🛠️ Local development of gh-security-toolkit
 
 ### Run JBang scripts
 
