@@ -9,7 +9,7 @@
         </tr>
     </thead>
     <tbody>
-        <#list semgrepFindings as f>
+        <#list opengrepFindings as f>
             <tr>
                 <td class="rule-cell">${f.ruleId}</td>
                 <td class="${f.cssClass}">${f.severityText}</td>

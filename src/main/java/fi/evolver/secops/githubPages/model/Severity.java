@@ -4,7 +4,7 @@ import java.util.Locale;
 
 /**
  * Unified severity enumeration for all security findings.
- * Maps various source formats (Trivy, Semgrep) to a consistent model.
+ * Maps various source formats (Trivy, Opengrep) to a consistent model.
  */
 public enum Severity {
     CRITICAL(5, "severity-critical", "C"),
@@ -40,7 +40,7 @@ public enum Severity {
 
     /**
      * Parse severity from string (case-insensitive, trimmed).
-     * 
+     *
      * @param value severity string from JSON
      * @return normalized Severity enum
      */

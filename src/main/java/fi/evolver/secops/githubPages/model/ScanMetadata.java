@@ -31,7 +31,7 @@ public class ScanMetadata {
         public final String ci_job_name;
         public final String ci_job_url;
         public final String trivy_version;
-        public final String semgrep_version;
+        public final String opengrep_version;
         public final String toolkit_version;
 
         public FooterMetadata(
@@ -40,14 +40,14 @@ public class ScanMetadata {
                 String ci_job_name,
                 String ci_job_url,
                 String trivy_version,
-                String semgrep_version,
+                String opengrep_version,
                 String toolkit_version) {
             this.app_docs_url = app_docs_url;
             this.app_issues_url = app_issues_url;
             this.ci_job_name = ci_job_name;
             this.ci_job_url = ci_job_url;
             this.trivy_version = trivy_version;
-            this.semgrep_version = semgrep_version;
+            this.opengrep_version = opengrep_version;
             this.toolkit_version = toolkit_version;
         }
 
