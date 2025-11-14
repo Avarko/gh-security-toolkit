@@ -312,20 +312,20 @@ severity:
 **Your data stays with you — no external communication during scans:**
 
 **Local development (Makefile):**
-- ✅ **Air-gapped Trivy filesystem scan**: `make sec/scan/trivy/fs` run with `--network=none` Docker isolation
-- ✅ **Offline vulnerability databases**: The toolkit Docker image includes pre-downloaded Trivy DB, VEX Hub, and Cosign TUF cache
+- ✅ **Offline vulnerability databases**: The toolkit Docker image includes pre-downloaded Trivy DB, Semgrep rules, VEX Hub, and Cosign TUF cache
 - ✅ **Read-only workspace mounts**: Your source code is mounted read-only (`:ro`) by default
 - ✅ **No telemetry**: Scanners run with metrics disabled (`--metrics=off` for Semgrep, offline mode for Trivy)
+- ✅ **Air-gapped / offline scanning**: Scans are executed in a Docker container with `--network=none`, using pre-downloaded databases and utilizing your local Maven and Gradle caches
 - ⚠️ **Docker image scans** (`make sec/scan/trivy/img`): Requires Docker socket access for accessing local Docker image to be scanned
 
 **GitHub Actions CI/CD:**
 - ✅ **Air-gapped image scanning**: Docker images are saved as `.tar` files and scanned without Docker socket access
-- ✅ **Network communication only for publishing**: Results are published to GitHub Releases/Pages (within your repository)
+- ✅ **Network communication only for publishing**: Results are published only to your own git repository's GitHub Releases/Pages
 - ✅ **Optional integrations**: Slack notifications (if `SLACK_BOT_TOKEN` configured) and Dependabot API (if `dependabot_gh_token` provided)
 
-**When you run `make sec/scan/trivy/fs` or `make sec/scan/semgrep` locally, nothing leaves your machine.**
+**Scans keep your source code private.**
 
-### Private Pages enforcement
+### Private GitHub Pages enforcement
 
 GitHub Pages publisher **refuses to deploy** if Pages is configured as public:
 
