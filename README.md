@@ -448,16 +448,6 @@ See individual action READMEs:
 
 ---
 
-## 🤝 Contributing
-
-Contributions welcome! This toolkit is designed to be:
-
-- **Modular**: Each action is independent
-- **Composable**: Use actions individually or via reusable workflow
-- **Extensible**: Add new scanners, publishers, or notifications
-
----
-
 ## 📄 License
 
 MIT License — feel free to fork, extend, and reuse.
