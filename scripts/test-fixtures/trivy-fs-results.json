@@ -9,7 +9,7 @@
                 {
                     "VulnerabilityID": "CVE-2024-1234",
                     "PkgName": "example-package",
-                    "InstalledVersion": "1.0.0",
+                    "InstalledVersion": "1.0.1",
                     "FixedVersion": "1.0.1",
                     "Severity": "HIGH",
                     "Title": "Example vulnerability in example-package",
