@@ -58,19 +58,19 @@ sec/scan/trivy/img: # Scan Docker image (IMAGE=name:tag)
 # Opengrep - Automatically uses .opengrep.yaml if present
 # ============================================================================
 
-SEMGREP_IMAGE_TAG ?= latest
-SEMGREP_DOCKER_OPTS := --rm -v $(PWD):/src:ro -w /src
+OPENGREP_IMAGE_TAG ?= latest
+OPENGREP_DOCKER_OPTS := --rm -v $(PWD):/src:ro -w /src
 
 .PHONY: sec/scan/opengrep
 sec/scan/opengrep: # Scan code with Opengrep (uses .opengrep.yaml config)
 	@echo "🔍 Scanning code with Opengrep..."
 	@if [ -f .opengrep.yaml ] || [ -f .opengrep.yml ]; then \
 		echo "ℹ️  Using .opengrep.yaml configuration"; \
-		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) opengrep/opengrep:$(SEMGREP_IMAGE_TAG) \
+		$(__GHST_DOCKER_CMD) run $(OPENGREP_DOCKER_OPTS) opengrep/opengrep:$(OPENGREP_IMAGE_TAG) \
 			opengrep scan --config=.opengrep.yaml --metrics=off .; \
 	else \
 		echo "ℹ️  Using default rulesets"; \
-		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) opengrep/opengrep:$(SEMGREP_IMAGE_TAG) \
+		$(__GHST_DOCKER_CMD) run $(OPENGREP_DOCKER_OPTS) opengrep/opengrep:$(OPENGREP_IMAGE_TAG) \
 			opengrep scan \
 			--config p/owasp-top-ten \
 			--config p/java \

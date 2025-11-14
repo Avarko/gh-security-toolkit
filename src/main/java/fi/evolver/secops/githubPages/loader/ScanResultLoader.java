@@ -36,7 +36,7 @@ public class ScanResultLoader {
 
         // Load summary markdowns
         data.trivySummary = loadText(outPath.resolve("TRIVY_SUMMARY.md"));
-        data.opengrepSummary = loadText(outPath.resolve("SEMGREP_SUMMARY.md"));
+        data.opengrepSummary = loadText(outPath.resolve("OPENGREP_SUMMARY.md"));
         data.dependabotSummary = loadText(outPath.resolve("DEPENDABOT_SUMMARY.md"));
 
         return data;
