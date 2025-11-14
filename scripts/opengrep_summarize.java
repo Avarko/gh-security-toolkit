@@ -41,7 +41,7 @@ public class opengrep_summarize {
         String title = envOr("TITLE", "Opengrep SAST summary");
 
         Files.createDirectories(Path.of(outdir));
-        String summaryFile = outdir + "/SEMGREP_SUMMARY.md";
+        String summaryFile = outdir + "/OPENGREP_SUMMARY.md";
 
         ObjectMapper om = new ObjectMapper();
         JsonNode root;

@@ -200,7 +200,7 @@ jobs:
           trivy_severity: ${{ inputs.trivy_severity }}
           trivy_output_dir: ${{ steps.setup.outputs.output_dir }}
 
-      # === RUN SEMGREP SCAN ===
+      # === RUN OPENGREP SCAN ===
       - name: Run Opengrep scan
         id: opengrep
         if: ${{ steps.download_fs.outcome == 'success' }}
