@@ -5,7 +5,7 @@
 # All commands are namespaced under sec/ to avoid conflicts
 # ============================================================================
 
-__GHST_VERSION ?= v1.0.0
+__GHST_VERSION ?= v1.0.1
 __GHST_IMAGE ?= ghcr.io/avarko/gh-security-toolkit:$(__GHST_VERSION)
 __GHST_DOCKER_CMD ?= docker
 
