@@ -1,28 +1,63 @@
 # gh-security-toolkit
 
-**GitHub-native security scanning and reporting toolkit for containerized applications.**
+**Security scanning and reporting toolkit for GitHub Actions CI/CD and Makefile integration for local "shift left" scans during development.**
 
-Provides reusable GitHub Actions workflows and components for automated vulnerability scanning, misconfiguration detection, and security reporting with flexible publishing options (GitHub Releases and/or GitHub Pages).
+Provides reusable GitHub Actions workflows and Makefile integration for vulnerability scanning, misconfiguration detection, and security reporting with flexible publishing options (GitHub Releases and/or GitHub Pages).
+
+---
+
+## 📋 Table of contents
+
+- [✨ Overview](#-overview)
+- [🚀 Quick start](#-quick-start)
+- [🎯 Use cases](#-use-cases)
+- [🏗️ Architecture](#-architecture)
+- [🔧 Components](#-components)
+- [📊 GitHub Pages features](#-github-pages-features)
+- [⚙️ Configuration](#️-configuration)
+- [🔐 Security considerations](#-security-considerations)
+- [📚 Advanced topics](#-advanced-topics)
+- [🛠️ Local development](#️-local-development)
+- [📖 Examples](#-examples)
 
 ---
 
 ## ✨ Overview
 
-`gh-security-toolkit` is a modular security scanning solution that integrates multiple industry-standard tools (Trivy, Semgrep, Dependabot, TruffleHog) into a unified workflow. Results are published as GitHub Releases with retention policies or as interactive HTML reports on GitHub Pages.
+`gh-security-toolkit` is a modular security scanning solution that integrates multiple industry-standard tools into a unified workflow. Results are published as GitHub Releases with retention policies or as interactive HTML reports on GitHub Pages.
 
-**Key Features:**
-- 🔍 **Multi-scanner support**: Trivy (filesystem + Docker images), Semgrep, Dependabot, TruffleHog
-- 📊 **Dual publishing**: GitHub Releases (with automatic cleanup) or GitHub Pages (with scan history)
-- 🏷️ **Channel-based organization**: Separate scan histories per environment (nightly, PR, manual, etc.)
-- 🔒 **Private Pages enforcement**: Refuses to deploy if GitHub Pages is configured as public
-- 📈 **Retention policies**: Automatic cleanup based on count or age
-- 🎨 **Interactive HTML reports**: Sticky footer with metadata, CVE links, JSON downloads
+**Key features:**
+- 🔍 **Multi-scanner support**: currently Trivy (filesystem + Docker images) and Semgrep
+- 📊 **Dual publishing for CI/CD scans**: GitHub Releases (with automatic cleanup) or GitHub Pages (with scan history) with automatic cleanup/retention
+- 🏷️ **Channel-based organization**: Separate CI/CD scan histories per environment (nightly, PR, manual, etc.)
+- 🔒 **Local scans during development** via easy Makefile integration
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick start
 
-### 1. Create artifacts in your build workflow
+### Manual scans during local development
+
+1. Add the following include code in your project's Makefile:
+
+```makefile
+# Avarko/gh-security-toolkit security scanner Makefile inclusion
+include $(shell __GHST_FILE=.ghst/Makefile; \
+	mkdir -p .ghst; \
+	[ -f $$__GHST_FILE ] || curl -fsSL "https://raw.githubusercontent.com/Avarko/gh-security-toolkit/main/Makefile.scanners" -o $$__GHST_FILE; \
+	echo $$__GHST_FILE)
+```
+
+2. Then simply start scanning:
+
+```bash
+make sec/scan/help  # Show all commands
+make sec/scan       # Perform full scan
+```
+
+### GitHub Actions CI/CD
+
+1. Add upload actions in your workflow. These deliver the filesystem and/or Docker image to the scanning job via GitHub Artifacts.
 
 ```yaml
 name: Build
@@ -32,22 +67,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      # Upload filesystem for scanning
+
+      # Upload your working dir's filesystem for scanning
       - uses: Avarko/gh-security-toolkit/actions/uploader/filesystem@main
         with:
-          path: .
-      
-      # Build and upload Docker image
+          path: |     # or simply use . as path
+            src/
+            .github/
+            Dockerfile
+
+      # Build and upload your Docker image for scanning
       - name: Build image
-        run: docker build -t myapp:latest .
-      
+        # build your Docker image as you wish
+
       - uses: Avarko/gh-security-toolkit/actions/uploader/docker-image@main
         with:
-          image_name: myapp:latest
+          image-name: myapp:latest   # refer to your built image tag
 ```
 
-### 2. Run security scan
+2. Add a security scan job. This needs to be a separate job as it references a reuseable workflow.
 
 ```yaml
 name: Security Scan
@@ -60,33 +98,71 @@ jobs:
   scan:
     uses: Avarko/gh-security-toolkit/.github/workflows/security-scan.yml@main
     with:
-      channel: nightly-master
+      channel: nightly-master   # choose any meaningful name for scans done by this job
       publish_to: github-pages  # or "github-release" or "github-release,github-pages"
       branch: ${{ github.ref_name }}
       repository: ${{ github.repository }}
       commit_sha: ${{ github.sha }}
     permissions:
-      contents: write
-      pages: write
-      id-token: write
-      actions: read
+      contents: write       # Required for creating releases and tags
+      id-token: write       # Required for OIDC authentication (e.g., GitHub Pages)
+      pages: write          # Required for deploying to GitHub Pages
+      actions: read         # Required for actions to manage action artifacts
 ```
 
 ---
 
+
+## 🎯 Use cases
+
+### 1. **Shift left development**
+> "As a developer, I want to easily run local vulnerability scans to assess the impact of updates to Docker images, Terraform, application libraries, and utility scripts."
+
+✅ Enable and run local scans with just a few additional lines in the Makefile.
+
+### 2. **Manage findings lifecycle**
+> "As a developer, I want to configure which vulnerabilities and misconfigurations to report, so the results remain actionable."
+
+✅ The toolkit supports `.trivy.yaml` and `.semgrepignore` configuration files to customize what gets scanned and reported.
+
+### 3. **Nightly Continuous Scans**
+> "As a security engineer, I want nightly scans of all main branches with historical diffs and results to GitHub Releases with alerts to Slack."
+
+✅ Use the provided workflow to:
+- build & scan containers,
+- upload results as JSON artifacts or GitHub Releases,
+- compare with previous scans,
+- and send summarized diffs to Slack.
+
+### 4. **Historical Scan Tracking**
+> "As a team, I want to track security scan results over time to understand our security posture trends."
+
+✅ The toolkit publishes scan results to GitHub Releases (with configurable retention policies) and generates GitHub Pages with historical scan comparisons across channels.
+
+### 5. **Multi-Channel Notifications**
+> “As an (secops) engineering lead/product owner, I want summarized vulnerability reports automatically sent to Slack and GitHub.”
+
+✅ Currently provides integration to Slack. Other notifications easy to add.
+
+### 6. **Security Baseline Across Repos**
+> “As a platform team, I want a reusable, uniform scanning standard across all projects.”
+
+✅ The toolkit provides opinionated, versioned workflows and local development scripts you can apply with varying levels of enforcement.
+
+
+---
 ## Architecture
 
 ```
 gh-security-toolkit/
 ├─ .github/workflows/
-│  └─ security-scan.yml          # Reusable workflow
+│  ├─ security-scan.yml          # Reusable workflow
+│  └─ int-manual-build-scanner-cli.yml  # Manual CLI build
 │
 ├─ actions/
 │  ├─ scanner/                   # Scan execution
 │  │  ├─ trivy/                  # Filesystem + Docker image scanning
-│  │  ├─ semgrep/                # SAST scanning
-│  │  ├─ dependabot/             # Dependency alerts
-│  │  └─ trufflehog/             # Secret scanning
+│  │  └─ semgrep/                # SAST scanning
 │  │
 │  ├─ summarizer/                # Result aggregation
 │  │  └─ action.yml
@@ -102,14 +178,30 @@ gh-security-toolkit/
 │  └─ cleanup/
 │     └─ github-release/         # Release retention management
 │
+├─ cli/                          # Docker-based CLI
+│  └─ Dockerfile
+│
 ├─ scripts/                      # JBang processing scripts
 │  ├─ github_pages_builder.java
 │  ├─ semgrep_summarize.java
+│  ├─ slack_integration.java
 │  ├─ trivy_summarize.java
-│  └─ templates/                 # FreeMarker templates
+│  └─ templates/                 # FreeMarker templates for GitHub Pages HTML releases
+│     ├─ _footer.ftl
+│     ├─ _scan_table.ftl
+│     ├─ _semgrep_table.ftl
+│     ├─ _trivy_table.ftl
+│     ├─ channel_index.ftl
+│     ├─ main_index.ftl
+│     └─ scan_detail.ftl
 │
-├─ src/main/java/                # Java model classes
-└─ cli/                          # Docker-based CLI (future)
+└─ src/main/java/fi/evolver/secops/githubPages/  # Java model classes
+   ├─ GitHubPagesBuilder.java
+   ├─ loader/
+   ├─ model/
+   ├─ renderer/
+   ├─ transformer/
+   └─ viewmodel/
 ```
 
 ---
@@ -122,8 +214,6 @@ gh-security-toolkit/
 |---------|------|-------|
 | **Trivy** | Filesystem + Image | Vulnerabilities, Misconfigurations |
 | **Semgrep** | SAST | Code security issues, secrets |
-| **Dependabot** | Dependency | Known vulnerabilities in dependencies |
-| **TruffleHog** | Secret | Hardcoded secrets, credentials |
 
 ### Publishers
 
@@ -132,7 +222,7 @@ gh-security-toolkit/
 | **GitHub Release** | Tagged releases | Retention by count/age, JSON attachments |
 | **GitHub Pages** | Static HTML | Scan history, interactive tables, CVE links |
 
-### Publishing Options
+### Publishing options
 
 ```yaml
 publish_to: "github-release"           # Only releases
@@ -142,9 +232,10 @@ publish_to: "github-release,github-pages"  # Both
 
 ---
 
-## 📊 GitHub Pages Features
+## 📊 GitHub Pages features
 
-**Channel-based organization:**
+**Channel-based organization**
+
 ```
 docs/
 ├── index.html                  # All channels overview
@@ -174,69 +265,9 @@ docs/
 
 ---
 
-## 🎯 Use Cases
-
-### Nightly Security Scans
-
-```yaml
-name: Nightly Security Scan
-on:
-  schedule:
-    - cron: '0 3 * * *'  # 3 AM UTC
-  workflow_dispatch:
-
-jobs:
-  build:
-    # ... build steps that create artifacts ...
-    
-  scan:
-    needs: build
-    uses: Avarko/gh-security-toolkit/.github/workflows/security-scan.yml@main
-    with:
-      channel: nightly-${{ github.ref_name }}
-      publish_to: github-pages
-      retention_keep: 30
-      retention_days: 90
-```
-
-### PR Security Checks
-
-```yaml
-name: PR Security Check
-on: pull_request
-
-jobs:
-  build:
-    # ... build steps ...
-    
-  scan:
-    needs: build
-    uses: Avarko/gh-security-toolkit/.github/workflows/security-scan.yml@main
-    with:
-      channel: pr-${{ github.event.pull_request.number }}
-      publish_to: github-release
-      retention_keep: 5
-```
-
-### Manual On-Demand Scans
-
-```yaml
-name: Manual Security Scan
-on: workflow_dispatch
-
-jobs:
-  scan:
-    uses: Avarko/gh-security-toolkit/.github/workflows/security-scan.yml@main
-    with:
-      channel: manual
-      publish_to: github-release,github-pages
-```
-
----
-
 ## ⚙️ Configuration
 
-### Workflow Inputs
+### Workflow inputs
 
 | Input | Description | Default |
 |-------|-------------|---------|
@@ -247,7 +278,7 @@ jobs:
 | `trivy_severity` | Minimum severity to report | `MEDIUM,HIGH,CRITICAL` |
 | `trivy_config` | Path to `.trivy.yaml` config | `""` |
 
-### Permissions Required
+### Permissions required
 
 ```yaml
 permissions:
@@ -257,7 +288,7 @@ permissions:
   actions: read      # Artifact history access
 ```
 
-### Trivy Configuration
+### Trivy configuration
 
 Create `.trivy.yaml` in your repository:
 
@@ -274,29 +305,28 @@ severity:
 
 ---
 
-## 🔐 Security Considerations
+## 🔐 Security considerations
 
-### Private Pages Enforcement
+### Private Pages enforcement
 
 GitHub Pages publisher **refuses to deploy** if Pages is configured as public:
 
 ```
 ❌ Error: GitHub Pages is configured as PUBLIC
    This would expose security scan results to the internet.
-   
+
    To fix:
    1. Go to Settings → Pages
    2. Change visibility to "Private"
    3. Re-run this workflow
 ```
 
-### Secret Management
+### Secret management
 
-- Use GitHub Secrets for sensitive tokens (Dependabot PAT, Slack tokens)
-- TruffleHog scanner detects hardcoded secrets in code
+- Use GitHub Secrets for sensitive tokens (Slack tokens)
 - Never commit real credentials to test fixtures
 
-### Retention Policies
+### Retention policies
 
 Two independent retention mechanisms:
 
@@ -310,9 +340,9 @@ Two independent retention mechanisms:
 
 ---
 
-## 📚 Advanced Topics
+## 📚 Advanced topics
 
-### Channel Naming Strategy
+### Channel naming strategy
 
 Channels are isolated scan histories. Good practices:
 
@@ -326,7 +356,7 @@ Channels are isolated scan histories. Good practices:
 - Only `a-z`, `A-Z`, `0-9`, `-`, `_`
 - Cannot start/end with `-` or `_`
 
-### Cross-Branch Scans
+### Cross-branch scans
 
 Same channel name across branches → shared history:
 
@@ -334,11 +364,11 @@ Same channel name across branches → shared history:
 # main branch
 channel: nightly-production
 
-# develop branch  
+# develop branch
 channel: nightly-production  # Same artifact!
 ```
 
-### Footer Metadata
+### Footer metadata
 
 Pass additional context to HTML reports:
 
@@ -351,9 +381,9 @@ with:
 
 ---
 
-## 🛠️ Local Development
+## 🛠️ Local development
 
-### Run JBang Scripts
+### Run JBang scripts
 
 ```bash
 # Trivy summary
@@ -362,7 +392,7 @@ jbang scripts/trivy_summarize.java \
   50 \
   output-dir
 
-# Semgrep summary  
+# Semgrep summary
 jbang scripts/semgrep_summarize.java \
   semgrep-results.json \
   output-dir
@@ -375,7 +405,7 @@ jbang scripts/github_pages_builder.java \
   my-channel
 ```
 
-### Test Templates
+### Test templates
 
 Templates are in `scripts/templates/*.ftl` (FreeMarker):
 
