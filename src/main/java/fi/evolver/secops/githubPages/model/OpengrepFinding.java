@@ -1,9 +1,9 @@
 package fi.evolver.secops.githubPages.model;
 
 /**
- * Represents a Semgrep finding.
+ * Represents a Opengrep finding.
  */
-public class SemgrepFinding {
+public class OpengrepFinding {
     public final String ruleId;
     public final Severity severity;
     public final String cssClass; // Pre-computed CSS class
@@ -12,7 +12,7 @@ public class SemgrepFinding {
     public final String lineDisplay; // "—" if line < 1
     public final String message;
 
-    public SemgrepFinding(
+    public OpengrepFinding(
             String ruleId,
             Severity severity,
             String path,

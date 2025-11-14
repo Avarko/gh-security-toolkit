@@ -49,7 +49,7 @@ public class ViewModelBuilder {
             putIfNotNull(footer, "ci_job_name", data.metadata.footer.ci_job_name);
             putIfNotNull(footer, "ci_job_url", data.metadata.footer.ci_job_url);
             putIfNotNull(footer, "trivy_version", data.metadata.footer.trivy_version);
-            putIfNotNull(footer, "semgrep_version", data.metadata.footer.semgrep_version);
+            putIfNotNull(footer, "opengrep_version", data.metadata.footer.opengrep_version);
             putIfNotNull(footer, "toolkit_version", data.metadata.footer.toolkit_version);
         }
         model.put("footer", footer);
@@ -71,10 +71,10 @@ public class ViewModelBuilder {
                         !data.trivyImageVulns.isEmpty() ||
                         !data.trivyImageMisconfigs.isEmpty());
 
-        // Semgrep findings with boolean flag
-        model.put("hasSemgrepFindings", !data.semgrepFindings.isEmpty());
-        model.put("semgrepFindings", data.semgrepFindings);
-        model.put("semgrepSummaryMd", data.semgrepSummary);
+        // Opengrep findings with boolean flag
+        model.put("hasOpengrepFindings", !data.opengrepFindings.isEmpty());
+        model.put("opengrepFindings", data.opengrepFindings);
+        model.put("opengrepSummaryMd", data.opengrepSummary);
 
         // Dependabot
         model.put("hasDependabot", data.dependabotSummary != null && !data.dependabotSummary.isBlank());
@@ -90,8 +90,8 @@ public class ViewModelBuilder {
                 Files.exists(outputDir.resolve("trivy-fs-results.json")) ? "trivy-fs-results.json" : null);
         model.put("jsonImagePath",
                 Files.exists(outputDir.resolve("trivy-image-results.json")) ? "trivy-image-results.json" : null);
-        model.put("jsonSemgrepPath",
-                Files.exists(outputDir.resolve("semgrep-results.json")) ? "semgrep-results.json" : null);
+        model.put("jsonOpengrepPath",
+                Files.exists(outputDir.resolve("opengrep-results.json")) ? "opengrep-results.json" : null);
 
         return model;
     }

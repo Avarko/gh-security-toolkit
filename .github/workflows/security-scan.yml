@@ -201,14 +201,14 @@ jobs:
           trivy_output_dir: ${{ steps.setup.outputs.output_dir }}
 
       # === RUN SEMGREP SCAN ===
-      - name: Run Semgrep scan
-        id: semgrep
+      - name: Run Opengrep scan
+        id: opengrep
         if: ${{ steps.download_fs.outcome == 'success' }}
-        uses: Avarko/gh-security-toolkit/actions/scanner/semgrep@main
+        uses: Avarko/gh-security-toolkit/actions/scanner/opengrep@main
         with:
           filesystem_path: ${{ format('{0}/filesystem', steps.setup.outputs.work_dir) }}
-          semgrep_output_dir: ${{ steps.setup.outputs.output_dir }}
-          semgrep_configs: "p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets"
+          opengrep_output_dir: ${{ steps.setup.outputs.output_dir }}
+          opengrep_configs: "p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets"
 
       # === FETCH DEPENDABOT ALERTS ===
       - name: Fetch Dependabot alerts
@@ -227,7 +227,7 @@ jobs:
         with:
           fs_json: ${{ steps.trivy.outputs.fs_json || '' }}
           image_json: ${{ steps.trivy.outputs.image_json || '' }}
-          semgrep_summary: ${{ steps.semgrep.outputs.semgrep_summary || '' }}
+          opengrep_summary: ${{ steps.opengrep.outputs.opengrep_summary || '' }}
           dependabot_summary: ${{ steps.dependabot.outputs.dependabot_summary || '' }}
           outdir: ${{ steps.setup.outputs.output_dir }}
           maxlength: ${{ inputs.release_notes_maxlength }}
@@ -281,5 +281,5 @@ jobs:
           ci_job_name: ${{ github.workflow }}
           ci_job_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           trivy_version: ${{ steps.trivy.outputs.version }}
-          semgrep_version: ${{ steps.semgrep.outputs.version }}
+          opengrep_version: ${{ steps.opengrep.outputs.version }}
           toolkit_version: ${{ inputs.toolkit_version }}
