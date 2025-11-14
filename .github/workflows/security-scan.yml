@@ -192,7 +192,7 @@ jobs:
       # === RUN TRIVY SCANS ===
       - name: Run Trivy scans
         id: trivy
-        uses: Avarko/gh-security-toolkit/actions/scanner/trivy@v1.0.1
+        uses: Avarko/gh-security-toolkit/actions/scanner/trivy@main
         with:
           filesystem_path: ${{ steps.download_fs.outcome == 'success' && format('{0}/filesystem', steps.setup.outputs.work_dir) || '' }}
           docker_image_tar: ${{ steps.download_image.outcome == 'success' && steps.find_tar.outputs.tar_path || '' }}
@@ -204,7 +204,7 @@ jobs:
       - name: Run Semgrep scan
         id: semgrep
         if: ${{ steps.download_fs.outcome == 'success' }}
-        uses: Avarko/gh-security-toolkit/actions/scanner/semgrep@v1.0.1
+        uses: Avarko/gh-security-toolkit/actions/scanner/semgrep@main
         with:
           filesystem_path: ${{ format('{0}/filesystem', steps.setup.outputs.work_dir) }}
           semgrep_output_dir: ${{ steps.setup.outputs.output_dir }}
@@ -214,7 +214,7 @@ jobs:
       - name: Fetch Dependabot alerts
         id: dependabot
         if: ${{ inputs.dependabot_gh_token != '' }}
-        uses: Avarko/gh-security-toolkit/actions/scanner/dependabot@v1.0.1
+        uses: Avarko/gh-security-toolkit/actions/scanner/dependabot@main
         with:
           repository: ${{ inputs.repository }}
           github_token: ${{ inputs.dependabot_gh_token }}
@@ -223,7 +223,7 @@ jobs:
       # === SUMMARIZE RESULTS ===
       - name: Summarizer
         id: sum
-        uses: Avarko/gh-security-toolkit/actions/summarizer@v1.0.1
+        uses: Avarko/gh-security-toolkit/actions/summarizer@main
         with:
           fs_json: ${{ steps.trivy.outputs.fs_json || '' }}
           image_json: ${{ steps.trivy.outputs.image_json || '' }}
@@ -239,7 +239,7 @@ jobs:
       # === PUBLISH TO GITHUB RELEASE ===
       - name: Publish to GitHub Release
         if: contains(inputs.publish_to, 'github-release')
-        uses: Avarko/gh-security-toolkit/actions/publisher/github-release@v1.0.1
+        uses: Avarko/gh-security-toolkit/actions/publisher/github-release@main
         with:
           outdir: ${{ steps.setup.outputs.output_dir }}
           metadata_timestamp: ${{ steps.ts.outputs.ts }}
@@ -263,7 +263,7 @@ jobs:
       - name: Publish to GitHub Pages
         if: contains(inputs.publish_to, 'github-pages')
         id: pages
-        uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@v1.0.1
+        uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@main
         with:
           outdir: ${{ steps.setup.outputs.output_dir }}
           metadata_timestamp: ${{ steps.ts.outputs.ts }}
