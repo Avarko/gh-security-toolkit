@@ -1,10 +1,10 @@
 ///usr/bin/env jbang "$0" "$@" ; exit $?
 /*
  * Usage:
- *   jbang scripts/semgrep_summarize.java <JSON_PATH> <MAX_ROWS> <OUTDIR>
+ *   jbang scripts/opengrep_summarize.java <JSON_PATH> <MAX_ROWS> <OUTDIR>
  *
  * Arguments:
- *   JSON_PATH  - Path to semgrep-results.json file
+ *   JSON_PATH  - Path to opengrep-results.json file
  *   MAX_ROWS   - Maximum number of rows to display in summary
  *   OUTDIR     - Output directory for summary files
  *
@@ -21,7 +21,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.stream.*;
 
-public class semgrep_summarize {
+public class opengrep_summarize {
 
     static final Map<String, Integer> SEV_ORDER = Map.of(
             "ERROR", 0, "WARNING", 1, "INFO", 2);
@@ -31,24 +31,24 @@ public class semgrep_summarize {
 
     public static void main(String[] args) throws Exception {
         if (args.length < 3) {
-            System.err.println("Usage: jbang semgrep_summarize.java <JSON_PATH> <MAX_ROWS> <OUTDIR>");
+            System.err.println("Usage: jbang opengrep_summarize.java <JSON_PATH> <MAX_ROWS> <OUTDIR>");
             System.exit(1);
         }
 
         String jsonPath = args[0];
         int maxRows = Integer.parseInt(args[1]);
         String outdir = args[2];
-        String title = envOr("TITLE", "Semgrep SAST summary");
+        String title = envOr("TITLE", "Opengrep SAST summary");
 
         Files.createDirectories(Path.of(outdir));
-        String summaryFile = outdir + "/SEMGREP_SUMMARY.md";
+        String summaryFile = outdir + "/OPENGREP_SUMMARY.md";
 
         ObjectMapper om = new ObjectMapper();
         JsonNode root;
         try {
             root = om.readTree(new File(jsonPath));
         } catch (IOException e) {
-            String body = "## " + title + "\nNo Semgrep results file produced.\n";
+            String body = "## " + title + "\nNo Opengrep results file produced.\n";
             writeSummary(body, summaryFile);
             return;
         }

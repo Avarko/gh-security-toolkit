@@ -55,23 +55,23 @@ sec/scan/trivy/img: # Scan Docker image (IMAGE=name:tag)
 	$(__GHST_IMAGE) trivy image $(IMAGE) --format $(__GHST_TRIVY_FORMAT)
 
 # ============================================================================
-# Semgrep - Automatically uses .semgrep.yaml if present
+# Opengrep - Automatically uses .opengrep.yaml if present
 # ============================================================================
 
-SEMGREP_IMAGE_TAG ?= latest
-SEMGREP_DOCKER_OPTS := --rm -v $(PWD):/src:ro -w /src
+OPENGREP_IMAGE_TAG ?= latest
+OPENGREP_DOCKER_OPTS := --rm -v $(PWD):/src:ro -w /src
 
-.PHONY: sec/scan/semgrep
-sec/scan/semgrep: # Scan code with Semgrep (uses .semgrep.yaml config)
-	@echo "🔍 Scanning code with Semgrep..."
-	@if [ -f .semgrep.yaml ] || [ -f .semgrep.yml ]; then \
-		echo "ℹ️  Using .semgrep.yaml configuration"; \
-		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) semgrep/semgrep:$(SEMGREP_IMAGE_TAG) \
-			semgrep scan --config=.semgrep.yaml --metrics=off .; \
+.PHONY: sec/scan/opengrep
+sec/scan/opengrep: # Scan code with Opengrep (uses .opengrep.yaml config)
+	@echo "🔍 Scanning code with Opengrep..."
+	@if [ -f .opengrep.yaml ] || [ -f .opengrep.yml ]; then \
+		echo "ℹ️  Using .opengrep.yaml configuration"; \
+		$(__GHST_DOCKER_CMD) run $(OPENGREP_DOCKER_OPTS) opengrep/opengrep:$(OPENGREP_IMAGE_TAG) \
+			opengrep scan --config=.opengrep.yaml --metrics=off .; \
 	else \
 		echo "ℹ️  Using default rulesets"; \
-		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) semgrep/semgrep:$(SEMGREP_IMAGE_TAG) \
-			semgrep scan \
+		$(__GHST_DOCKER_CMD) run $(OPENGREP_DOCKER_OPTS) opengrep/opengrep:$(OPENGREP_IMAGE_TAG) \
+			opengrep scan \
 			--config p/owasp-top-ten \
 			--config p/java \
 			--config p/javascript \
@@ -87,7 +87,7 @@ sec/scan/semgrep: # Scan code with Semgrep (uses .semgrep.yaml config)
 # ============================================================================
 
 .PHONY: sec/scan
-sec/scan: sec/scan/trivy/fs sec/scan/semgrep ## Full scan. Subcommands: sec/scan/[trivy/fs,trivy/img IMAGE=<Docker img tag>,/semgrep,/clean,/help].
+sec/scan: sec/scan/trivy/fs sec/scan/opengrep ## Full scan. Subcommands: sec/scan/[trivy/fs,trivy/img IMAGE=<Docker img tag>,/opengrep,/clean,/help].
 	@echo "✅ All scans complete"
 
 # ============================================================================

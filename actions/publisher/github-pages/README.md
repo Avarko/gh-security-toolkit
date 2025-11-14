@@ -25,7 +25,7 @@ docs/                          # GitHub Pages root
     │   │   ├── index.html    # Scan detail page
     │   │   ├── trivy-fs-results.json
     │   │   ├── trivy-image-results.json
-    │   │   └── semgrep-results.json
+    │   │   └── opengrep-results.json
     │   └── 2025-11-07-101234Z/
     │       └── ...
     └── pr-123/

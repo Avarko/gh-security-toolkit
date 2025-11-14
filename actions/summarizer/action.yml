@@ -1,5 +1,5 @@
 name: "Summarizer"
-description: "Runs JBang-based summarizer for Trivy and Semgrep results and returns a combined Markdown body."
+description: "Runs JBang-based summarizer for Trivy and Opengrep results and returns a combined Markdown body."
 inputs:
   fs_json:
     description: "Filesystem scan JSON"
@@ -9,8 +9,8 @@ inputs:
     description: "Image scan JSON"
     required: false
     default: ""
-  semgrep_summary:
-    description: "Semgrep summary markdown file"
+  opengrep_summary:
+    description: "Opengrep summary markdown file"
     required: false
     default: ""
   dependabot_summary:
@@ -40,10 +40,10 @@ inputs:
     description: "Title for Image misconfiguration section"
     required: false
     default: "Trivy (image) misconfiguration summary"
-  title_semgrep:
-    description: "Title for Semgrep SAST section"
+  title_opengrep:
+    description: "Title for Opengrep SAST section"
     required: false
-    default: "Semgrep SAST summary"
+    default: "Opengrep SAST summary"
   max_rows:
     description: "Max rows in summaries"
     required: false
@@ -120,9 +120,9 @@ runs:
           section_files+=("${outdir}/TRIVY_SUMMARY.md")
         fi
 
-        if [ -f "${outdir}/SEMGREP_SUMMARY.md" ] && [ -s "${outdir}/SEMGREP_SUMMARY.md" ]; then
-          sections+=("SEMGREP")
-          section_files+=("${outdir}/SEMGREP_SUMMARY.md")
+        if [ -f "${outdir}/OPENGREP_SUMMARY.md" ] && [ -s "${outdir}/OPENGREP_SUMMARY.md" ]; then
+          sections+=("OPENGREP")
+          section_files+=("${outdir}/OPENGREP_SUMMARY.md")
         fi
 
         if [ -f "${outdir}/DEPENDABOT_SUMMARY.md" ] && [ -s "${outdir}/DEPENDABOT_SUMMARY.md" ]; then

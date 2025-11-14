@@ -31,12 +31,12 @@ public class ScanResultLoader {
         data.trivyFs = loadJson(outPath.resolve("trivy-fs-results.json"));
         data.trivyImage = loadJson(outPath.resolve("trivy-image-results.json"));
 
-        // Load Semgrep results
-        data.semgrep = loadJson(outPath.resolve("semgrep-results.json"));
+        // Load Opengrep results
+        data.opengrep = loadJson(outPath.resolve("opengrep-results.json"));
 
         // Load summary markdowns
         data.trivySummary = loadText(outPath.resolve("TRIVY_SUMMARY.md"));
-        data.semgrepSummary = loadText(outPath.resolve("SEMGREP_SUMMARY.md"));
+        data.opengrepSummary = loadText(outPath.resolve("OPENGREP_SUMMARY.md"));
         data.dependabotSummary = loadText(outPath.resolve("DEPENDABOT_SUMMARY.md"));
 
         return data;
@@ -83,9 +83,9 @@ public class ScanResultLoader {
         public JsonObject metadata;
         public JsonObject trivyFs;
         public JsonObject trivyImage;
-        public JsonObject semgrep;
+        public JsonObject opengrep;
         public String trivySummary;
-        public String semgrepSummary;
+        public String opengrepSummary;
         public String dependabotSummary;
     }
 }

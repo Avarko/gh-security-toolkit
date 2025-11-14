@@ -13,7 +13,7 @@
             <th colspan="4">Trivy FS Misconfig</th>
             <th colspan="4">Trivy Image Vulnerabilities</th>
             <th colspan="4">Trivy Image Misconfig</th>
-            <th colspan="3">Semgrep</th>
+            <th colspan="3">Opengrep</th>
         </tr>
         <#if !compact??>
         <tr>
@@ -140,13 +140,13 @@
                         ${s.stats.trivyImageMisconfig.low!'-'}</td>
                 </#if>
 
-                <#-- Semgrep -->
-                <td class="count <#if s.stats.semgrepErrors gt 0>severity-error</#if>">
-                    ${s.stats.semgrepErrors!'-'}</td>
-                <td class="count <#if s.stats.semgrepWarnings gt 0>severity-warn</#if>">
-                    ${s.stats.semgrepWarnings!'-'}</td>
-                <td class="count <#if s.stats.semgrepInfo gt 0>severity-info</#if>">
-                    ${s.stats.semgrepInfo!'-'}</td>
+                <#-- Opengrep -->
+                <td class="count <#if s.stats.opengrepErrors gt 0>severity-error</#if>">
+                    ${s.stats.opengrepErrors!'-'}</td>
+                <td class="count <#if s.stats.opengrepWarnings gt 0>severity-warn</#if>">
+                    ${s.stats.opengrepWarnings!'-'}</td>
+                <td class="count <#if s.stats.opengrepInfo gt 0>severity-info</#if>">
+                    ${s.stats.opengrepInfo!'-'}</td>
             </tr>
         </#list>
     </tbody>

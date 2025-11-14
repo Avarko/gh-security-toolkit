@@ -1,14 +1,14 @@
-name: "Semgrep Scanner"
-description: "Runs Semgrep static analysis scans on source code"
+name: "Opengrep Scanner"
+description: "Runs Opengrep static analysis scans on source code"
 inputs:
   filesystem_path:
     description: "Path to source code to scan"
     required: true
-  semgrep_output_dir:
-    description: "Directory for Semgrep JSON output"
+  opengrep_output_dir:
+    description: "Directory for Opengrep JSON output"
     required: true
-  semgrep_configs:
-    description: "Semgrep rulesets to use (comma-separated)"
+  opengrep_configs:
+    description: "Opengrep rulesets to use (comma-separated)"
     required: false
     default: "p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets"
 runs:
@@ -16,19 +16,19 @@ runs:
   steps:
     - name: Prepare output directory
       shell: bash
-      run: mkdir -p "${{ inputs.semgrep_output_dir }}"
+      run: mkdir -p "${{ inputs.opengrep_output_dir }}"
 
-    - name: Setup Semgrep
+    - name: Setup Opengrep
       shell: bash
       run: |
         python3 -m pip install --upgrade pip
-        pip3 install semgrep
+        pip3 install opengrep
 
-    - name: Create .semgrepignore
+    - name: Create .opengrepignore
       shell: bash
       working-directory: ${{ inputs.filesystem_path }}
       run: |
-        cat > .semgrepignore << 'EOF'
+        cat > .opengrepignore << 'EOF'
         # Version control
         .git/
         .svn/
@@ -91,83 +91,83 @@ runs:
         documentation/
         EOF
 
-        echo "Created .semgrepignore with common exclusions"
+        echo "Created .opengrepignore with common exclusions"
 
-    - name: Run Semgrep scan (JSON for parsing)
+    - name: Run Opengrep scan (JSON for parsing)
       shell: bash
       working-directory: ${{ inputs.filesystem_path }}
       run: |
         # Split comma-separated configs into --config flags
-        CONFIGS="${{ inputs.semgrep_configs }}"
+        CONFIGS="${{ inputs.opengrep_configs }}"
         CONFIG_FLAGS=""
         IFS=',' read -ra CONFIG_ARRAY <<< "$CONFIGS"
         for cfg in "${CONFIG_ARRAY[@]}"; do
           CONFIG_FLAGS="$CONFIG_FLAGS --config $(echo $cfg | xargs)"
         done
 
-        echo "Running Semgrep with configs: $CONFIG_FLAGS"
+        echo "Running Opengrep with configs: $CONFIG_FLAGS"
 
-        # Run Semgrep JSON output (quiet mode to suppress progress output)
-        semgrep scan \
+        # Run Opengrep JSON output (quiet mode to suppress progress output)
+        opengrep scan \
           $CONFIG_FLAGS \
           --json \
           --quiet \
           --metrics=off \
           --no-git-ignore \
-          . > "${{ inputs.semgrep_output_dir }}/semgrep-results.json" || true
+          . > "${{ inputs.opengrep_output_dir }}/opengrep-results.json" || true
 
-        echo "Semgrep JSON scan completed"
+        echo "Opengrep JSON scan completed"
 
-    - name: Run Semgrep scan (text for full report)
+    - name: Run Opengrep scan (text for full report)
       shell: bash
       working-directory: ${{ inputs.filesystem_path }}
       run: |
         # Split comma-separated configs into --config flags
-        CONFIGS="${{ inputs.semgrep_configs }}"
+        CONFIGS="${{ inputs.opengrep_configs }}"
         CONFIG_FLAGS=""
         IFS=',' read -ra CONFIG_ARRAY <<< "$CONFIGS"
         for cfg in "${CONFIG_ARRAY[@]}"; do
           CONFIG_FLAGS="$CONFIG_FLAGS --config $(echo $cfg | xargs)"
         done
 
-        # Run Semgrep text output for full report
-        semgrep scan \
+        # Run Opengrep text output for full report
+        opengrep scan \
           $CONFIG_FLAGS \
           --metrics=off \
           --no-git-ignore \
-          . > "${{ inputs.semgrep_output_dir }}/semgrep-full-report.txt" 2>&1 || true
+          . > "${{ inputs.opengrep_output_dir }}/opengrep-full-report.txt" 2>&1 || true
 
     - name: Create full report markdown
       shell: bash
       run: |
-        FULL_REPORT="${{ inputs.semgrep_output_dir }}/semgrep-full-report.md"
+        FULL_REPORT="${{ inputs.opengrep_output_dir }}/opengrep-full-report.md"
 
-        echo "# Semgrep SAST Full Report" > "$FULL_REPORT"
+        echo "# Opengrep SAST Full Report" > "$FULL_REPORT"
         echo "" >> "$FULL_REPORT"
         echo '```' >> "$FULL_REPORT"
-        cat "${{ inputs.semgrep_output_dir }}/semgrep-full-report.txt" >> "$FULL_REPORT"
+        cat "${{ inputs.opengrep_output_dir }}/opengrep-full-report.txt" >> "$FULL_REPORT"
         echo '```' >> "$FULL_REPORT"
 
     - name: Create summary markdown (top 10)
       id: summary
       shell: bash
       run: |
-        OUTPUT_FILE="${{ inputs.semgrep_output_dir }}/SEMGREP_SUMMARY.md"
-        JSON_FILE="${{ inputs.semgrep_output_dir }}/semgrep-results.json"
+        OUTPUT_FILE="${{ inputs.opengrep_output_dir }}/OPENGREP_SUMMARY.md"
+        JSON_FILE="${{ inputs.opengrep_output_dir }}/opengrep-results.json"
 
-        echo "## 🔍 Semgrep SAST Scan Results" > "$OUTPUT_FILE"
+        echo "## 🔍 Opengrep SAST Scan Results" > "$OUTPUT_FILE"
         echo "" >> "$OUTPUT_FILE"
 
         if [ ! -f "$JSON_FILE" ]; then
-          echo "⚠️ No Semgrep results available." >> "$OUTPUT_FILE"
-          echo "semgrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+          echo "⚠️ No Opengrep results available." >> "$OUTPUT_FILE"
+          echo "opengrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
           exit 0
         fi
 
         # Validate JSON
         if ! jq empty "$JSON_FILE" 2>/dev/null; then
-          echo "⚠️ Invalid Semgrep JSON output. Check semgrep-results.json for details." >> "$OUTPUT_FILE"
-          echo "semgrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+          echo "⚠️ Invalid Opengrep JSON output. Check opengrep-results.json for details." >> "$OUTPUT_FILE"
+          echo "opengrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
           exit 0
         fi
 
@@ -182,7 +182,7 @@ runs:
 
         if [ "$TOTAL" -eq 0 ]; then
           echo "✅ No issues found!" >> "$OUTPUT_FILE"
-          echo "semgrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+          echo "opengrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
           exit 0
         fi
 
@@ -215,23 +215,23 @@ runs:
           echo "" >> "$OUTPUT_FILE"
         fi
 
-        echo "📄 [View full Semgrep report](semgrep-full-report.md)" >> "$OUTPUT_FILE"
+        echo "📄 [View full Opengrep report](opengrep-full-report.md)" >> "$OUTPUT_FILE"
 
-        echo "semgrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
-        echo "Semgrep summary created at $OUTPUT_FILE"
+        echo "opengrep_summary=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+        echo "Opengrep summary created at $OUTPUT_FILE"
 
-    - name: Get Semgrep version
+    - name: Get Opengrep version
       id: version
       shell: bash
       run: |
-        VERSION=$(semgrep --version | head -n1 | awk '{print $1}')
+        VERSION=$(opengrep --version | head -n1 | awk '{print $1}')
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-        echo "Semgrep version: $VERSION"
+        echo "Opengrep version: $VERSION"
 
 outputs:
-  semgrep_summary:
-    description: "Semgrep summary markdown file path"
-    value: ${{ steps.summary.outputs.semgrep_summary }}
+  opengrep_summary:
+    description: "Opengrep summary markdown file path"
+    value: ${{ steps.summary.outputs.opengrep_summary }}
   version:
-    description: "Semgrep version"
+    description: "Opengrep version"
     value: ${{ steps.version.outputs.version }}
