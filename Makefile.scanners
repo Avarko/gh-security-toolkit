@@ -10,11 +10,12 @@ __GHST_IMAGE ?= ghcr.io/avarko/gh-security-toolkit:$(__GHST_VERSION)
 __GHST_DOCKER_CMD ?= docker
 
 # Docker options: Mount only current directory (read-only option available)
+# Network isolation: --network=none ensures air-gapped execution (no data leaves your machine)
 __GHST_MOUNT_RO ?= true
 ifeq ($(__GHST_MOUNT_RO),true)
-	__GHST_DOCKER_OPTS := --rm -v $(PWD):/workspace:ro -w /workspace
+	__GHST_DOCKER_OPTS := --rm --network=none -v $(PWD):/workspace:ro -w /workspace
 else
-	__GHST_DOCKER_OPTS := --rm -v $(PWD):/workspace -w /workspace
+	__GHST_DOCKER_OPTS := --rm --network=none -v $(PWD):/workspace -w /workspace
 endif
 
 # Output format options
@@ -34,10 +35,12 @@ sec/scan/trivy/fs: # Scan filesystem (uses .trivy.yaml config)
 
 .PHONY: sec/scan/trivy/img
 sec/scan/trivy/img: # Scan Docker image (IMAGE=name:tag)
-	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/trivy/image IMAGE=name:tag" && exit 1)
+	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" && exit 1)
 	@echo "🔍 Scanning image $(IMAGE)..."
-	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
+	@echo "ℹ️  Note: Docker socket access required (network isolation disabled for this scan)"
+	$(__GHST_DOCKER_CMD) run --rm \
 	-v /var/run/docker.sock:/var/run/docker.sock \
+	-v $(PWD):/workspace:ro -w /workspace \
 	$(__GHST_IMAGE) trivy image $(IMAGE) --format $(__GHST_TRIVY_FORMAT)
 
 # ============================================================================
@@ -45,7 +48,7 @@ sec/scan/trivy/img: # Scan Docker image (IMAGE=name:tag)
 # ============================================================================
 
 SEMGREP_IMAGE_TAG ?= latest
-SEMGREP_DOCKER_OPTS := --rm -v $(PWD):/src:ro -w /src
+SEMGREP_DOCKER_OPTS := --rm --network=none -v $(PWD):/src:ro -w /src
 
 .PHONY: sec/scan/semgrep
 sec/scan/semgrep: # Scan code with Semgrep (uses .semgrep.yaml config)
