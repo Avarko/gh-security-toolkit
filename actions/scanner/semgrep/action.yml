@@ -152,7 +152,7 @@ runs:
       id: summary
       shell: bash
       run: |
-        OUTPUT_FILE="${{ inputs.opengrep_output_dir }}/SEMGREP_SUMMARY.md"
+        OUTPUT_FILE="${{ inputs.opengrep_output_dir }}/OPENGREP_SUMMARY.md"
         JSON_FILE="${{ inputs.opengrep_output_dir }}/opengrep-results.json"
 
         echo "## 🔍 Opengrep SAST Scan Results" > "$OUTPUT_FILE"

@@ -120,9 +120,9 @@ runs:
           section_files+=("${outdir}/TRIVY_SUMMARY.md")
         fi
 
-        if [ -f "${outdir}/SEMGREP_SUMMARY.md" ] && [ -s "${outdir}/SEMGREP_SUMMARY.md" ]; then
-          sections+=("SEMGREP")
-          section_files+=("${outdir}/SEMGREP_SUMMARY.md")
+        if [ -f "${outdir}/OPENGREP_SUMMARY.md" ] && [ -s "${outdir}/OPENGREP_SUMMARY.md" ]; then
+          sections+=("OPENGREP")
+          section_files+=("${outdir}/OPENGREP_SUMMARY.md")
         fi
 
         if [ -f "${outdir}/DEPENDABOT_SUMMARY.md" ] && [ -s "${outdir}/DEPENDABOT_SUMMARY.md" ]; then
