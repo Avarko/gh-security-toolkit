@@ -69,12 +69,14 @@ sec/scan/semgrep: # Scan code with Semgrep (uses .semgrep.yaml config)
 		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) semgrep/semgrep:$(SEMGREP_IMAGE_TAG) \
 			semgrep scan --config=.semgrep.yaml --metrics=off .; \
 	else \
-		echo "ℹ️  Using default rulesets"; \
+		echo "ℹ️  Using pre-defined rulesets"; \
 		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) semgrep/semgrep:$(SEMGREP_IMAGE_TAG) \
 			semgrep scan \
 			--config p/owasp-top-ten \
+			--config p/cwe-top-25 \
 			--config p/java \
 			--config p/javascript \
+			--config p/docker-compose \
 			--config p/dockerfile \
 			--config p/terraform \
 			--config p/secrets \
