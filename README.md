@@ -27,7 +27,7 @@ Provides reusable GitHub Actions workflows and Makefile integration for vulnerab
 `gh-security-toolkit` is a modular security scanning solution that integrates multiple industry-standard tools into a unified workflow. Results are published as GitHub Releases with retention policies or as interactive HTML reports on GitHub Pages.
 
 **Key features:**
-- 🔍 **Multi-scanner support**: currently Trivy (filesystem + Docker images) and Semgrep
+- 🔍 **Multi-scanner support**: currently Trivy (filesystem + Docker images) and Opengrep
 - 📊 **Dual publishing for CI/CD scans**: GitHub Releases (with automatic cleanup) or GitHub Pages (with scan history) with automatic cleanup/retention
 - 🏷️ **Channel-based organization**: Separate CI/CD scan histories per environment (nightly, PR, manual, etc.)
 - 🔒 **Local scans during development** via easy Makefile integration
@@ -123,7 +123,7 @@ jobs:
 ### 2. **Manage findings lifecycle**
 > "As a developer, I want to configure which vulnerabilities and misconfigurations to report, so the results remain actionable."
 
-✅ The toolkit supports `.trivy.yaml` and `.semgrepignore` configuration files to customize what gets scanned and reported.
+✅ The toolkit supports `.trivy.yaml` and `.opengrepignore` configuration files to customize what gets scanned and reported.
 
 ### 3. **Nightly Continuous Scans**
 > "As a security engineer, I want nightly scans of all main branches with historical diffs and results to GitHub Releases with alerts to Slack."
@@ -162,7 +162,7 @@ gh-security-toolkit/
 ├─ actions/
 │  ├─ scanner/                   # Scan execution
 │  │  ├─ trivy/                  # Filesystem + Docker image scanning
-│  │  └─ semgrep/                # SAST scanning
+│  │  └─ opengrep/                # SAST scanning
 │  │
 │  ├─ summarizer/                # Result aggregation
 │  │  └─ action.yml
@@ -183,13 +183,13 @@ gh-security-toolkit/
 │
 ├─ scripts/                      # JBang processing scripts
 │  ├─ github_pages_builder.java
-│  ├─ semgrep_summarize.java
+│  ├─ opengrep_summarize.java
 │  ├─ slack_integration.java
 │  ├─ trivy_summarize.java
 │  └─ templates/                 # FreeMarker templates for GitHub Pages HTML releases
 │     ├─ _footer.ftl
 │     ├─ _scan_table.ftl
-│     ├─ _semgrep_table.ftl
+│     ├─ _opengrep_table.ftl
 │     ├─ _trivy_table.ftl
 │     ├─ channel_index.ftl
 │     ├─ main_index.ftl
@@ -213,7 +213,7 @@ gh-security-toolkit/
 | Scanner | Type | Scans |
 |---------|------|-------|
 | **Trivy** | Filesystem + Image | Vulnerabilities, Misconfigurations |
-| **Semgrep** | SAST | Code security issues, secrets |
+| **Opengrep** | SAST | Code security issues, secrets |
 
 ### Publishers
 
@@ -246,7 +246,7 @@ docs/
     │   │   ├── index.html      # Scan detail report
     │   │   ├── trivy-fs-results.json
     │   │   ├── trivy-image-results.json
-    │   │   └── semgrep-results.json
+    │   │   └── opengrep-results.json
     │   └── 2025-11-08-120000Z/
     └── pr-123/
         └── ...
@@ -312,9 +312,9 @@ severity:
 **Your data stays with you — no external communication during scans:**
 
 **Local development (Makefile):**
-- ✅ **Offline vulnerability databases**: The toolkit Docker image includes pre-downloaded Trivy DB, Semgrep rules, VEX Hub, and Cosign TUF cache
+- ✅ **Offline vulnerability databases**: The toolkit Docker image includes pre-downloaded Trivy DB, Opengrep rules, VEX Hub, and Cosign TUF cache
 - ✅ **Read-only workspace mounts**: Your source code is mounted read-only (`:ro`) by default
-- ✅ **No telemetry**: Scanners run with metrics disabled (`--metrics=off` for Semgrep, offline mode for Trivy)
+- ✅ **No telemetry**: Scanners run with metrics disabled (`--metrics=off` for Opengrep, offline mode for Trivy)
 - ✅ **Air-gapped / offline scanning**: Scans are executed in a Docker container with `--network=none`, using pre-downloaded databases and utilizing your local Maven and Gradle caches
 - ⚠️ **Docker image scans** (`make sec/scan/trivy/img`): Requires Docker socket access for accessing local Docker image to be scanned
 
@@ -410,9 +410,9 @@ jbang scripts/trivy_summarize.java \
   50 \
   output-dir
 
-# Semgrep summary
-jbang scripts/semgrep_summarize.java \
-  semgrep-results.json \
+# Opengrep summary
+jbang scripts/opengrep_summarize.java \
+  opengrep-results.json \
   output-dir
 
 # GitHub Pages builder
@@ -432,7 +432,7 @@ Templates are in `scripts/templates/*.ftl` (FreeMarker):
 - `scan_detail.ftl` - Individual scan report
 - `_scan_table.ftl` - Shared table component
 - `_trivy_table.ftl` - Trivy findings table
-- `_semgrep_table.ftl` - Semgrep findings table
+- `_opengrep_table.ftl` - Opengrep findings table
 - `_footer.ftl` - Report footer
 
 ---
@@ -442,7 +442,7 @@ Templates are in `scripts/templates/*.ftl` (FreeMarker):
 See individual action READMEs:
 
 - [Trivy Scanner](actions/scanner/trivy/action.yml)
-- [Semgrep Scanner](actions/scanner/semgrep/action.yml)
+- [Opengrep Scanner](actions/scanner/opengrep/action.yml)
 - [GitHub Pages Publisher](actions/publisher/github-pages/README.md)
 - [GitHub Release Publisher](actions/publisher/github-release/action.yml)
 
