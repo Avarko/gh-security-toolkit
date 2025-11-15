@@ -98,24 +98,28 @@ public class ViewModelBuilder {
 
     public Map<String, Object> buildChannelIndexModel(
             String channel,
-            List<ScanEntry> scans) {
+            List<ScanEntry> scans,
+            String historyJsonPath) {
         var model = new HashMap<String, Object>();
         model.put("title", "Security Scans - " + channel);
         model.put("channel", channel);
         model.put("rootCss", "../../style.css");
         model.put("linkAllChannels", "../../index.html");
         model.put("scans", scans);
+        model.put("historyJsonPath", historyJsonPath);
         model.put("metadata", new HashMap<String, Object>()); // Empty metadata for index pages
         model.put("footer", new HashMap<String, Object>()); // Empty footer for index pages
         return model;
     }
 
     public Map<String, Object> buildMainIndexModel(
-            List<ChannelSummary> channels) {
+            List<ChannelSummary> channels,
+            String historyJsonPath) {
         var model = new HashMap<String, Object>();
         model.put("title", "Security Scan Reports");
         model.put("rootCss", "style.css");
         model.put("channels", channels);
+        model.put("historyJsonPath", historyJsonPath);
         model.put("metadata", new HashMap<String, Object>()); // Empty metadata for index pages
         model.put("footer", new HashMap<String, Object>()); // Empty footer for index pages
         return model;

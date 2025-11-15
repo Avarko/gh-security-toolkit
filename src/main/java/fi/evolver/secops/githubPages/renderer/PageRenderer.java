@@ -113,6 +113,12 @@ public class PageRenderer {
                 .metadata dt{ font-weight:bold; color:#7f8c8d; }
                 .metadata dd{ color:#2c3e50; }
 
+                /* Charts */
+                .chart-wrapper{ margin:1rem 0 1.5rem 0; }
+                .chart-scroll{ overflow-x:auto; padding-bottom:1rem; }
+                .chart-scroll canvas{ min-height:280px; }
+                .chart-empty{ font-size:.9rem; color:#7f8c8d; }
+
                 /* Table wrapper with scroll */
                 .table-wrapper{ overflow-x:auto; overflow-y:auto; max-height:600px; margin:1rem 0; }
 
