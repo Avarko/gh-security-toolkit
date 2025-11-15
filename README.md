@@ -185,15 +185,18 @@ gh-security-toolkit/
 │  ├─ github_pages_builder.java
 │  ├─ semgrep_summarize.java
 │  ├─ slack_integration.java
-│  ├─ trivy_summarize.java
-│  └─ templates/                 # FreeMarker templates for GitHub Pages HTML releases
-│     ├─ _footer.ftl
-│     ├─ _scan_table.ftl
-│     ├─ _semgrep_table.ftl
-│     ├─ _trivy_table.ftl
-│     ├─ channel_index.ftl
-│     ├─ main_index.ftl
-│     └─ scan_detail.ftl
+│  └─ trivy_summarize.java
+│
+├─ dashboard/                    # React+Remix SPA for GitHub Pages UI
+│  ├─ app/
+│  │  ├─ root.tsx
+│  │  └─ routes/
+│  │     ├─ _index.tsx                              # Main dashboard
+│  │     ├─ data.channels.$channel.tsx              # Channel scan list
+│  │     └─ data.runs.$channel.$timestamp.tsx       # Scan details
+│  ├─ package.json
+│  ├─ vite.config.ts
+│  └─ tsconfig.json
 │
 └─ src/main/java/fi/evolver/secops/githubPages/  # Java model classes
    ├─ GitHubPagesBuilder.java
@@ -427,17 +430,25 @@ jbang scripts/github_pages_builder.java \
   my-channel
 ```
 
-### Test templates
+### Dashboard Architecture
 
-Templates are in `scripts/templates/*.ftl` (FreeMarker):
+The GitHub Pages UI is built with **React+Remix** (SPA mode):
 
-- `main_index.ftl` - All channels overview
-- `channel_index.ftl` - Channel scan history
-- `scan_detail.ftl` - Individual scan report
-- `_scan_table.ftl` - Shared table component
-- `_trivy_table.ftl` - Trivy findings table
-- `_semgrep_table.ftl` - Semgrep findings table
-- `_footer.ftl` - Report footer
+- **Data Processing** (Java): `GitHubPagesBuilder.java` generates JSON files in `data/` directory
+- **UI Rendering** (React): Remix app in `dashboard/` reads `/data/*.json` client-side
+- **Deployment**: Dashboard build artifact merged with data during GitHub Pages publishing
+
+**Routes**:
+- `/` - Main dashboard (reads `data/hist/scan-history.json`)
+- `/data/channels/:channel` - Channel-specific scan list
+- `/data/runs/:channel/:timestamp` - Individual scan details (Trivy + Semgrep)
+
+**Development**:
+```bash
+cd dashboard
+npm install
+npm run dev
+```
 
 ---
 

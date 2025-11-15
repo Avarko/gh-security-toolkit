@@ -1,0 +1,44 @@
+name: 'Build Security Dashboard'
+description: 'Builds the React+Remix security dashboard SPA'
+
+inputs:
+  node-version:
+    description: 'Node.js version to use'
+    required: false
+    default: '20'
+
+outputs:
+  artifact-name:
+    description: 'Name of the uploaded dashboard artifact'
+    value: security-dashboard-build
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+        cache-dependency-path: dashboard/package-lock.json
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        cd dashboard
+        npm ci
+
+    - name: Build dashboard
+      shell: bash
+      run: |
+        cd dashboard
+        npm run build
+        echo "✅ Dashboard build complete"
+        ls -lh build/client/
+
+    - name: Upload dashboard artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-dashboard-build
+        path: dashboard/build/client
+        retention-days: 1
