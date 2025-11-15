@@ -24,9 +24,11 @@ import fi.evolver.secops.githubPages.viewmodel.ViewModelBuilder.ChannelSummary;
 import fi.evolver.secops.githubPages.viewmodel.ViewModelBuilder.ScanEntry;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -80,6 +82,12 @@ public class GitHubPagesBuilder {
 
         // === LAYER 2: TRANSFORM ===
         TransformedScanData transformedData = transformer.transform(rawData);
+        boolean hasDependabot = rawData.dependabotSummary != null && !rawData.dependabotSummary.isBlank();
+        ScanStats currentStats = transformer.extractStats(
+                rawData.trivyFs,
+                rawData.trivyImage,
+                rawData.semgrep,
+                hasDependabot);
         ScanMetadata metadata = transformedData.metadata;
 
         // === LAYER 3: BUILD VIEW MODELS ===
@@ -104,6 +112,8 @@ public class GitHubPagesBuilder {
         // 3) Render scan detail page
         renderer.renderPage("scan_detail.ftl", scanDetailModel, scanPath.resolve("index.html"));
         System.out.println("   ✅ Generated scan detail page");
+
+        appendScanHistory(pagesPath, channel, timestamp, currentStats);
 
         // 4) Update channel index
         updateChannelIndex(renderer, viewModelBuilder, transformer, scansPath.resolve(channel), pagesPath, channel);
@@ -155,7 +165,8 @@ public class GitHubPagesBuilder {
         }
         scans.sort((a, b) -> b.timestamp.compareTo(a.timestamp));
 
-        Map<String, Object> model = viewModelBuilder.buildChannelIndexModel(channel, scans);
+        String historyJsonPath = getHistoryJsonRelativePath(channelPath, pagesPath);
+        Map<String, Object> model = viewModelBuilder.buildChannelIndexModel(channel, scans, historyJsonPath);
         renderer.renderPage("channel_index.ftl", model, channelPath.resolve("index.html"));
         System.out.println("   ✅ Updated channel index page");
     }
@@ -222,9 +233,15 @@ public class GitHubPagesBuilder {
             channels.add(ch);
         }
 
-        Map<String, Object> model = viewModelBuilder.buildMainIndexModel(channels);
+        String historyJsonPath = getHistoryJsonRelativePath(pagesPath, pagesPath);
+        Map<String, Object> model = viewModelBuilder.buildMainIndexModel(channels, historyJsonPath);
         renderer.renderPage("main_index.ftl", model, pagesPath.resolve("index.html"));
         System.out.println("   ✅ Updated main index page");
+    }
+
+    private static String getHistoryJsonRelativePath(Path fromDir, Path pagesPath) {
+        Path historyFile = pagesPath.resolve("data").resolve("scan-history.json");
+        return fromDir.relativize(historyFile).toString().replace('\\', '/');
     }
 
     private static ScanStats loadScanStats(FindingsTransformer transformer, Path scanPath) {
@@ -262,6 +279,121 @@ public class GitHubPagesBuilder {
         }
         String value = obj.get(key).getAsString();
         return (value != null && !value.isBlank()) ? value : null;
+    }
+
+    private static void appendScanHistory(Path pagesPath, String channel, String timestamp, ScanStats stats) {
+        try {
+            Path dataDir = pagesPath.resolve("data");
+            Files.createDirectories(dataDir);
+            Path historyPath = dataDir.resolve("scan-history.json");
+
+            ScanHistory history = readHistory(historyPath);
+            history.scans.removeIf(entry -> channel.equals(entry.channel) && timestamp.equals(entry.timestamp));
+
+            HistoryEntry entry = HistoryEntry.from(channel, timestamp, stats);
+            history.scans.add(entry);
+            history.scans.sort(Comparator.comparing(e -> e.timestamp));
+
+            Files.writeString(historyPath, GSON.toJson(history), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            System.err.println("⚠️  Failed to append scan history: " + e.getMessage());
+        }
+    }
+
+    private static ScanHistory readHistory(Path historyPath) {
+        if (!Files.exists(historyPath)) {
+            return new ScanHistory();
+        }
+        try {
+            String json = Files.readString(historyPath);
+            if (json == null || json.isBlank()) {
+                return new ScanHistory();
+            }
+            ScanHistory history = GSON.fromJson(json, ScanHistory.class);
+            if (history == null) {
+                return new ScanHistory();
+            }
+            if (history.scans == null) {
+                history.scans = new ArrayList<>();
+            }
+            return history;
+        } catch (Exception e) {
+            System.err.println("⚠️  Failed to read existing scan history: " + e.getMessage());
+            return new ScanHistory();
+        }
+    }
+
+    private static class ScanHistory {
+        int version = 1;
+        List<HistoryEntry> scans = new ArrayList<>();
+    }
+
+    private static class HistoryEntry {
+        String channel;
+        String timestamp;
+        HistoryStats stats;
+
+        static HistoryEntry from(String channel, String timestamp, ScanStats stats) {
+            HistoryEntry entry = new HistoryEntry();
+            entry.channel = channel;
+            entry.timestamp = timestamp;
+            if (stats == null) {
+                stats = new ScanStats();
+            }
+            entry.stats = new HistoryStats();
+            entry.stats.trivyFs = SeverityCounts.from(stats.trivyFs);
+            entry.stats.trivyFsMisconfig = SeverityCounts.from(stats.trivyFsMisconfig);
+            entry.stats.trivyImage = SeverityCounts.from(stats.trivyImage);
+            entry.stats.trivyImageMisconfig = SeverityCounts.from(stats.trivyImageMisconfig);
+            entry.stats.semgrep = SemgrepCounts.from(stats);
+            return entry;
+        }
+    }
+
+    private static class HistoryStats {
+        SeverityCounts trivyFs;
+        SeverityCounts trivyFsMisconfig;
+        SeverityCounts trivyImage;
+        SeverityCounts trivyImageMisconfig;
+        SemgrepCounts semgrep;
+    }
+
+    private static class SeverityCounts {
+        int critical;
+        int high;
+        int medium;
+        int low;
+        boolean scanned;
+
+        static SeverityCounts from(ScanStats.VulnStats stats) {
+            SeverityCounts counts = new SeverityCounts();
+            if (stats == null) {
+                return counts;
+            }
+            counts.critical = stats.critical;
+            counts.high = stats.high;
+            counts.medium = stats.medium;
+            counts.low = stats.low;
+            counts.scanned = stats.scanned;
+            return counts;
+        }
+    }
+
+    private static class SemgrepCounts {
+        int errors;
+        int warnings;
+        int info;
+
+        static SemgrepCounts from(ScanStats stats) {
+            SemgrepCounts counts = new SemgrepCounts();
+            if (stats == null) {
+                return counts;
+            }
+            counts.errors = stats.semgrepErrors;
+            counts.warnings = stats.semgrepWarnings;
+            counts.info = stats.semgrepInfo;
+            return counts;
+        }
     }
 
     private static Path findTemplateDirectory(String pagesRoot) throws IOException {

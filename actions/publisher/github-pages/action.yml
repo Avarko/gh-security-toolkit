@@ -212,6 +212,7 @@ runs:
           echo "📦 Restoring scan history from artifact..."
           mkdir -p "$PAGES_ROOT"
           tar -xzf "$HISTORY_ARCHIVE" -C "$PAGES_ROOT"
+          mkdir -p "$PAGES_ROOT/scans" "$PAGES_ROOT/data"
 
           # Count existing scans
           if [ -d "$PAGES_ROOT/scans" ]; then
@@ -219,9 +220,13 @@ runs:
             CHANNELS=$(find "$PAGES_ROOT/scans" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
             echo "   ✅ Restored $TOTAL_SCANS scans across $CHANNELS channels"
           fi
+          if [ -f "$PAGES_ROOT/data/scan-history.json" ]; then
+            echo "   ✅ Restored persistent graph history JSON"
+          fi
         else
           echo "ℹ️  No existing scan history found - starting fresh"
           mkdir -p "$PAGES_ROOT/scans/${{ inputs.channel }}"
+          mkdir -p "$PAGES_ROOT/data"
         fi
 
     - name: Apply retention policy
@@ -300,16 +305,27 @@ runs:
 
         mkdir -p "$ARCHIVE_DIR"
 
-        # Archive scans directory (JSON data + scan detail HTML pages)
-        # Note: Channel index and main index are NOT archived (they're regenerated each time)
+        ITEMS=()
         if [ -d "$PAGES_ROOT/scans" ]; then
-          tar -czf "$ARCHIVE_DIR/scan-history.tar.gz" -C "$PAGES_ROOT" scans/
+          ITEMS+=("scans")
+        fi
+        if [ -f "$PAGES_ROOT/data/scan-history.json" ]; then
+          ITEMS+=("data/scan-history.json")
+        fi
 
-          SIZE=$(du -h "$ARCHIVE_DIR/scan-history.tar.gz" | cut -f1)
-          SCAN_COUNT=$(find "$PAGES_ROOT/scans" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
-          echo "   ✅ Archived $SCAN_COUNT scans ($SIZE)"
+        if [ ${#ITEMS[@]} -eq 0 ]; then
+          echo "   ⚠️  Nothing to archive yet"
+          tar -czf "$ARCHIVE_DIR/scan-history.tar.gz" -T /dev/null
         else
-          echo "   ⚠️  No scans directory to archive"
+          tar -czf "$ARCHIVE_DIR/scan-history.tar.gz" -C "$PAGES_ROOT" "${ITEMS[@]}"
+        fi
+
+        SIZE=$(du -h "$ARCHIVE_DIR/scan-history.tar.gz" | cut -f1)
+        if [ -d "$PAGES_ROOT/scans" ]; then
+          SCAN_COUNT=$(find "$PAGES_ROOT/scans" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
+          echo "   ✅ Archived $SCAN_COUNT scans ($SIZE) with persistent graph history"
+        else
+          echo "   ✅ Archived persistent graph history ($SIZE)"
         fi
 
     - name: Upload scan history artifact

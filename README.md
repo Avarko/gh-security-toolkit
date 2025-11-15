@@ -27,7 +27,7 @@ Provides reusable GitHub Actions workflows and Makefile integration for vulnerab
 `gh-security-toolkit` is a modular security scanning solution that integrates multiple industry-standard tools into a unified workflow. Results are published as GitHub Releases with retention policies or as interactive HTML reports on GitHub Pages.
 
 **Key features:**
-- 🔍 **Multi-scanner support**: currently Trivy (filesystem + Docker images) and Semgrep
+- 🔍 **Multi-scanner support**: currently Trivy (filesystem + Docker images) and Semgrep Community Edition
 - 📊 **Dual publishing for CI/CD scans**: GitHub Releases (with automatic cleanup) or GitHub Pages (with scan history) with automatic cleanup/retention
 - 🏷️ **Channel-based organization**: Separate CI/CD scan histories per environment (nightly, PR, manual, etc.)
 - 🔒 **Local scans during development** via easy Makefile integration
@@ -254,7 +254,8 @@ docs/
 
 **Interactive features:**
 - 📋 Vulnerability tables with severity highlighting
-- 🔗 Direct CVE links to OSV, NVD, CVE.org
+- � Channel timeline graphs with toggleable severities (powered by persistent scan-history JSON)
+- �🔗 Direct CVE links to OSV, NVD, CVE.org
 - 📄 Raw JSON data downloads
 - 📌 Sticky footer with metadata (CI job, Git info, tool versions)
 - 🔍 Scan history navigation
