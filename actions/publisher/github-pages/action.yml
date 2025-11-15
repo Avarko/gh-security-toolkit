@@ -280,6 +280,17 @@ runs:
 
         echo "   ✅ Deleted $deleted old runs, keeping $KEEP newest"
 
+    - name: Build Dashboard
+      uses: ./actions/builder/dashboard
+      with:
+        node-version: '20'
+
+    - name: Download Dashboard Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: security-dashboard-build
+        path: /tmp/dashboard-build
+
     - name: Build GitHub Pages
       shell: bash
       run: |
@@ -292,7 +303,8 @@ runs:
           "${{ inputs.pages_root }}" \
           "${{ inputs.metadata_timestamp }}" \
           "${{ inputs.channel }}" \
-          "${{ steps.metadata.outputs.meta_json }}"
+          "${{ steps.metadata.outputs.meta_json }}" \
+          "/tmp/dashboard-build"
 
     - name: Archive scan history
       shell: bash

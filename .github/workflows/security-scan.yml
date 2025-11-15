@@ -263,7 +263,7 @@ jobs:
       - name: Publish to GitHub Pages
         if: contains(inputs.publish_to, 'github-pages')
         id: pages
-        uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@main
+        uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@reactui
         with:
           outdir: ${{ steps.setup.outputs.output_dir }}
           metadata_timestamp: ${{ steps.ts.outputs.ts }}
