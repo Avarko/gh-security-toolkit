@@ -137,11 +137,11 @@ public class GitHubPagesBuilder {
             ScanHistory history = readHistory(historyPath);
 
             // Remove duplicates
-            history.scans.removeIf(entry -> channel.equals(entry.channel) && timestamp.equals(entry.timestamp));
+            history.entries.removeIf(entry -> channel.equals(entry.channel) && timestamp.equals(entry.timestamp));
 
             HistoryEntry entry = HistoryEntry.from(channel, timestamp, stats, metadata);
-            history.scans.add(entry);
-            history.scans.sort(Comparator.comparing(e -> e.timestamp));
+            history.entries.add(entry);
+            history.entries.sort(Comparator.comparing(e -> e.timestamp));
 
             Files.writeString(historyPath, GSON.toJson(history), StandardCharsets.UTF_8);
             System.out.println("   ✅ Updated scan-history.json");
@@ -164,8 +164,8 @@ public class GitHubPagesBuilder {
                 System.err.println("⚠️  Scan history JSON is null, starting fresh");
                 return new ScanHistory();
             }
-            if (history.scans == null) {
-                history.scans = new ArrayList<>();
+            if (history.entries == null) {
+                history.entries = new ArrayList<>();
             }
             // Always upgrade to v2
             if (history.version < 2) {
@@ -174,14 +174,14 @@ public class GitHubPagesBuilder {
             }
             // Validate and filter out malformed entries
             List<HistoryEntry> valid = new ArrayList<>();
-            for (HistoryEntry entry : history.scans) {
+            for (HistoryEntry entry : history.entries) {
                 if (entry.channel == null || entry.timestamp == null) {
                     System.err.println("⚠️  Skipping history entry with missing channel or timestamp");
                     continue;
                 }
                 valid.add(entry);
             }
-            history.scans = valid;
+            history.entries = valid;
             return history;
         } catch (Exception e) {
             System.err.println("⚠️  Failed to read existing scan history (corrupt format): " + e.getMessage());
@@ -191,7 +191,7 @@ public class GitHubPagesBuilder {
 
     private static class ScanHistory {
         int version = 2;
-        List<HistoryEntry> scans = new ArrayList<>();
+        List<HistoryEntry> entries = new ArrayList<>();
     }
 
     private static class HistoryEntry {
