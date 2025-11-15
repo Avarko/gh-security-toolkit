@@ -281,7 +281,7 @@ runs:
         echo "   ✅ Deleted $deleted old runs, keeping $KEEP newest"
 
     - name: Build Dashboard
-      uses: ./actions/builder/dashboard
+      uses: Avarko/gh-security-toolkit/actions/builder/dashboard@reactui
       with:
         node-version: '20'
 

@@ -15,23 +15,31 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Checkout toolkit repository
+      uses: actions/checkout@v4
+      with:
+        repository: Avarko/gh-security-toolkit
+        ref: reactui
+        path: _toolkit
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
+      continue-on-error: true
       with:
         node-version: ${{ inputs.node-version }}
         cache: 'npm'
-        cache-dependency-path: dashboard/package-lock.json
+        cache-dependency-path: _toolkit/dashboard/package-lock.json
 
     - name: Install dependencies
       shell: bash
       run: |
-        cd dashboard
+        cd _toolkit/dashboard
         npm ci
 
     - name: Build dashboard
       shell: bash
       run: |
-        cd dashboard
+        cd _toolkit/dashboard
         npm run build
         echo "✅ Dashboard build complete"
         ls -lh build/client/
@@ -40,5 +48,5 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         name: security-dashboard-build
-        path: dashboard/build/client
+        path: _toolkit/dashboard/build/client
         retention-days: 1
