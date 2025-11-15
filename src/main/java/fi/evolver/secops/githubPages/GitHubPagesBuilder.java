@@ -60,12 +60,13 @@ public class GitHubPagesBuilder {
         String channel = args[3];
         String metadataJson = args.length > 4 ? args[4] : null;
 
-        System.out.println("🏗️  Building GitHub Pages (Layered Architecture) for scan: " + timestamp);
+        System.out.println("🏗️  Building GitHub Pages (New Data Structure) for scan: " + timestamp);
 
         Path pagesPath = Path.of(pagesRoot);
-        Path scansPath = pagesPath.resolve("scans");
-        Path scanPath = scansPath.resolve(channel).resolve(timestamp);
-        Files.createDirectories(scanPath);
+        
+        // NEW: data/runs/<channel>/<timestamp>/ layout
+        Path dataRunsPath = pagesPath.resolve("data").resolve("runs").resolve(channel).resolve(timestamp);
+        Files.createDirectories(dataRunsPath);
 
         // Find templates directory
         Path templateDir = findTemplateDirectory(pagesRoot);
@@ -99,24 +100,25 @@ public class GitHubPagesBuilder {
 
         // === LAYER 4: RENDER & WRITE ===
 
-        // 1) Copy JSON files to scan directory
-        renderer.copyJsonFiles(outputDir, scanPath);
+        // 1) Copy JSON files to data/runs directory
+        renderer.copyJsonFiles(outputDir, dataRunsPath);
 
         // 2) Write scan-metadata.json (deterministic artifact)
         renderer.writeMetadataJson(
-                scanPath,
+                dataRunsPath,
                 metadata.branch,
                 metadata.commitSha,
                 metadata.repository);
 
         // 3) Render scan detail page
-        renderer.renderPage("scan_detail.ftl", scanDetailModel, scanPath.resolve("index.html"));
+        renderer.renderPage("scan_detail.ftl", scanDetailModel, dataRunsPath.resolve("index.html"));
         System.out.println("   ✅ Generated scan detail page");
 
-        appendScanHistory(pagesPath, channel, timestamp, currentStats);
+        // NEW: Append to versioned scan-history
+        appendScanHistory(pagesPath, channel, timestamp, currentStats, metadata);
 
         // 4) Update channel index
-        updateChannelIndex(renderer, viewModelBuilder, transformer, scansPath.resolve(channel), pagesPath, channel);
+        updateChannelIndex(renderer, viewModelBuilder, transformer, pagesPath, channel);
 
         // 5) Update main index
         updateMainIndex(renderer, viewModelBuilder, transformer, pagesPath);
@@ -126,48 +128,56 @@ public class GitHubPagesBuilder {
         System.out.println("   ✅ Generated CSS");
 
         System.out.println("✅ GitHub Pages built successfully!");
-        System.out.println("   Scan page: " + scanPath.resolve("index.html"));
+        System.out.println("   Scan page: " + dataRunsPath.resolve("index.html"));
     }
 
     private static void updateChannelIndex(
             PageRenderer renderer,
             ViewModelBuilder viewModelBuilder,
             FindingsTransformer transformer,
-            Path channelPath,
             Path pagesPath,
             String channel) throws Exception {
-        Files.createDirectories(channelPath);
+        
+        Path channelRunsPath = pagesPath.resolve("data").resolve("runs").resolve(channel);
+        Path channelIndexPath = pagesPath.resolve("data").resolve("channels").resolve(channel);
+        Files.createDirectories(channelIndexPath);
 
         List<ScanEntry> scans = new ArrayList<>();
-        try (Stream<Path> stream = Files.list(channelPath)) {
-            stream.filter(Files::isDirectory).forEach(scanDir -> {
-                String ts = scanDir.getFileName().toString();
-                if (Files.exists(scanDir.resolve("index.html"))) {
-                    ScanEntry e = new ScanEntry(ts, "scans/" + channel + "/" + ts);
-                    e.linkHref = ts + "/index.html"; // For channel index page
-                    e.stats = loadScanStats(transformer, scanDir);
+        
+        if (Files.exists(channelRunsPath)) {
+            try (Stream<Path> stream = Files.list(channelRunsPath)) {
+                stream.filter(Files::isDirectory).forEach(scanDir -> {
+                    String ts = scanDir.getFileName().toString();
+                    if (Files.exists(scanDir.resolve("index.html"))) {
+                        try {
+                            ScanEntry e = new ScanEntry(ts, "../../runs/" + channel + "/" + ts);
+                            e.linkHref = "../../runs/" + channel + "/" + ts + "/index.html";
+                            e.stats = loadScanStats(transformer, scanDir);
 
-                    // Load metadata for commit linking
-                    try {
-                        Path mdPath = scanDir.resolve("scan-metadata.json");
-                        if (Files.exists(mdPath)) {
-                            JsonObject meta = GSON.fromJson(Files.readString(mdPath), JsonObject.class);
-                            e.branch = getString(meta, "branch");
-                            e.commit = getString(meta, "commit_sha");
-                            e.repository = getString(meta, "repository");
+                            // Load metadata for commit linking
+                            Path mdPath = scanDir.resolve("scan-metadata.json");
+                            if (Files.exists(mdPath)) {
+                                JsonObject meta = GSON.fromJson(Files.readString(mdPath), JsonObject.class);
+                                e.branch = getString(meta, "branch");
+                                e.commit = getString(meta, "commit_sha");
+                                e.repository = getString(meta, "repository");
+                            }
+                            scans.add(e);
+                        } catch (Exception ex) {
+                            System.err.println("⚠️  Skipping malformed scan " + ts + ": " + ex.getMessage());
                         }
-                    } catch (Exception ex) {
-                        System.err.println("⚠️  Failed to load metadata for " + ts + ": " + ex.getMessage());
                     }
-                    scans.add(e);
-                }
-            });
+                });
+            } catch (IOException ex) {
+                System.err.println("⚠️  Failed to list scans in channel " + channel + ": " + ex.getMessage());
+            }
         }
+        
         scans.sort((a, b) -> b.timestamp.compareTo(a.timestamp));
 
-        String historyJsonPath = getHistoryJsonRelativePath(channelPath, pagesPath);
+        String historyJsonPath = getHistoryJsonRelativePath(channelIndexPath, pagesPath);
         Map<String, Object> model = viewModelBuilder.buildChannelIndexModel(channel, scans, historyJsonPath);
-        renderer.renderPage("channel_index.ftl", model, channelPath.resolve("index.html"));
+        renderer.renderPage("channel_index.ftl", model, channelIndexPath.resolve("index.html"));
         System.out.println("   ✅ Updated channel index page");
     }
 
@@ -176,11 +186,11 @@ public class GitHubPagesBuilder {
             ViewModelBuilder viewModelBuilder,
             FindingsTransformer transformer,
             Path pagesPath) throws Exception {
-        Path scansPath = pagesPath.resolve("scans");
+        Path runsPath = pagesPath.resolve("data").resolve("runs");
         Map<String, List<ScanEntry>> channelScans = new TreeMap<>();
 
-        if (Files.exists(scansPath)) {
-            try (Stream<Path> stream = Files.list(scansPath)) {
+        if (Files.exists(runsPath)) {
+            try (Stream<Path> stream = Files.list(runsPath)) {
                 stream.filter(Files::isDirectory).forEach(channelDir -> {
                     String ch = channelDir.getFileName().toString();
                     List<ScanEntry> list = new ArrayList<>();
@@ -188,12 +198,12 @@ public class GitHubPagesBuilder {
                         scanStream.filter(Files::isDirectory).forEach(scanDir -> {
                             String ts = scanDir.getFileName().toString();
                             if (Files.exists(scanDir.resolve("index.html"))) {
-                                ScanEntry e = new ScanEntry(ts, "scans/" + ch + "/" + ts);
-                                e.linkHref = e.path + "/index.html"; // For main index page
-                                e.stats = loadScanStats(transformer, scanDir);
-
-                                // Enrich with metadata
                                 try {
+                                    ScanEntry e = new ScanEntry(ts, "data/runs/" + ch + "/" + ts);
+                                    e.linkHref = e.path + "/index.html";
+                                    e.stats = loadScanStats(transformer, scanDir);
+
+                                    // Enrich with metadata
                                     Path mdPath = scanDir.resolve("scan-metadata.json");
                                     if (Files.exists(mdPath)) {
                                         JsonObject meta = GSON.fromJson(Files.readString(mdPath), JsonObject.class);
@@ -201,9 +211,10 @@ public class GitHubPagesBuilder {
                                         e.commit = getString(meta, "commit_sha");
                                         e.repository = getString(meta, "repository");
                                     }
-                                } catch (Exception ignored) {
+                                    list.add(e);
+                                } catch (Exception ex) {
+                                    System.err.println("⚠️  Skipping malformed scan " + ch + "/" + ts + ": " + ex.getMessage());
                                 }
-                                list.add(e);
                             }
                         });
                     } catch (IOException ex) {
@@ -228,7 +239,7 @@ public class GitHubPagesBuilder {
             ch.total = scans.size();
             ch.latestTs = latest.timestamp;
             ch.latestHuman = ViewModelBuilder.formatTimestamp(latest.timestamp);
-            ch.viewAllHref = "scans/" + e.getKey() + "/index.html";
+            ch.viewAllHref = "data/channels/" + e.getKey() + "/index.html";
             ch.recent = scans.stream().limit(5).toList();
             channels.add(ch);
         }
@@ -240,7 +251,7 @@ public class GitHubPagesBuilder {
     }
 
     private static String getHistoryJsonRelativePath(Path fromDir, Path pagesPath) {
-        Path historyFile = pagesPath.resolve("data").resolve("scan-history.json");
+        Path historyFile = pagesPath.resolve("data").resolve("hist").resolve("scan-history.json");
         return fromDir.relativize(historyFile).toString().replace('\\', '/');
     }
 
@@ -281,20 +292,23 @@ public class GitHubPagesBuilder {
         return (value != null && !value.isBlank()) ? value : null;
     }
 
-    private static void appendScanHistory(Path pagesPath, String channel, String timestamp, ScanStats stats) {
+    private static void appendScanHistory(Path pagesPath, String channel, String timestamp, ScanStats stats, ScanMetadata metadata) {
         try {
-            Path dataDir = pagesPath.resolve("data");
-            Files.createDirectories(dataDir);
-            Path historyPath = dataDir.resolve("scan-history.json");
+            Path histDir = pagesPath.resolve("data").resolve("hist");
+            Files.createDirectories(histDir);
+            Path historyPath = histDir.resolve("scan-history.json");
 
             ScanHistory history = readHistory(historyPath);
+            
+            // Remove duplicates
             history.scans.removeIf(entry -> channel.equals(entry.channel) && timestamp.equals(entry.timestamp));
 
-            HistoryEntry entry = HistoryEntry.from(channel, timestamp, stats);
+            HistoryEntry entry = HistoryEntry.from(channel, timestamp, stats, metadata);
             history.scans.add(entry);
             history.scans.sort(Comparator.comparing(e -> e.timestamp));
 
             Files.writeString(historyPath, GSON.toJson(history), StandardCharsets.UTF_8);
+            System.out.println("   ✅ Updated scan history");
         } catch (Exception e) {
             System.err.println("⚠️  Failed to append scan history: " + e.getMessage());
         }
@@ -311,20 +325,36 @@ public class GitHubPagesBuilder {
             }
             ScanHistory history = GSON.fromJson(json, ScanHistory.class);
             if (history == null) {
+                System.err.println("⚠️  Scan history JSON is null, starting fresh");
                 return new ScanHistory();
             }
             if (history.scans == null) {
                 history.scans = new ArrayList<>();
             }
+            // Always upgrade to v2
+            if (history.version < 2) {
+                System.out.println("   📦 Upgrading scan history from v" + history.version + " to v2");
+                history.version = 2;
+            }
+            // Validate and filter out malformed entries
+            List<HistoryEntry> valid = new ArrayList<>();
+            for (HistoryEntry entry : history.scans) {
+                if (entry.channel == null || entry.timestamp == null) {
+                    System.err.println("⚠️  Skipping history entry with missing channel or timestamp");
+                    continue;
+                }
+                valid.add(entry);
+            }
+            history.scans = valid;
             return history;
         } catch (Exception e) {
-            System.err.println("⚠️  Failed to read existing scan history: " + e.getMessage());
+            System.err.println("⚠️  Failed to read existing scan history (corrupt format): " + e.getMessage());
             return new ScanHistory();
         }
     }
 
     private static class ScanHistory {
-        int version = 1;
+        int version = 2;
         List<HistoryEntry> scans = new ArrayList<>();
     }
 
@@ -332,8 +362,9 @@ public class GitHubPagesBuilder {
         String channel;
         String timestamp;
         HistoryStats stats;
+        HistoryMetadata metadata;
 
-        static HistoryEntry from(String channel, String timestamp, ScanStats stats) {
+        static HistoryEntry from(String channel, String timestamp, ScanStats stats, ScanMetadata metadata) {
             HistoryEntry entry = new HistoryEntry();
             entry.channel = channel;
             entry.timestamp = timestamp;
@@ -346,8 +377,21 @@ public class GitHubPagesBuilder {
             entry.stats.trivyImage = SeverityCounts.from(stats.trivyImage);
             entry.stats.trivyImageMisconfig = SeverityCounts.from(stats.trivyImageMisconfig);
             entry.stats.semgrep = SemgrepCounts.from(stats);
+            
+            if (metadata != null) {
+                entry.metadata = new HistoryMetadata();
+                entry.metadata.branch = metadata.branch;
+                entry.metadata.commitSha = metadata.commitSha;
+                entry.metadata.repository = metadata.repository;
+            }
             return entry;
         }
+    }
+
+    private static class HistoryMetadata {
+        String branch;
+        String commitSha;
+        String repository;
     }
 
     private static class HistoryStats {

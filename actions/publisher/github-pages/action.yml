@@ -209,24 +209,25 @@ runs:
         HISTORY_ARCHIVE="/tmp/scan-history-artifact/scan-history.tar.gz"
 
         if [ -f "$HISTORY_ARCHIVE" ]; then
-          echo "📦 Restoring scan history from artifact..."
+          echo "📦 Restoring scan data from artifact..."
           mkdir -p "$PAGES_ROOT"
-          tar -xzf "$HISTORY_ARCHIVE" -C "$PAGES_ROOT"
-          mkdir -p "$PAGES_ROOT/scans" "$PAGES_ROOT/data"
+          tar -xzf "$HISTORY_ARCHIVE" -C "$PAGES_ROOT" 2>/dev/null || echo "⚠️  Archive extraction had warnings (may be legacy format)"
+          mkdir -p "$PAGES_ROOT/data/runs" "$PAGES_ROOT/data/hist" "$PAGES_ROOT/data/channels"
 
-          # Count existing scans
-          if [ -d "$PAGES_ROOT/scans" ]; then
-            TOTAL_SCANS=$(find "$PAGES_ROOT/scans" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
-            CHANNELS=$(find "$PAGES_ROOT/scans" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-            echo "   ✅ Restored $TOTAL_SCANS scans across $CHANNELS channels"
+          # Count existing scans (NEW data layout)
+          if [ -d "$PAGES_ROOT/data/runs" ]; then
+            TOTAL_SCANS=$(find "$PAGES_ROOT/data/runs" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
+            CHANNELS=$(find "$PAGES_ROOT/data/runs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+            echo "   ✅ Restored $TOTAL_SCANS runs across $CHANNELS channels"
           fi
-          if [ -f "$PAGES_ROOT/data/scan-history.json" ]; then
-            echo "   ✅ Restored persistent graph history JSON"
+          if [ -f "$PAGES_ROOT/data/hist/scan-history.json" ]; then
+            echo "   ✅ Restored persistent scan history JSON (v2)"
           fi
         else
-          echo "ℹ️  No existing scan history found - starting fresh"
-          mkdir -p "$PAGES_ROOT/scans/${{ inputs.channel }}"
-          mkdir -p "$PAGES_ROOT/data"
+          echo "ℹ️  No existing scan data found - starting fresh"
+          mkdir -p "$PAGES_ROOT/data/runs/${{ inputs.channel }}"
+          mkdir -p "$PAGES_ROOT/data/hist"
+          mkdir -p "$PAGES_ROOT/data/channels"
         fi
 
     - name: Apply retention policy
@@ -238,13 +239,13 @@ runs:
         CHANNEL="${{ inputs.channel }}"
         KEEP="${{ inputs.retention_keep }}"
         PAGES_ROOT="${{ inputs.pages_root }}"
-        CHANNEL_PATH="$PAGES_ROOT/scans/$CHANNEL"
+        CHANNEL_PATH="$PAGES_ROOT/data/runs/$CHANNEL"
         NEW_SCAN="${{ inputs.metadata_timestamp }}"
 
         echo "🧹 Applying retention policy for channel: $CHANNEL (keep=$KEEP)"
 
         if [ ! -d "$CHANNEL_PATH" ]; then
-          echo "   ⏭️  No existing scans - retention not needed"
+          echo "   ⏭️  No existing runs - retention not needed"
           exit 0
         fi
 
@@ -258,7 +259,7 @@ runs:
         mapfile -t scans < <(printf '%s\n' "${scans[@]}" | sort -u -r)
 
         total=${#scans[@]}
-        echo "   Total scans (including new): $total"
+        echo "   Total runs (including new): $total"
         echo "   Retention limit: $KEEP"
 
         if [ "$total" -le "$KEEP" ]; then
@@ -271,13 +272,13 @@ runs:
         for ((i=KEEP; i<total; i++)); do
           scan="${scans[$i]}"
           if [ "$scan" != "$NEW_SCAN" ] && [ -d "$CHANNEL_PATH/$scan" ]; then
-            echo "   🗑️  Deleting old scan: $scan"
+            echo "   🗑️  Deleting old run: $scan"
             rm -rf "$CHANNEL_PATH/$scan"
             deleted=$((deleted + 1))
           fi
         done
 
-        echo "   ✅ Deleted $deleted old scans, keeping $KEEP newest"
+        echo "   ✅ Deleted $deleted old runs, keeping $KEEP newest"
 
     - name: Build GitHub Pages
       shell: bash
@@ -301,16 +302,19 @@ runs:
         PAGES_ROOT="${{ inputs.pages_root }}"
         ARCHIVE_DIR="/tmp/scan-history-output"
 
-        echo "📦 Archiving scan history..."
+        echo "📦 Archiving scan data..."
 
         mkdir -p "$ARCHIVE_DIR"
 
         ITEMS=()
-        if [ -d "$PAGES_ROOT/scans" ]; then
-          ITEMS+=("scans")
+        if [ -d "$PAGES_ROOT/data/runs" ]; then
+          ITEMS+=("data/runs")
         fi
-        if [ -f "$PAGES_ROOT/data/scan-history.json" ]; then
-          ITEMS+=("data/scan-history.json")
+        if [ -d "$PAGES_ROOT/data/channels" ]; then
+          ITEMS+=("data/channels")
+        fi
+        if [ -f "$PAGES_ROOT/data/hist/scan-history.json" ]; then
+          ITEMS+=("data/hist")
         fi
 
         if [ ${#ITEMS[@]} -eq 0 ]; then
@@ -321,11 +325,11 @@ runs:
         fi
 
         SIZE=$(du -h "$ARCHIVE_DIR/scan-history.tar.gz" | cut -f1)
-        if [ -d "$PAGES_ROOT/scans" ]; then
-          SCAN_COUNT=$(find "$PAGES_ROOT/scans" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
-          echo "   ✅ Archived $SCAN_COUNT scans ($SIZE) with persistent graph history"
+        if [ -d "$PAGES_ROOT/data/runs" ]; then
+          RUN_COUNT=$(find "$PAGES_ROOT/data/runs" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
+          echo "   ✅ Archived $RUN_COUNT runs ($SIZE) with persistent history (v2)"
         else
-          echo "   ✅ Archived persistent graph history ($SIZE)"
+          echo "   ✅ Archived persistent history ($SIZE)"
         fi
 
     - name: Upload scan history artifact

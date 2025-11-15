@@ -238,24 +238,30 @@ publish_to: "github-release,github-pages"  # Both
 
 ```
 docs/
-├── index.html                  # All channels overview
-└── scans/
-    ├── nightly-master/
-    │   ├── index.html          # Channel scan history
-    │   ├── 2025-11-09-120000Z/
-    │   │   ├── index.html      # Scan detail report
-    │   │   ├── trivy-fs-results.json
-    │   │   ├── trivy-image-results.json
-    │   │   └── semgrep-results.json
-    │   └── 2025-11-08-120000Z/
-    └── pr-123/
-        └── ...
+├── index.html                              # All channels overview
+├── style.css                               # Unified styles
+└── data/
+    ├── hist/
+    │   └── scan-history.json               # Versioned history (v2) for charts
+    ├── channels/
+    │   └── nightly-master/
+    │       └── index.html                  # Channel scan history
+    └── runs/
+        └── nightly-master/
+            ├── 2025-11-09-120000Z/
+            │   ├── index.html              # Scan detail report
+            │   ├── scan-metadata.json
+            │   ├── trivy-fs-results.json
+            │   ├── trivy-image-results.json
+            │   └── semgrep-results.json
+            └── 2025-11-08-120000Z/
+                └── ...
 ```
 
 **Interactive features:**
 - 📋 Vulnerability tables with severity highlighting
-- � Channel timeline graphs with toggleable severities (powered by persistent scan-history JSON)
-- �🔗 Direct CVE links to OSV, NVD, CVE.org
+- 📈 Channel timeline graphs with toggleable severities (powered by persistent scan-history JSON v2)
+- 🔗 Direct CVE links to OSV, NVD, CVE.org
 - 📄 Raw JSON data downloads
 - 📌 Sticky footer with metadata (CI job, Git info, tool versions)
 - 🔍 Scan history navigation
@@ -265,6 +271,7 @@ docs/
 - ❌ Deployment fails if Pages is configured as public
 
 ---
+
 
 ## ⚙️ Configuration
 
