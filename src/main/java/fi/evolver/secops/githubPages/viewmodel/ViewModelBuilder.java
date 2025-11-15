@@ -80,10 +80,10 @@ public class ViewModelBuilder {
         model.put("hasDependabot", data.dependabotSummary != null && !data.dependabotSummary.isBlank());
         model.put("dependabotSummaryMd", data.dependabotSummary);
 
-        // Paths (relative to scan page)
-        model.put("rootCss", "../../../style.css");
-        model.put("linkAllScans", "../../../index.html");
-        model.put("linkChannelIndex", "../index.html");
+        // Paths (relative to scan page: data/runs/<channel>/<timestamp>/)
+        model.put("rootCss", "../../../../style.css");
+        model.put("linkAllScans", "../../../../index.html");
+        model.put("linkChannelIndex", "../../../channels/" + channel + "/index.html");
 
         // JSON file paths (only if they exist in output directory)
         model.put("jsonFsPath",
@@ -103,8 +103,8 @@ public class ViewModelBuilder {
         var model = new HashMap<String, Object>();
         model.put("title", "Security Scans - " + channel);
         model.put("channel", channel);
-        model.put("rootCss", "../../style.css");
-        model.put("linkAllChannels", "../../index.html");
+        model.put("rootCss", "../../../style.css");
+        model.put("linkAllChannels", "../../../index.html");
         model.put("scans", scans);
         model.put("historyJsonPath", historyJsonPath);
         model.put("metadata", new HashMap<String, Object>()); // Empty metadata for index pages

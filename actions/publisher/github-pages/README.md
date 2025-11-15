@@ -15,21 +15,25 @@ Publishes security scan results as static HTML pages to GitHub Pages.
 ## Structure
 
 ```
-docs/                          # GitHub Pages root
-├── index.html                # Main page (all channels)
-├── style.css                 # Shared CSS
-└── scans/
-    ├── nightly-master/
-    │   ├── index.html        # Channel page (all scans)
-    │   ├── 2025-11-07-033946Z/
-    │   │   ├── index.html    # Scan detail page
-    │   │   ├── trivy-fs-results.json
-    │   │   ├── trivy-image-results.json
-    │   │   └── semgrep-results.json
-    │   └── 2025-11-07-101234Z/
-    │       └── ...
-    └── pr-123/
-        └── ...
+docs/                                      # GitHub Pages root
+├── index.html                            # Main page (all channels)
+├── style.css                             # Shared CSS
+└── data/
+    ├── hist/
+    │   └── scan-history.json             # Versioned history (v2)
+    ├── channels/
+    │   └── nightly-master/
+    │       └── index.html                # Channel page (all runs)
+    └── runs/
+        └── nightly-master/
+            ├── 2025-11-07-033946Z/
+            │   ├── index.html            # Scan detail page
+            │   ├── scan-metadata.json
+            │   ├── trivy-fs-results.json
+            │   ├── trivy-image-results.json
+            │   └── semgrep-results.json
+            └── 2025-11-07-101234Z/
+                └── ...
 ```
 
 ## Usage
