@@ -18,6 +18,8 @@ import {
     CheckCircle as CheckCircleIcon,
     BugReport as BugReportIcon,
 } from "@mui/icons-material";
+import ReactECharts from "echarts-for-react";
+import { useMemo } from "react";
 
 export async function clientLoader() {
     const response = await fetch("/data/hist/scan-history.json");
@@ -56,6 +58,138 @@ export default function Index() {
         );
     };
 
+    const chartOption = useMemo(() => {
+        if (!history.entries || history.entries.length === 0) return null;
+
+        // Group data by channel
+        const channelData: Record<string, ScanEntry[]> = {};
+        history.entries.forEach((entry: ScanEntry) => {
+            if (!channelData[entry.channel]) {
+                channelData[entry.channel] = [];
+            }
+            channelData[entry.channel].push(entry);
+        });
+
+        // Sort entries by timestamp within each channel
+        Object.keys(channelData).forEach(channel => {
+            channelData[channel].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+        });
+
+        const channels = Object.keys(channelData);
+        const allTimestamps = Array.from(
+            new Set(history.entries.map((e: ScanEntry) => e.timestamp))
+        ).sort();
+
+        // Create series for each severity type per channel
+        const series: any[] = [];
+
+        channels.forEach(channel => {
+            const channelEntries = channelData[channel];
+
+            // Critical vulnerabilities
+            series.push({
+                name: `${channel} - Critical`,
+                type: 'line',
+                data: allTimestamps.map(ts => {
+                    const entry = channelEntries.find(e => e.timestamp === ts);
+                    return entry?.stats?.trivy?.critical || 0;
+                }),
+                smooth: true,
+                itemStyle: { color: '#ef5350' },
+                lineStyle: { width: 2 },
+            });
+
+            // High vulnerabilities
+            series.push({
+                name: `${channel} - High`,
+                type: 'line',
+                data: allTimestamps.map(ts => {
+                    const entry = channelEntries.find(e => e.timestamp === ts);
+                    return entry?.stats?.trivy?.high || 0;
+                }),
+                smooth: true,
+                itemStyle: { color: '#ff9800' },
+                lineStyle: { width: 2 },
+            });
+
+            // Semgrep errors
+            series.push({
+                name: `${channel} - Errors`,
+                type: 'line',
+                data: allTimestamps.map(ts => {
+                    const entry = channelEntries.find(e => e.timestamp === ts);
+                    return entry?.stats?.semgrep?.error || 0;
+                }),
+                smooth: true,
+                itemStyle: { color: '#f50057' },
+                lineStyle: { width: 2, type: 'dashed' },
+            });
+
+            // Semgrep warnings
+            series.push({
+                name: `${channel} - Warnings`,
+                type: 'line',
+                data: allTimestamps.map(ts => {
+                    const entry = channelEntries.find(e => e.timestamp === ts);
+                    return entry?.stats?.semgrep?.warning || 0;
+                }),
+                smooth: true,
+                itemStyle: { color: '#ffa726' },
+                lineStyle: { width: 2, type: 'dashed' },
+            });
+        });
+
+        return {
+            backgroundColor: 'transparent',
+            tooltip: {
+                trigger: 'axis',
+                backgroundColor: 'rgba(19, 47, 76, 0.95)',
+                borderColor: '#3f51b5',
+                textStyle: { color: '#fff' },
+            },
+            legend: {
+                data: series.map(s => s.name),
+                textStyle: { color: '#fff' },
+                top: 10,
+                type: 'scroll',
+            },
+            grid: {
+                left: '3%',
+                right: '4%',
+                bottom: '10%',
+                top: '15%',
+                containLabel: true,
+            },
+            xAxis: {
+                type: 'category',
+                boundaryGap: false,
+                data: allTimestamps,
+                axisLabel: {
+                    color: '#aaa',
+                    rotate: 45,
+                    formatter: (value: string) => {
+                        // Format: 2025-11-15-202945Z -> 11/15 20:29
+                        const match = value.match(/(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})/);
+                        if (match) {
+                            return `${match[2]}/${match[3]} ${match[4]}:${match[5]}`;
+                        }
+                        return value;
+                    },
+                },
+                axisLine: { lineStyle: { color: '#555' } },
+            },
+            yAxis: {
+                type: 'value',
+                name: 'Count',
+                nameTextStyle: { color: '#aaa' },
+                axisLabel: { color: '#aaa' },
+                axisLine: { lineStyle: { color: '#555' } },
+                splitLine: { lineStyle: { color: '#333' } },
+            },
+            series,
+        };
+    }, [history.entries]);
+
     return (
         <Container maxWidth="lg" sx={{ py: 4 }}>
             <Box mb={4}>
@@ -69,6 +203,33 @@ export default function Index() {
 
             {history.entries && history.entries.length > 0 ? (
                 <Stack spacing={4}>
+                    {chartOption && (
+                        <Card variant="outlined">
+                            <CardHeader
+                                title={
+                                    <Typography variant="h5" fontWeight="600">
+                                        Security Trends - All Channels
+                                    </Typography>
+                                }
+                                subheader="Vulnerability and code issue trends over time"
+                            />
+                            <CardContent>
+                                <ReactECharts
+                                    option={chartOption}
+                                    style={{ height: '500px' }}
+                                    theme="dark"
+                                />
+                                <Box mt={2}>
+                                    <Typography variant="caption" color="text.secondary">
+                                        • Solid lines: Trivy vulnerabilities (Critical, High)
+                                        <br />
+                                        • Dashed lines: Semgrep code issues (Errors, Warnings)
+                                    </Typography>
+                                </Box>
+                            </CardContent>
+                        </Card>
+                    )}
+
                     <Box>
                         <Typography variant="h5" gutterBottom fontWeight="600" mb={2}>
                             Recent Scans
