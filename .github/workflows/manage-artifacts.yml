@@ -1,0 +1,220 @@
+name: Manage Artifacts
+
+on:
+  workflow_call:
+    inputs:
+      operation:
+        description: 'Operation to perform'
+        required: true
+        type: string
+      artifact_id:
+        description: 'Artifact ID (required for GET/DELETE operations)'
+        required: false
+        type: string
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Operation to perform'
+        required: true
+        type: choice
+        options:
+          - LIST
+          - GET
+          - DELETE
+        default: 'LIST'
+      artifact_id:
+        description: 'Artifact ID (required for GET/DELETE operations)'
+        required: false
+        type: string
+
+jobs:
+  manage-artifacts:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Validate inputs
+        id: validate
+        run: |
+          OPERATION="${{ inputs.operation }}"
+          ARTIFACT_ID="${{ inputs.artifact_id }}"
+
+          echo "Operation: $OPERATION"
+          echo "Artifact ID: $ARTIFACT_ID"
+
+          if [[ "$OPERATION" == "GET" || "$OPERATION" == "DELETE" ]]; then
+            if [[ -z "$ARTIFACT_ID" ]]; then
+              echo "::error::Artifact ID is required for $OPERATION operation"
+              exit 1
+            fi
+            echo "artifact_id=$ARTIFACT_ID" >> $GITHUB_OUTPUT
+          fi
+
+          echo "operation=$OPERATION" >> $GITHUB_OUTPUT
+
+      - name: List all artifacts
+        if: inputs.operation == 'LIST'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "📦 Listing all artifacts in ${{ github.repository }}..."
+          echo ""
+
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/actions/artifacts \
+            --jq '.artifacts[] | "ID: \(.id) | Name: \(.name) | Size: \(.size_in_bytes) bytes | Created: \(.created_at) | Expires: \(.expires_at)"'
+
+          echo ""
+          echo "---"
+          echo "Full JSON response:"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/actions/artifacts
+
+      - name: Get artifact details
+        if: inputs.operation == 'GET'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "🔍 Getting details for artifact ID: ${{ steps.validate.outputs.artifact_id }}"
+          echo ""
+
+          # Get artifact metadata
+          echo "📋 Artifact Metadata:"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/actions/artifacts/${{ steps.validate.outputs.artifact_id }} \
+            --jq '{id: .id, name: .name, size_in_bytes: .size_in_bytes, created_at: .created_at, expires_at: .expires_at, workflow_run: .workflow_run.id}'
+
+          echo ""
+          echo "📦 Downloading and inspecting artifact contents..."
+
+          # Download artifact
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/actions/artifacts/${{ steps.validate.outputs.artifact_id }}/zip > artifact.zip
+
+          # Check if download was successful
+          if [ -f artifact.zip ] && [ -s artifact.zip ]; then
+            # Get zip file size in bytes
+            ZIP_SIZE=$(stat -c%s artifact.zip 2>/dev/null || stat -f%z artifact.zip 2>/dev/null)
+            ZIP_SIZE_MB=$((ZIP_SIZE / 1024 / 1024))
+
+            echo ""
+            echo "📂 Artifact Contents (Size: ${ZIP_SIZE_MB}MB):"
+            echo ""
+
+            # List zip contents with details
+            unzip -l artifact.zip
+
+            echo ""
+            echo "🌲 File tree structure:"
+            unzip -q artifact.zip -d artifact_contents/
+            tree -h -L 5 artifact_contents/ || find artifact_contents/ -type f -exec ls -lh {} \; | awk '{print $9, "("$5")"}'
+
+            # Check if zip is smaller than 30MB and contains only a tar or a zip file
+            if [ $ZIP_SIZE_MB -lt 30 ]; then
+              TAR_COUNT=$(find artifact_contents/ -type f -name "*.tar" | wc -l)
+              ZIP_COUNT=$(find artifact_contents/ -type f -name "*.zip" | wc -l)
+              TOTAL_FILES=$(find artifact_contents/ -type f | wc -l)
+
+              # Check if there's only one file and it's either a tar or zip
+              if [ $TOTAL_FILES -eq 1 ]; then
+                if [ $TAR_COUNT -eq 1 ]; then
+                  TAR_FILE=$(find artifact_contents/ -type f -name "*.tar" | head -n 1)
+                  echo ""
+                  echo "🗜️  Found tar archive inside zip, extracting contents..."
+                  echo ""
+                  echo "📦 TAR Archive Contents:"
+                  tar -tvf "$TAR_FILE"
+
+                  echo ""
+                  echo "🌲 TAR File tree structure:"
+                  mkdir -p tar_contents/
+                  tar -xf "$TAR_FILE" -C tar_contents/
+                  tree -h -L 5 tar_contents/ || find tar_contents/ -type f -exec ls -lh {} \; | awk '{print $9, "("$5")"}'
+                  rm -rf tar_contents/
+                elif [ $ZIP_COUNT -eq 1 ]; then
+                  INNER_ZIP=$(find artifact_contents/ -type f -name "*.zip" | head -n 1)
+                  echo ""
+                  echo "🗜️  Found zip archive inside zip, extracting contents..."
+                  echo ""
+                  echo "📦 Inner ZIP Archive Contents:"
+                  unzip -l "$INNER_ZIP"
+
+                  echo ""
+                  echo "🌲 Inner ZIP File tree structure:"
+                  mkdir -p zip_contents/
+                  unzip -q "$INNER_ZIP" -d zip_contents/
+                  tree -h -L 5 zip_contents/ || find zip_contents/ -type f -exec ls -lh {} \; | awk '{print $9, "("$5")"}'
+                  rm -rf zip_contents/
+                fi
+              fi
+            else
+              echo ""
+              echo "ℹ️  Artifact is larger than 30MB, skipping nested archive extraction"
+            fi
+
+            # Cleanup
+            rm -rf artifact.zip artifact_contents/
+          else
+            echo "❌ Failed to download artifact"
+            exit 1
+          fi
+
+      - name: Delete artifact
+        if: inputs.operation == 'DELETE'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "🗑️  Deleting artifact ID: ${{ steps.validate.outputs.artifact_id }}"
+          echo ""
+
+          # First, get artifact details before deletion
+          echo "Artifact details before deletion:"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/actions/artifacts/${{ steps.validate.outputs.artifact_id }} \
+            --jq '{id: .id, name: .name, size_in_bytes: .size_in_bytes, created_at: .created_at}'
+
+          echo ""
+          echo "Deleting artifact..."
+
+          # Delete the artifact
+          gh api \
+            --method DELETE \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/actions/artifacts/${{ steps.validate.outputs.artifact_id }}
+
+          if [ $? -eq 0 ]; then
+            echo ""
+            echo "✅ Artifact ${{ steps.validate.outputs.artifact_id }} deleted successfully"
+          else
+            echo ""
+            echo "❌ Failed to delete artifact ${{ steps.validate.outputs.artifact_id }}"
+            exit 1
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Artifact Management Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Operation:** ${{ inputs.operation }}" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ inputs.operation }}" != "LIST" ]]; then
+            echo "**Artifact ID:** ${{ inputs.artifact_id }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
