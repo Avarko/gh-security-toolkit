@@ -1,11 +1,9 @@
 {
     "include": [
-        "**/*.ts",
-        "**/*.tsx",
-        "**/.server/**/*.ts",
-        "**/.server/**/*.tsx",
-        "**/.client/**/*.ts",
-        "**/.client/**/*.tsx"
+        "**/*.server.ts",
+        "**/*.server.tsx",
+        "**/*.client.ts",
+        "**/*.client.tsx"
     ],
     "compilerOptions": {
         "lib": [
@@ -14,10 +12,11 @@
             "ES2022"
         ],
         "types": [
-            "@remix-run/node",
             "vite/client"
         ],
         "isolatedModules": true,
+        "moduleDetection": "force",
+        "noUncheckedIndexedAccess": true,
         "esModuleInterop": true,
         "jsx": "react-jsx",
         "module": "ESNext",

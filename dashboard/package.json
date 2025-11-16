@@ -3,6 +3,9 @@
     "version": "1.0.0",
     "private": true,
     "type": "module",
+    "engines": {
+        "node": ">=24"
+    },
     "scripts": {
         "build": "remix vite:build",
         "dev": "remix vite:dev",
@@ -13,9 +16,7 @@
         "@emotion/styled": "^11.14.1",
         "@mui/icons-material": "^7.3.5",
         "@mui/material": "^7.3.5",
-        "@remix-run/node": "^2.16.0",
         "@remix-run/react": "^2.16.0",
-        "@remix-run/serve": "^2.16.0",
         "echarts": "^6.0.0",
         "echarts-for-react": "^3.0.5",
         "react": "^18.3.1",
