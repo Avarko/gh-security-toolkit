@@ -51,6 +51,10 @@ jobs:
           mkdir -p scan-output
           echo '{"Results":[]}' > scan-output/trivy-fs-results.json
           echo '{"results":[]}' > scan-output/semgrep-results.json
+
+          # Generate realistic scan history with 20 nightly scans showing security improvement
+          ./scripts/generate-test-scan-history.sh scan-output/scan-history.json "${{ inputs.channel }}"
+
           echo "output_dir=scan-output" >> "$GITHUB_OUTPUT"
 
       - name: Publish to GitHub Pages

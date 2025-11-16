@@ -1,5 +1,4 @@
 import { useLoaderData, useParams } from "@remix-run/react";
-import { json } from "@remix-run/node";
 
 export async function clientLoader({ params }: { params: { channel: string } }) {
     const response = await fetch("/data/hist/scan-history.json");
@@ -9,7 +8,7 @@ export async function clientLoader({ params }: { params: { channel: string } }) 
         (entry: any) => entry.channel === params.channel
     ) || [];
 
-    return json({ channel: params.channel, scans: channelScans });
+    return { channel: params.channel, scans: channelScans };
 }
 
 export default function ChannelPage() {
