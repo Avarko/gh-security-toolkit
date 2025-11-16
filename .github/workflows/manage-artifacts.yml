@@ -11,6 +11,10 @@ on:
         description: 'Artifact ID (required for GET/DELETE operations)'
         required: false
         type: string
+      file_pattern:
+        description: 'Regex pattern to match files for content preview (GET operation only)'
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       operation:
@@ -24,6 +28,10 @@ on:
         default: 'LIST'
       artifact_id:
         description: 'Artifact ID (required for GET/DELETE operations)'
+        required: false
+        type: string
+      file_pattern:
+        description: 'Regex pattern to match files for content preview (GET operation only)'
         required: false
         type: string
 
@@ -119,15 +127,40 @@ jobs:
             unzip -q artifact.zip -d artifact_contents/
             tree -h -L 5 artifact_contents/ || find artifact_contents/ -type f -exec ls -lh {} \; | awk '{print $9, "("$5")"}'
 
-            # Check if zip is smaller than 30MB and contains only a tar or a zip file
+            # Check if zip is smaller than 30MB and contains only a tar, tar.gz, or a zip file
             if [ $ZIP_SIZE_MB -lt 30 ]; then
               TAR_COUNT=$(find artifact_contents/ -type f -name "*.tar" | wc -l)
+              TAR_GZ_COUNT=$(find artifact_contents/ -type f -name "*.tar.gz" | wc -l)
               ZIP_COUNT=$(find artifact_contents/ -type f -name "*.zip" | wc -l)
               TOTAL_FILES=$(find artifact_contents/ -type f | wc -l)
 
-              # Check if there's only one file and it's either a tar or zip
+              EXTRACT_DIR=""
+
+              # Check if there's only one file and it's either a tar, tar.gz, or zip
               if [ $TOTAL_FILES -eq 1 ]; then
-                if [ $TAR_COUNT -eq 1 ]; then
+                if [ $TAR_GZ_COUNT -eq 1 ]; then
+                  TAR_GZ_FILE=$(find artifact_contents/ -type f -name "*.tar.gz" | head -n 1)
+                  TAR_GZ_SIZE=$(stat -c%s "$TAR_GZ_FILE" 2>/dev/null || stat -f%z "$TAR_GZ_FILE" 2>/dev/null)
+                  TAR_GZ_SIZE_MB=$((TAR_GZ_SIZE / 1024 / 1024))
+
+                  if [ $TAR_GZ_SIZE_MB -lt 30 ]; then
+                    echo ""
+                    echo "🗜️  Found tar.gz archive inside zip (${TAR_GZ_SIZE_MB}MB), extracting contents..."
+                    echo ""
+                    echo "📦 TAR.GZ Archive Contents:"
+                    tar -tzf "$TAR_GZ_FILE" | head -n 100
+
+                    echo ""
+                    echo "🌲 TAR.GZ File tree structure:"
+                    mkdir -p tar_gz_contents/
+                    tar -xzf "$TAR_GZ_FILE" -C tar_gz_contents/
+                    tree -h -L 5 tar_gz_contents/ || find tar_gz_contents/ -type f -exec ls -lh {} \; | awk '{print $9, "("$5")"}'
+                    EXTRACT_DIR="tar_gz_contents"
+                  else
+                    echo ""
+                    echo "ℹ️  tar.gz archive is larger than 30MB, skipping extraction"
+                  fi
+                elif [ $TAR_COUNT -eq 1 ]; then
                   TAR_FILE=$(find artifact_contents/ -type f -name "*.tar" | head -n 1)
                   echo ""
                   echo "🗜️  Found tar archive inside zip, extracting contents..."
@@ -140,7 +173,7 @@ jobs:
                   mkdir -p tar_contents/
                   tar -xf "$TAR_FILE" -C tar_contents/
                   tree -h -L 5 tar_contents/ || find tar_contents/ -type f -exec ls -lh {} \; | awk '{print $9, "("$5")"}'
-                  rm -rf tar_contents/
+                  EXTRACT_DIR="tar_contents"
                 elif [ $ZIP_COUNT -eq 1 ]; then
                   INNER_ZIP=$(find artifact_contents/ -type f -name "*.zip" | head -n 1)
                   echo ""
@@ -154,9 +187,61 @@ jobs:
                   mkdir -p zip_contents/
                   unzip -q "$INNER_ZIP" -d zip_contents/
                   tree -h -L 5 zip_contents/ || find zip_contents/ -type f -exec ls -lh {} \; | awk '{print $9, "("$5")"}'
-                  rm -rf zip_contents/
+                  EXTRACT_DIR="zip_contents"
                 fi
               fi
+
+              # File pattern matching and preview
+              FILE_PATTERN="${{ inputs.file_pattern }}"
+              if [ -n "$FILE_PATTERN" ]; then
+                echo ""
+                echo "🔍 Searching for files matching pattern: $FILE_PATTERN"
+                echo ""
+
+                # Determine search directory
+                SEARCH_DIR="${EXTRACT_DIR:-artifact_contents}"
+
+                # Find matching files
+                MATCHED_FILES=$(find "$SEARCH_DIR" -type f | grep -E "$FILE_PATTERN" | head -n 5)
+
+                if [ -n "$MATCHED_FILES" ]; then
+                  MATCH_COUNT=$(echo "$MATCHED_FILES" | wc -l)
+                  echo "Found $MATCH_COUNT matching file(s) (showing max 5):"
+                  echo ""
+
+                  echo "$MATCHED_FILES" | while IFS= read -r file; do
+                    if [ -f "$file" ]; then
+                      FILE_SIZE=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
+                      FILE_SIZE_MB=$((FILE_SIZE / 1024 / 1024))
+
+                      # Check if file is smaller than 1MB
+                      if [ $FILE_SIZE_MB -lt 1 ]; then
+                        # Check if file is binary using 'file' command
+                        FILE_TYPE=$(file -b --mime-type "$file")
+                        if [[ "$FILE_TYPE" == text/* ]] || [[ "$FILE_TYPE" == application/json ]] || [[ "$FILE_TYPE" == application/xml ]]; then
+                          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                          echo "📄 File: $file"
+                          echo "   Size: $FILE_SIZE bytes | Type: $FILE_TYPE"
+                          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                          cat "$file"
+                          echo ""
+                          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                          echo ""
+                        else
+                          echo "⏭️  Skipping binary file: $file (Type: $FILE_TYPE)"
+                        fi
+                      else
+                        echo "⏭️  Skipping large file: $file (Size: ${FILE_SIZE_MB}MB)"
+                      fi
+                    fi
+                  done
+                else
+                  echo "No files matching pattern '$FILE_PATTERN' found."
+                fi
+              fi
+
+              # Cleanup extracted directories
+              rm -rf tar_gz_contents/ tar_contents/ zip_contents/
             else
               echo ""
               echo "ℹ️  Artifact is larger than 30MB, skipping nested archive extraction"
