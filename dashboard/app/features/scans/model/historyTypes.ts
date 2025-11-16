@@ -57,16 +57,20 @@ const timestampSchema = z.string()
         { message: "Invalid timestamp format" }
     );
 
-// Git commit SHA validation (40 hex chars for full SHA-1)
+// Git commit SHA validation (7-40 hex chars for SHA-1, optional with default)
 const commitSchema = z.string()
     .max(MAX_COMMIT_SHA_LENGTH)
-    .regex(/^[a-f0-9]{7,40}$/i, "Invalid git commit SHA");
+    .regex(/^[a-f0-9]{7,40}$/i, "Invalid git commit SHA")
+    .optional()
+    .default("");
 
-// Git branch name validation (no special characters that could be dangerous)
+// Git branch name validation (optional with default)
 const branchSchema = z.string()
     .min(1)
     .max(MAX_BRANCH_LENGTH)
-    .regex(/^[a-zA-Z0-9\/_\-\.]+$/, "Invalid branch name");
+    .regex(/^[a-zA-Z0-9\/_\-\.]+$/, "Invalid branch name")
+    .optional()
+    .default("");
 
 // Channel name validation (alphanumeric, dash, underscore)
 const channelSchema = z.string()
