@@ -1,3 +1,4 @@
+// app/root.tsx
 import type { MetaFunction } from "@remix-run/react";
 import {
     Links,
@@ -6,7 +7,9 @@ import {
     Scripts,
     ScrollRestoration,
 } from "@remix-run/react";
-import { createTheme, ThemeProvider, CssBaseline } from "@mui/material";
+import { ThemeProvider, CssBaseline } from "@mui/material";
+
+import { theme } from "~/theme";
 import { DashboardLayout } from "~/components/layout/DashboardLayout";
 
 export const meta: MetaFunction = () => ([
@@ -14,34 +17,6 @@ export const meta: MetaFunction = () => ([
     { title: "Security Scan Dashboard" },
     { name: "viewport", content: "width=device-width, initial-scale=1" },
 ]);
-
-const theme = createTheme({
-    palette: {
-        mode: 'dark',
-        primary: {
-            main: '#3f51b5',
-        },
-        secondary: {
-            main: '#f50057',
-        },
-        background: {
-            default: '#0a1929',
-            paper: '#132f4c',
-        },
-        error: {
-            main: '#ef5350',
-        },
-        warning: {
-            main: '#ff9800',
-        },
-        success: {
-            main: '#66bb6a',
-        },
-    },
-    typography: {
-        fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-    },
-});
 
 export default function App() {
     return (
@@ -67,3 +42,4 @@ export default function App() {
         </html>
     );
 }
+
