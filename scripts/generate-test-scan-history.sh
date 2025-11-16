@@ -12,7 +12,7 @@ echo "Generating realistic scan history: $OUTPUT_FILE"
 # Start JSON
 echo '{' > "$OUTPUT_FILE"
 echo '  "version": 2,' >> "$OUTPUT_FILE"
-echo '  "entries": [' >> "$OUTPUT_FILE"
+echo '  "scans": [' >> "$OUTPUT_FILE"
 
 # Generate 20 nightly scans (starting 19 days ago, ending today)
 for i in {19..0}; do
@@ -81,32 +81,34 @@ for i in {19..0}; do
   COMMA=","
   [ $i -eq 0 ] && COMMA=""
 
-  # Write entry
+  # Write entry in ScanMetadata format
   cat >> "$OUTPUT_FILE" << EOF
     {
       "channel": "$CHANNEL",
       "timestamp": "$TIMESTAMP",
-      "metadata": {
-        "branch": "main",
-        "commitSha": "$COMMIT_SHA",
-        "repository": "evolver/gh-security-toolkit",
-        "scanId": "test-$((19 - i))"
-      },
-      "stats": {
-        "trivy": {
-          "critical": $CRITICAL,
-          "high": $HIGH,
-          "medium": $MEDIUM,
-          "low": $LOW
-        },
-        "semgrep": {
-          "error": $ERRORS,
-          "warning": $WARNINGS,
-          "info": $INFO
+      "branch": "main",
+      "commit": "$COMMIT_SHA",
+      "trivyFsResults": {
+        "totalVulnerabilities": {
+          "CRITICAL": $CRITICAL,
+          "HIGH": $HIGH,
+          "MEDIUM": $MEDIUM,
+          "LOW": $LOW
         }
       },
-      "scanDate": "$SCAN_DATE",
-      "dataPath": "data/runs/$CHANNEL/$TIMESTAMP"
+      "trivyImageResults": {
+        "totalVulnerabilities": {
+          "CRITICAL": 0,
+          "HIGH": 0,
+          "MEDIUM": 0,
+          "LOW": 0
+        }
+      },
+      "semgrepResults": {
+        "totalErrors": $ERRORS,
+        "totalWarnings": $WARNINGS,
+        "totalInfos": $INFO
+      }
     }$COMMA
 EOF
 done
