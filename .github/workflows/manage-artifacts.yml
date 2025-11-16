@@ -12,7 +12,7 @@ on:
         required: false
         type: string
       file_pattern:
-        description: 'Regex pattern to match files for content preview (GET operation only)'
+        description: 'Regex pattern to match files for content preview (GET) or type "approve" to confirm deletion (DELETE)'
         required: false
         type: string
   workflow_dispatch:
@@ -31,7 +31,7 @@ on:
         required: false
         type: string
       file_pattern:
-        description: 'Regex pattern to match files for content preview (GET operation only)'
+        description: 'Regex pattern to match files for content preview (GET) or type "approve" to confirm deletion (DELETE)'
         required: false
         type: string
 
@@ -48,9 +48,11 @@ jobs:
         run: |
           OPERATION="${{ inputs.operation }}"
           ARTIFACT_ID="${{ inputs.artifact_id }}"
+          FILE_PATTERN="${{ inputs.file_pattern }}"
 
           echo "Operation: $OPERATION"
           echo "Artifact ID: $ARTIFACT_ID"
+          echo "File Pattern: $FILE_PATTERN"
 
           if [[ "$OPERATION" == "GET" || "$OPERATION" == "DELETE" ]]; then
             if [[ -z "$ARTIFACT_ID" ]]; then
@@ -58,6 +60,13 @@ jobs:
               exit 1
             fi
             echo "artifact_id=$ARTIFACT_ID" >> $GITHUB_OUTPUT
+          fi
+
+          if [[ "$OPERATION" == "DELETE" ]]; then
+            if [[ "$FILE_PATTERN" != "approve" ]]; then
+              echo "::error::For DELETE operation, you must type 'approve' in the file_pattern field to confirm deletion"
+              exit 1
+            fi
           fi
 
           echo "operation=$OPERATION" >> $GITHUB_OUTPUT
