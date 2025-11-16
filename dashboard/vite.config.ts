@@ -18,10 +18,4 @@ export default defineConfig({
         outDir: "build/client",
         emptyOutDir: true,
     },
-    optimizeDeps: {
-        exclude: ["@remix-run/node"],
-    },
-    ssr: {
-        noExternal: [],
-    },
 });
