@@ -1,0 +1,505 @@
+{
+  "version": 2,
+  "entries": [
+    {
+      "channel": "nightly",
+      "timestamp": "2025-10-28-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "0000000000000000000000000000185c393e0ef0",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-0"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 11,
+          "high": 25,
+          "medium": 13,
+          "low": 18
+        },
+        "semgrep": {
+          "error": 14,
+          "warning": 29,
+          "info": 11
+        }
+      },
+      "scanDate": "2025-10-28",
+      "dataPath": "data/runs/nightly/2025-10-28-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-10-29-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "000000000000000000000000000006de29008386",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-1"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 10,
+          "high": 27,
+          "medium": 5,
+          "low": 11
+        },
+        "semgrep": {
+          "error": 15,
+          "warning": 28,
+          "info": 12
+        }
+      },
+      "scanDate": "2025-10-29",
+      "dataPath": "data/runs/nightly/2025-10-29-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-10-30-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "0000000000000000000000000000001a45ebbf40",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-2"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 11,
+          "high": 26,
+          "medium": 11,
+          "low": 17
+        },
+        "semgrep": {
+          "error": 14,
+          "warning": 29,
+          "info": 8
+        }
+      },
+      "scanDate": "2025-10-30",
+      "dataPath": "data/runs/nightly/2025-10-30-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-10-31-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "00000000000000000000000000000007366935d8",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-3"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 9,
+          "high": 23,
+          "medium": 7,
+          "low": 26
+        },
+        "semgrep": {
+          "error": 14,
+          "warning": 28,
+          "info": 10
+        }
+      },
+      "scanDate": "2025-10-31",
+      "dataPath": "data/runs/nightly/2025-10-31-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-01-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "00000000000000000000000000000595cd303960",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-4"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 10,
+          "high": 25,
+          "medium": 11,
+          "low": 21
+        },
+        "semgrep": {
+          "error": 14,
+          "warning": 32,
+          "info": 19
+        }
+      },
+      "scanDate": "2025-11-01",
+      "dataPath": "data/runs/nightly/2025-11-01-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-02-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "00000000000000000000000000000ac5e374cef0",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-5"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 9,
+          "high": 27,
+          "medium": 13,
+          "low": 24
+        },
+        "semgrep": {
+          "error": 14,
+          "warning": 32,
+          "info": 10
+        }
+      },
+      "scanDate": "2025-11-02",
+      "dataPath": "data/runs/nightly/2025-11-02-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-03-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "0000000000000000000000000000035975ea0016",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-6"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 9,
+          "high": 25,
+          "medium": 13,
+          "low": 29
+        },
+        "semgrep": {
+          "error": 16,
+          "warning": 32,
+          "info": 9
+        }
+      },
+      "scanDate": "2025-11-03",
+      "dataPath": "data/runs/nightly/2025-11-03-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-04-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "00000000000000000000000000000a5bff56ce00",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-7"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 9,
+          "high": 26,
+          "medium": 6,
+          "low": 26
+        },
+        "semgrep": {
+          "error": 14,
+          "warning": 27,
+          "info": 12
+        }
+      },
+      "scanDate": "2025-11-04",
+      "dataPath": "data/runs/nightly/2025-11-04-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-05-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "0000000000000000000000000000030472d6d9c0",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-8"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 10,
+          "high": 26,
+          "medium": 10,
+          "low": 26
+        },
+        "semgrep": {
+          "error": 14,
+          "warning": 29,
+          "info": 18
+        }
+      },
+      "scanDate": "2025-11-05",
+      "dataPath": "data/runs/nightly/2025-11-05-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-06-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "000000000000000000000000000000c533dda6f0",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-9"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 0,
+          "high": 8,
+          "medium": 11,
+          "low": 17
+        },
+        "semgrep": {
+          "error": 2,
+          "warning": 7,
+          "info": 19
+        }
+      },
+      "scanDate": "2025-11-06",
+      "dataPath": "data/runs/nightly/2025-11-06-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-07-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "00000000000000000000000000000085fdcf8f7c",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-10"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 1,
+          "high": 8,
+          "medium": 8,
+          "low": 11
+        },
+        "semgrep": {
+          "error": 2,
+          "warning": 9,
+          "info": 14
+        }
+      },
+      "scanDate": "2025-11-07",
+      "dataPath": "data/runs/nightly/2025-11-07-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-08-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "0000000000000000000000000000008fb8d1f0f4",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-11"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 1,
+          "high": 8,
+          "medium": 8,
+          "low": 14
+        },
+        "semgrep": {
+          "error": 2,
+          "warning": 8,
+          "info": 15
+        }
+      },
+      "scanDate": "2025-11-08",
+      "dataPath": "data/runs/nightly/2025-11-08-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-09-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "00000000000000000000000000000037498323d8",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-12"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 1,
+          "high": 5,
+          "medium": 11,
+          "low": 28
+        },
+        "semgrep": {
+          "error": 2,
+          "warning": 9,
+          "info": 17
+        }
+      },
+      "scanDate": "2025-11-09",
+      "dataPath": "data/runs/nightly/2025-11-09-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-10-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "000000000000000000000000000001c39d47fdd4",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-13"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 0,
+          "high": 4,
+          "medium": 12,
+          "low": 29
+        },
+        "semgrep": {
+          "error": 2,
+          "warning": 6,
+          "info": 10
+        }
+      },
+      "scanDate": "2025-11-10",
+      "dataPath": "data/runs/nightly/2025-11-10-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-11-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "0000000000000000000000000000051134165504",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-14"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 1,
+          "high": 4,
+          "medium": 13,
+          "low": 19
+        },
+        "semgrep": {
+          "error": 2,
+          "warning": 7,
+          "info": 12
+        }
+      },
+      "scanDate": "2025-11-11",
+      "dataPath": "data/runs/nightly/2025-11-11-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-12-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "000000000000000000000000000000797aae5844",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-15"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 1,
+          "high": 0,
+          "medium": 5,
+          "low": 16
+        },
+        "semgrep": {
+          "error": 0,
+          "warning": 3,
+          "info": 5
+        }
+      },
+      "scanDate": "2025-11-12",
+      "dataPath": "data/runs/nightly/2025-11-12-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-13-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "000000000000000000000000000004c861af4081",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-16"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 0,
+          "high": 1,
+          "medium": 12,
+          "low": 25
+        },
+        "semgrep": {
+          "error": 1,
+          "warning": 1,
+          "info": 11
+        }
+      },
+      "scanDate": "2025-11-13",
+      "dataPath": "data/runs/nightly/2025-11-13-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-14-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "0000000000000000000000000000000b9885f50e",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-17"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 1,
+          "high": 2,
+          "medium": 12,
+          "low": 16
+        },
+        "semgrep": {
+          "error": 2,
+          "warning": 3,
+          "info": 11
+        }
+      },
+      "scanDate": "2025-11-14",
+      "dataPath": "data/runs/nightly/2025-11-14-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-15-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "000000000000000000000000000008144c6cea40",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-18"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 0,
+          "high": 2,
+          "medium": 14,
+          "low": 29
+        },
+        "semgrep": {
+          "error": 0,
+          "warning": 0,
+          "info": 11
+        }
+      },
+      "scanDate": "2025-11-15",
+      "dataPath": "data/runs/nightly/2025-11-15-020000Z"
+    },
+    {
+      "channel": "nightly",
+      "timestamp": "2025-11-16-020000Z",
+      "metadata": {
+        "branch": "main",
+        "commitSha": "00000000000000000000000000000cda46f9a698",
+        "repository": "evolver/gh-security-toolkit",
+        "scanId": "test-19"
+      },
+      "stats": {
+        "trivy": {
+          "critical": 1,
+          "high": 0,
+          "medium": 14,
+          "low": 25
+        },
+        "semgrep": {
+          "error": 0,
+          "warning": 0,
+          "info": 9
+        }
+      },
+      "scanDate": "2025-11-16",
+      "dataPath": "data/runs/nightly/2025-11-16-020000Z"
+    }
+  ]
+}

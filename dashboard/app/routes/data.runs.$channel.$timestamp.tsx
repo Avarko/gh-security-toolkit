@@ -1,5 +1,4 @@
 import { useLoaderData } from "@remix-run/react";
-import { json } from "@remix-run/node";
 
 interface ScanMetadata {
     timestamp: string;
@@ -41,7 +40,7 @@ export async function clientLoader({ params }: { params: { channel: string; time
     const trivyData = await trivyRes.json();
     const semgrepData = await semgrepRes.json();
 
-    return json({ metadata, trivyData, semgrepData });
+    return { metadata, trivyData, semgrepData };
 }
 
 export default function RunDetailPage() {

@@ -1,5 +1,4 @@
 import { useLoaderData } from "@remix-run/react";
-import { json } from "@remix-run/node";
 import {
     Container,
     Typography,
@@ -24,7 +23,7 @@ import { useMemo } from "react";
 export async function clientLoader() {
     const response = await fetch("/data/hist/scan-history.json");
     const history = await response.json();
-    return json({ history });
+    return { history };
 }
 
 interface ScanEntry {
