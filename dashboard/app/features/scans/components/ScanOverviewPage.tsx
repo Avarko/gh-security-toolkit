@@ -165,11 +165,11 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                     {scans.length} total scans
                                 </Typography>
                                 <Typography variant="body2" color="text.secondary">
-                                    Latest: {new Date(scans[0].timestamp).toLocaleString()}
+                                    Latest: {scans[0]?.timestamp ? new Date(scans[0].timestamp).toLocaleString() : "N/A"}
                                 </Typography>
                                 <Link
                                     component={RemixLink}
-                                    to={`/scans/${channel}`}
+                                    to={`/data/channels/${channel}`}
                                     underline="hover"
                                 >
                                     View All →
@@ -266,11 +266,11 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                 </TableHead>
                                 <TableBody>
                                     {scans.slice(0, 5).map((scan) => (
-                                        <TableRow key={scan.timestamp} hover>
+                                        <TableRow key={`${channel}-${scan.timestamp}`} hover>
                                             <TableCell>
                                                 <Link
                                                     component={RemixLink}
-                                                    to={`/scans/${channel}/${scan.timestamp}`}
+                                                    to={`/data/runs/${channel}/${scan.timestamp}`}
                                                     underline="hover"
                                                 >
                                                     {new Date(scan.timestamp).toLocaleString()}
