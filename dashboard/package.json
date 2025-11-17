@@ -7,26 +7,27 @@
         "node": ">=24"
     },
     "scripts": {
-        "build": "remix vite:build",
-        "dev": "remix vite:dev",
-        "typecheck": "tsc"
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview",
+        "typecheck": "tsc --noEmit"
     },
     "dependencies": {
         "@emotion/react": "^11.14.0",
         "@emotion/styled": "^11.14.1",
         "@mui/icons-material": "^7.3.5",
         "@mui/material": "^7.3.5",
-        "@remix-run/react": "^2.17.2",
         "echarts": "^6.0.0",
         "echarts-for-react": "^3.0.5",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
+        "react-router-dom": "^7.0.0",
         "zod": "^4.1.12"
     },
     "devDependencies": {
-        "@remix-run/dev": "^2.17.2",
         "@types/react": "^18.3.12",
         "@types/react-dom": "^18.3.1",
+        "@vitejs/plugin-react": "^5.1.1",
         "typescript": "^5.7.2",
         "vite": "^7.2.2"
     }

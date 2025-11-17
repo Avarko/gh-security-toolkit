@@ -1,3 +1,5 @@
+// src/routes/scans/ChannelScansRoute.tsx
+
 /**
  * Channel-specific route.
  * Loads all scans for a single channel and displays them in ChannelScansPage.
@@ -5,20 +7,23 @@
  * Route path: /scans/:channel
  */
 
-import type { ClientLoaderFunctionArgs } from "@remix-run/react";
-import { useLoaderData } from "@remix-run/react";
+import type { LoaderFunctionArgs } from "react-router-dom";
+import { useLoaderData } from "react-router-dom";
 
-import type { ScanMetadata } from "../features/scans/model/historyTypes";
-import { fetchScanHistory } from "../features/scans/api/historyClient";
-import { ChannelScansPage } from "../features/scans/components/ChannelScansPage";
+import type { ScanMetadata } from "../../features/scans/model/historyTypes";
+import { fetchScanHistory } from "../../features/scans/api/historyClient";
+import { ChannelScansPage } from "../../features/scans/components/ChannelScansPage";
 
 type LoaderData = {
     channel: string;
     scans: ScanMetadata[];
 };
 
-export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
+export async function loader(
+    args: LoaderFunctionArgs,
+): Promise<LoaderData> {
     try {
+        const { params } = args;
         const channel = params.channel;
         if (!channel) {
             throw new Error("Channel parameter is missing");
@@ -31,22 +36,20 @@ export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
         }
 
         const scans: ScanMetadata[] = result.data.scans.filter(
-            (scan: ScanMetadata) => scan.channel === channel
+            (scan: ScanMetadata) => scan.channel === channel,
         );
 
-        const data: LoaderData = {
+        return {
             channel,
             scans,
         };
-
-        return data;
     } catch (error) {
-        console.error("Unexpected error during clientLoader:", error);
+        console.error("Unexpected error during loader:", error);
         throw new Error("Failed to load channel scans");
     }
 }
 
-export default function ChannelRoute() {
-    const { channel, scans } = useLoaderData<typeof clientLoader>();
+export default function ChannelScansRoute() {
+    const { channel, scans } = useLoaderData() as LoaderData;
     return <ChannelScansPage channel={channel} scans={scans} />;
 }

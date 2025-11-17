@@ -4,7 +4,7 @@
  */
 
 import type { ReactNode } from "react";
-import { Link as RemixLink, useLocation } from "@remix-run/react";
+import { Link as RouterLink, useLocation } from "react-router-dom";
 import {
     AppBar,
     Box,
@@ -92,16 +92,23 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     {NAV_ITEMS.map((item) => {
                         const isActive =
                             location.pathname === item.to ||
-                            (item.to !== "/" && location.pathname.startsWith(item.to));
+                            (item.to !== "/" &&
+                                location.pathname.startsWith(item.to));
 
                         return (
                             <ListItem key={item.to} disablePadding>
                                 <ListItemButton
-                                    component={RemixLink}
+                                    component={RouterLink}
                                     to={item.to}
                                     selected={isActive}
                                 >
-                                    <ListItemIcon sx={{ color: isActive ? "primary.main" : "inherit" }}>
+                                    <ListItemIcon
+                                        sx={{
+                                            color: isActive
+                                                ? "primary.main"
+                                                : "inherit",
+                                        }}
+                                    >
                                         {item.icon}
                                     </ListItemIcon>
                                     <ListItemText
@@ -137,4 +144,3 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         </Box>
     );
 }
-

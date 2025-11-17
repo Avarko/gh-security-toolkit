@@ -1,4 +1,4 @@
-// app/components/layout/ReportFooter.tsx
+// src/components/layout/ReportFooter.tsx
 import { Box, Link, Typography } from "@mui/material";
 
 export function ReportFooter() {
