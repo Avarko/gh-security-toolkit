@@ -11,10 +11,10 @@ import { ThemeProvider, CssBaseline } from "@mui/material";
 import { theme } from "./theme";
 import { DashboardLayout } from "./components/layout/DashboardLayout";
 
-export const meta: MetaFunction = () => ([
-    { title: "Security Scan Dashboard" },
-    { name: "viewport", content: "width=device-width,initial-scale=1" },
-]);
+export const meta: MetaFunction = () => ({
+    title: "Security Scan Dashboard",
+    viewport: "width=device-width,initial-scale=1",
+});
 
 export const links: LinksFunction = () => [
     {
@@ -25,7 +25,7 @@ export const links: LinksFunction = () => [
     },
 ];
 
-export function Layout({ children }: { children: React.ReactNode }) {
+function Document({ children }: { children: React.ReactNode }) {
     return (
         <html lang="en">
             <head>
@@ -34,12 +34,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <Links />
             </head>
             <body>
-                <ThemeProvider theme={theme}>
-                    <CssBaseline />
-                    <DashboardLayout>
-                        {children}
-                    </DashboardLayout>
-                </ThemeProvider>
+                {children}
                 <ScrollRestoration />
                 <Scripts />
             </body>
@@ -48,7 +43,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-    return <Outlet />;
+    return (
+        <Document>
+            <ThemeProvider theme={theme}>
+                <CssBaseline />
+                <DashboardLayout>
+                    <Outlet />
+                </DashboardLayout>
+            </ThemeProvider>
+        </Document>
+    );
 }
 
 export function HydrateFallback() {
@@ -57,7 +61,7 @@ export function HydrateFallback() {
             <CssBaseline />
             <DashboardLayout>
                 <main style={{ padding: 24 }}>
-                    <p>Loading Security Scan Dashboard…</p>
+                    <p>Loading Security Scan Dashboard&hellip;</p>
                 </main>
             </DashboardLayout>
         </ThemeProvider>
