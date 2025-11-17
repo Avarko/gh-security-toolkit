@@ -162,7 +162,7 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                                         <TableRow key={scan.timestamp} hover>
                                             <TableCell>
                                                 <MuiLink
-                                                    href={`/data/runs/${channel}/${scan.timestamp}`}
+                                                    href={`/scans/${channel}/${scan.timestamp}`}
                                                     underline="hover"
                                                 >
                                                     {new Date(scan.timestamp).toLocaleString()}
@@ -227,7 +227,7 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                                             </TableCell>
                                             <TableCell>
                                                 <MuiLink
-                                                    href={`/data/runs/${channel}/${scan.timestamp}`}
+                                                    href={`/scans/${channel}/${scan.timestamp}`}
                                                     underline="hover"
                                                 >
                                                     View →

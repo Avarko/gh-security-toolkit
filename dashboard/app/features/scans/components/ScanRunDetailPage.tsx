@@ -82,7 +82,7 @@ export function ScanRunDetailPage({
                 <MuiLink
                     underline="hover"
                     color="inherit"
-                    href={`/data/channels/${channel}`}
+                    href={`/scans/${channel}`}
                 >
                     {channel}
                 </MuiLink>
