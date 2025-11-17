@@ -22,8 +22,8 @@ import {
 import HomeIcon from "@mui/icons-material/Home";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import ReactECharts from "echarts-for-react";
-import type { ScanHistory, ScanMetadata } from "../../../../model/historyTypes";
-import { buildChannelChartOption } from "../../../../charts/channelHistoryOptions";
+import type { ScanHistory, ScanMetadata } from "../../../../features/scans/model/historyTypes";
+import { buildChannelChartOption } from "../../../../features/scans/charts/channelHistoryOptions";
 import { severityToChipColor } from "./severity";
 
 interface SecurityScanOverviewPageProps {
