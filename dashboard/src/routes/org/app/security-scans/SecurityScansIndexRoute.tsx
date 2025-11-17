@@ -1,8 +1,8 @@
 // src/routes/org/app/security-scans/SecurityScansIndexRoute.tsx
 
 /**
- * Security scans -alueen "index route".
- * Fetchaa scan-historian ja renderöi ScanOverviewPage-komponentin.
+ * Index route for Security scans.
+ * Fetches scan history and renders the ScanOverviewPage component.
  */
 
 import type { LoaderFunctionArgs } from "react-router-dom";
@@ -15,14 +15,22 @@ import {
 } from "../../../../features/scans/api/historyClient";
 import { ScanOverviewPage } from "../../../../features/scans/components/ScanOverviewPage";
 import { ValidationErrorDisplay } from "../../../../features/scans/components/ValidationErrorDisplay";
+import { MissingTenantParamsError } from "../../../../errors/MissingTenantParamsError";
 
 type LoaderData = {
     result: ScanHistoryLoadResult;
 };
 
-export async function loader(_args: LoaderFunctionArgs): Promise<LoaderData> {
+export async function loader(args: LoaderFunctionArgs): Promise<LoaderData> {
+    const { orgSlug, appSlug, repoSlug } = args.params;
+
     try {
-        const result = await fetchScanHistory();
+        const result = await fetchScanHistory({
+            orgSlug,
+            appSlug,
+            repoSlug,
+        });
+
         if (!result.success) {
             console.error(
                 "Failed to load scan history:",
@@ -30,14 +38,21 @@ export async function loader(_args: LoaderFunctionArgs): Promise<LoaderData> {
                 result.details,
             );
         }
+
         return { result } as const;
     } catch (error) {
         console.error("Unexpected error during loader:", error);
+
+        // Missing tenant parameters is a configuration error → let it bubble up
+        if (error instanceof MissingTenantParamsError) {
+            throw error;
+        }
+
         return {
             result: {
                 success: false,
                 error: "Unexpected error",
-                details: null,
+                details: error,
             },
         };
     }

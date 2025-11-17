@@ -1,6 +1,6 @@
 {
     "mode": "single-tenant",
     "defaultOrg": "contoso",
-    "defaultApp": "example-app",
+    "defaultApp": "contoso-testapp",
     "defaultRepo": "backend"
 }

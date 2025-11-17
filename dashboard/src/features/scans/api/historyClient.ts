@@ -3,7 +3,13 @@
  * Includes comprehensive validation using Zod schemas.
  */
 
-import { scanHistorySchema, type ScanHistory, type ValidationResult } from "../model/historyTypes";
+import {
+    scanHistorySchema,
+    type ScanHistory,
+    type ValidationResult,
+} from "../model/historyTypes";
+import { getDataRoot } from "../../../lib/dataPath";
+import { MissingTenantParamsError } from "../../../errors/MissingTenantParamsError";
 
 /**
  * Result type for scan history loading.
@@ -11,20 +17,38 @@ import { scanHistorySchema, type ScanHistory, type ValidationResult } from "../m
  */
 export type ScanHistoryLoadResult = ValidationResult<ScanHistory>;
 
+export type HistoryContext = {
+    orgSlug?: string;
+    appSlug?: string;
+    repoSlug?: string;
+};
+
 /**
- * Fetches and validates scan history data from the server.
+ * Fetches and validates scan history data from the server,
+ * scoped to a specific tenant (org/app[/repo]).
  *
- * @returns ValidationResult with either validated data or error details
- * @throws Never throws - returns validation errors in result object
+ * Security principle:
+ * - getDataRoot throws MissingTenantParamsError if org/app is missing.
+ * - This error is NOT encapsulated as a validation error but allowed to propagate,
+ *   so that the router's error boundary can handle it as a configuration error.
+ *
+ * Other errors (network, HTTP status, JSON parse, Zod) are returned
+ * as a ScanHistoryLoadResult object (success: false).
  */
-export async function fetchScanHistory(): Promise<ScanHistoryLoadResult> {
+export async function fetchScanHistory(
+    ctx: HistoryContext
+): Promise<ScanHistoryLoadResult> {
+    // This may throw MissingTenantParamsError → let it bubble up
+    const base = getDataRoot(ctx);
+    const url = `${base}/hist/scan-history.json`;
+
     try {
-        const response = await fetch("/data/hist/scan-history.json");
+        const response = await fetch(url);
 
         if (!response.ok) {
             return {
                 success: false,
-                error: `HTTP ${response.status}: Failed to load scan history`,
+                error: `HTTP ${response.status}: Failed to load scan history from ${url}`,
             };
         }
 
@@ -44,10 +68,9 @@ export async function fetchScanHistory(): Promise<ScanHistoryLoadResult> {
         const parseResult = scanHistorySchema.safeParse(jsonData);
 
         if (!parseResult.success) {
-            // Extract human-readable error messages
             const errorMessages = parseResult.error.issues
-                .map((err) => `${err.path.join('.')}: ${err.message}`)
-                .join('; ');
+                .map((err) => `${err.path.join(".")}: ${err.message}`)
+                .join("; ");
 
             return {
                 success: false,
@@ -60,12 +83,19 @@ export async function fetchScanHistory(): Promise<ScanHistoryLoadResult> {
             success: true,
             data: parseResult.data,
         };
-
     } catch (error) {
-        // Catch any unexpected errors (network issues, etc.)
+        // Configuration error: let MissingTenantParamsError bubble up
+        if (error instanceof MissingTenantParamsError) {
+            throw error;
+        }
+
+        // Other unexpected errors are encapsulated normally
         return {
             success: false,
-            error: error instanceof Error ? error.message : "Unknown error occurred",
+            error:
+                error instanceof Error
+                    ? error.message
+                    : "Unknown error occurred while fetching scan history",
             details: error,
         };
     }
