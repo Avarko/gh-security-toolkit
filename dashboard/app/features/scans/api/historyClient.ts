@@ -4,7 +4,6 @@
  */
 
 import { scanHistorySchema, type ScanHistory, type ValidationResult } from "../model/historyTypes";
-import { ZodError } from "zod";
 
 /**
  * Result type for scan history loading.
