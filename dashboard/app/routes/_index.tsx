@@ -16,14 +16,10 @@ type LoaderData = {
 
 export async function clientLoader(_args: ClientLoaderFunctionArgs) {
     const result = await fetchScanHistory();
-
-    // Log validation failures for debugging (dev console only)
     if (!result.success) {
         console.error("Failed to load scan history:", result.error, result.details);
     }
-
-    const data: LoaderData = { result };
-    return data;
+    return { result } as const;
 }
 
 export default function IndexRoute() {

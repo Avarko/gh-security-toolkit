@@ -1,5 +1,5 @@
 // app/root.tsx
-import type { MetaFunction } from "@remix-run/react";
+import type { MetaFunction, LinksFunction } from "@remix-run/node";
 import {
     Links,
     Meta,
@@ -8,32 +8,36 @@ import {
     ScrollRestoration,
 } from "@remix-run/react";
 import { ThemeProvider, CssBaseline } from "@mui/material";
-
-import { theme } from "~/theme";
-import { DashboardLayout } from "~/components/layout/DashboardLayout";
+import { theme } from "./theme";
+import { DashboardLayout } from "./components/layout/DashboardLayout";
 
 export const meta: MetaFunction = () => ([
-    { charSet: "utf-8" },
     { title: "Security Scan Dashboard" },
-    { name: "viewport", content: "width=device-width, initial-scale=1" },
+    { name: "viewport", content: "width=device-width,initial-scale=1" },
 ]);
 
-export default function App() {
+export const links: LinksFunction = () => [
+    {
+        rel: "stylesheet",
+        href:
+            "https://fonts.googleapis.com/css2?" +
+            "family=Roboto:wght@300;400;500;700&display=swap",
+    },
+];
+
+export function Layout({ children }: { children: React.ReactNode }) {
     return (
         <html lang="en">
             <head>
+                <meta charSet="utf-8" />
                 <Meta />
                 <Links />
-                <link
-                    rel="stylesheet"
-                    href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap"
-                />
             </head>
             <body>
                 <ThemeProvider theme={theme}>
                     <CssBaseline />
                     <DashboardLayout>
-                        <Outlet />
+                        {children}
                     </DashboardLayout>
                 </ThemeProvider>
                 <ScrollRestoration />
@@ -43,3 +47,19 @@ export default function App() {
     );
 }
 
+export default function App() {
+    return <Outlet />;
+}
+
+export function HydrateFallback() {
+    return (
+        <ThemeProvider theme={theme}>
+            <CssBaseline />
+            <DashboardLayout>
+                <main style={{ padding: 24 }}>
+                    <p>Loading Security Scan Dashboard…</p>
+                </main>
+            </DashboardLayout>
+        </ThemeProvider>
+    );
+}
