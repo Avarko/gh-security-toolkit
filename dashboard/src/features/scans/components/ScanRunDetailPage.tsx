@@ -1,5 +1,5 @@
-// app/features/scans/components/ScanRunDetailPage.tsx
-import { Link as RemixLink } from "@remix-run/react";
+// features/scans/components/ScanRunDetailPage.tsx
+import { Link as RouterLink } from "react-router-dom";
 import {
     Box,
     Breadcrumbs,
@@ -52,7 +52,7 @@ export function ScanRunDetailPage({
                 sx={{ mb: 2 }}
             >
                 <MuiLink
-                    component={RemixLink}
+                    component={RouterLink}
                     to="/"
                     underline="hover"
                     sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
@@ -62,7 +62,7 @@ export function ScanRunDetailPage({
                     Home
                 </MuiLink>
                 <MuiLink
-                    component={RemixLink}
+                    component={RouterLink}
                     to="/"
                     underline="hover"
                     color="inherit"
@@ -70,7 +70,7 @@ export function ScanRunDetailPage({
                     Security Scans
                 </MuiLink>
                 <MuiLink
-                    component={RemixLink}
+                    component={RouterLink}
                     to={`/scans/${channel}`}
                     underline="hover"
                     color="inherit"
@@ -124,7 +124,7 @@ export function ScanRunDetailPage({
                 </Typography>
 
                 {trivyVulns.length === 0 ? (
-                    <Typography variant="body2">No Trivy vulnerabilities found. ✅</Typography>
+                    <Typography variant="body2">No Trivy vulnerabilities found.</Typography>
                 ) : (
                     <Paper sx={{ p: 2 }}>
                         <TableContainer sx={{ maxHeight: 600 }}>
@@ -182,7 +182,7 @@ export function ScanRunDetailPage({
                 </Typography>
 
                 {semgrepFindings.length === 0 ? (
-                    <Typography variant="body2">No Semgrep findings. ✅</Typography>
+                    <Typography variant="body2">No Semgrep findings.</Typography>
                 ) : (
                     <Paper sx={{ p: 2 }}>
                         <TableContainer sx={{ maxHeight: 600 }}>

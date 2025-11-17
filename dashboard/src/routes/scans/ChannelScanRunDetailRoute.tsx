@@ -1,3 +1,5 @@
+// src/routes/scans/ChannelScanRunDetailRoute.tsx
+
 /**
  * Scan run detail route.
  * Loads a single scan run (metadata + Trivy + Semgrep) and displays it.
@@ -5,8 +7,8 @@
  * Route path: /scans/:channel/:timestamp
  */
 
-import type { ClientLoaderFunctionArgs } from "@remix-run/react";
-import { useLoaderData } from "@remix-run/react";
+import type { LoaderFunctionArgs } from "react-router-dom";
+import { useLoaderData } from "react-router-dom";
 
 import {
     scanRunMetadataSchema,
@@ -15,8 +17,8 @@ import {
     type ScanRunMetadata,
     type TrivyScan,
     type SemgrepScan,
-} from "../features/scans/types/scanRun";
-import { ScanRunDetailPage } from "../features/scans/components/ScanRunDetailPage";
+} from "../../features/scans/types/scanRun";
+import { ScanRunDetailPage } from "../../features/scans/components/ScanRunDetailPage";
 
 type LoaderData = {
     channel: string;
@@ -25,12 +27,17 @@ type LoaderData = {
     semgrepData: SemgrepScan;
 };
 
-export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
+export async function loader(
+    args: LoaderFunctionArgs,
+): Promise<LoaderData> {
     try {
+        const { params } = args;
         const { channel, timestamp } = params;
 
         if (!channel || !timestamp) {
-            throw new Error("Both channel and timestamp route params are required");
+            throw new Error(
+                "Both channel and timestamp route params are required",
+            );
         }
 
         const baseUrl = `/data/runs/${channel}/${timestamp}`;
@@ -53,14 +60,14 @@ export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
 
         return { channel, metadata, trivyData, semgrepData };
     } catch (error) {
-        console.error("Unexpected error during clientLoader:", error);
+        console.error("Unexpected error during loader:", error);
         throw new Error("Failed to load scan run details");
     }
 }
 
-export default function RunDetailRoute() {
+export default function ChannelScanRunDetailRoute() {
     const { channel, metadata, trivyData, semgrepData } =
-        useLoaderData<typeof clientLoader>();
+        useLoaderData() as LoaderData;
 
     return (
         <ScanRunDetailPage

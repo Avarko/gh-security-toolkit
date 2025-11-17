@@ -1,20 +1,12 @@
-import { vitePlugin as remix } from "@remix-run/dev";
+// vite.config.ts
 import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 
 export default defineConfig({
-    plugins: [
-        remix({
-            future: {
-                v3_fetcherPersist: true,
-                v3_lazyRouteDiscovery: true,
-                v3_relativeSplatPath: true,
-                v3_singleFetch: true,
-                v3_throwAbortReason: true,
-            },
-            ssr: false,
-            basename: "/",
-        }),
-    ],
+    plugins: [react()],
+    // Jos hostaat juuren alla (esim. https://example.com/), base voi olla oletus.
+    // Jos joskus hostaat alihakemistossa (esim. /gh-security-toolkit/), muuta base-arvoa.
+    base: "/",
     resolve: {
         alias: {},
     },

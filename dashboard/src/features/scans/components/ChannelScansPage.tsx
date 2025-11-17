@@ -3,7 +3,7 @@
  * Displays all scans for a single channel with detailed table.
  */
 
-import { Link as RemixLink } from "@remix-run/react";
+import { Link as RouterLink } from "react-router-dom";
 import {
     Box,
     Typography,
@@ -44,7 +44,7 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                 sx={{ mb: 2 }}
             >
                 <MuiLink
-                    component={RemixLink}
+                    component={RouterLink}
                     to="/"
                     underline="hover"
                     sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
@@ -54,7 +54,7 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                     Home
                 </MuiLink>
                 <MuiLink
-                    component={RemixLink}
+                    component={RouterLink}
                     to="/"
                     underline="hover"
                     color="inherit"
@@ -153,7 +153,7 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                                         <TableRow key={scan.timestamp} hover>
                                             <TableCell>
                                                 <MuiLink
-                                                    component={RemixLink}
+                                                    component={RouterLink}
                                                     to={detailPath}
                                                     underline="hover"
                                                 >
@@ -219,7 +219,7 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                                             </TableCell>
                                             <TableCell>
                                                 <MuiLink
-                                                    component={RemixLink}
+                                                    component={RouterLink}
                                                     to={detailPath}
                                                     underline="hover"
                                                 >

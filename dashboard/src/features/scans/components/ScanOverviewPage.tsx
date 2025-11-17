@@ -4,7 +4,7 @@
  */
 
 import { useMemo } from "react";
-import { Link as RemixLink } from "@remix-run/react";
+import { Link as RouterLink } from "react-router-dom";
 import {
     Box,
     Typography,
@@ -92,7 +92,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
             {/* Breadcrumbs */}
             <Breadcrumbs separator={<NavigateNextIcon fontSize="small" />} sx={{ mb: 3 }}>
                 <Link
-                    component={RemixLink}
+                    component={RouterLink}
                     to="/"
                     underline="hover"
                     sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
@@ -144,7 +144,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                     Latest: {scans[0]?.timestamp ? new Date(scans[0].timestamp).toLocaleString() : "N/A"}
                                 </Typography>
                                 <Link
-                                    component={RemixLink}
+                                    component={RouterLink}
                                     to={`/scans/${channel}`}
                                     underline="hover"
                                 >
@@ -245,7 +245,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                         <TableRow key={`${channel}-${scan.timestamp}`} hover>
                                             <TableCell sx={{ whiteSpace: "nowrap" }}>
                                                 <Link
-                                                    component={RemixLink}
+                                                    component={RouterLink}
                                                     to={`/scans/${channel}/${scan.timestamp}`}
                                                     underline="hover"
                                                 >
