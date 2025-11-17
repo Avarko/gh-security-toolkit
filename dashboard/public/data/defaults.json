@@ -1,6 +1,6 @@
 {
     "mode": "single-tenant",
     "defaultOrg": "contoso",
-    "defaultApp": "myllyai",
+    "defaultApp": "contoso-testapp",
     "defaultRepo": "backend"
 }

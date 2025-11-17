@@ -2,8 +2,8 @@
   "version": 2,
   "scans": [
     {
-      "channel": "nightly",
-      "timestamp": "2025-10-28-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-10-28T02:00:00Z",
       "branch": "main",
       "commit": "000000000000000000000000000000159588f480",
       "trivyFsResults": {
@@ -29,8 +29,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-10-29-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-10-29T02:00:00Z",
       "branch": "main",
       "commit": "000000000000000000000000000000ffdf8303b7",
       "trivyFsResults": {
@@ -56,8 +56,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-10-30-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-10-30T02:00:00Z",
       "branch": "main",
       "commit": "0000000000000000000000000000067be6870994",
       "trivyFsResults": {
@@ -83,8 +83,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-10-31-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-10-31T02:00:00Z",
       "branch": "main",
       "commit": "0000000000000000000000000000066d1af66480",
       "trivyFsResults": {
@@ -110,8 +110,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-01-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-01T02:00:00Z",
       "branch": "main",
       "commit": "000000000000000000000000000001f5d0b24eeb",
       "trivyFsResults": {
@@ -137,8 +137,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-02-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-02T02:00:00Z",
       "branch": "main",
       "commit": "000000000000000000000000000001f316b865d6",
       "trivyFsResults": {
@@ -164,8 +164,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-03-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-03T02:00:00Z",
       "branch": "main",
       "commit": "0000000000000000000000000000001d9e0681f8",
       "trivyFsResults": {
@@ -191,8 +191,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-04-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-04T02:00:00Z",
       "branch": "main",
       "commit": "00000000000000000000000000000016f6e38469",
       "trivyFsResults": {
@@ -218,8 +218,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-05-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-05T02:00:00Z",
       "branch": "main",
       "commit": "00000000000000000000000000000105bf7e37c0",
       "trivyFsResults": {
@@ -245,8 +245,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-06-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-06T02:00:00Z",
       "branch": "main",
       "commit": "00000000000000000000000000000657172905f3",
       "trivyFsResults": {
@@ -272,8 +272,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-07-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-07T02:00:00Z",
       "branch": "main",
       "commit": "0000000000000000000000000000004b419ddc38",
       "trivyFsResults": {
@@ -299,8 +299,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-08-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-08T02:00:00Z",
       "branch": "main",
       "commit": "0000000000000000000000000000000c67e72e92",
       "trivyFsResults": {
@@ -326,8 +326,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-09-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-09T02:00:00Z",
       "branch": "main",
       "commit": "000000000000000000000000000003e9e6ceee00",
       "trivyFsResults": {
@@ -353,8 +353,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-10-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-10T02:00:00Z",
       "branch": "main",
       "commit": "00000000000000000000000000000ba18f888f18",
       "trivyFsResults": {
@@ -380,8 +380,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-11-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-11T02:00:00Z",
       "branch": "main",
       "commit": "0000000000000000000000000000061dd5993880",
       "trivyFsResults": {
@@ -407,8 +407,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-12-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-12T02:00:00Z",
       "branch": "main",
       "commit": "000000000000000000000000000003f069a4d4b0",
       "trivyFsResults": {
@@ -434,8 +434,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-13-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-13T02:00:00Z",
       "branch": "main",
       "commit": "000000000000000000000000000000393618ab3c",
       "trivyFsResults": {
@@ -461,8 +461,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-14-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-14T02:00:00Z",
       "branch": "main",
       "commit": "000000000000000000000000000001f49e1ac810",
       "trivyFsResults": {
@@ -488,8 +488,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-15-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-15T02:00:00Z",
       "branch": "main",
       "commit": "00000000000000000000000000000136e41d6f8e",
       "trivyFsResults": {
@@ -515,8 +515,8 @@
       }
     },
     {
-      "channel": "nightly",
-      "timestamp": "2025-11-16-020000Z",
+      "channel": "nightly-master",
+      "timestamp": "2025-11-16T02:00:00Z",
       "branch": "main",
       "commit": "0000000000000000000000000000087fdea9de54",
       "trivyFsResults": {
