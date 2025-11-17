@@ -1,8 +1,8 @@
-// src/routes/Index.tsx
+// src/routes/org/app/security-scans/SecurityScansIndexRoute.tsx
 
 /**
- * Main route entry for security scan overview.
- * Fetches scan history with Zod validation and renders ScanOverviewPage.
+ * Security scans -alueen "index route".
+ * Fetchaa scan-historian ja renderöi ScanOverviewPage-komponentin.
  */
 
 import type { LoaderFunctionArgs } from "react-router-dom";
@@ -12,9 +12,9 @@ import { Box, Container, Typography } from "@mui/material";
 import {
     fetchScanHistory,
     type ScanHistoryLoadResult,
-} from "../features/scans/api/historyClient";
-import { ScanOverviewPage } from "../features/scans/components/ScanOverviewPage";
-import { ValidationErrorDisplay } from "../features/scans/components/ValidationErrorDisplay";
+} from "../../../../features/scans/api/historyClient";
+import { ScanOverviewPage } from "../../../../features/scans/components/ScanOverviewPage";
+import { ValidationErrorDisplay } from "../../../../features/scans/components/ValidationErrorDisplay";
 
 type LoaderData = {
     result: ScanHistoryLoadResult;
@@ -43,7 +43,7 @@ export async function loader(_args: LoaderFunctionArgs): Promise<LoaderData> {
     }
 }
 
-export default function IndexPage() {
+export default function SecurityScansIndexRoute() {
     const { result } = useLoaderData() as LoaderData;
 
     if (result.success && "data" in result) {
