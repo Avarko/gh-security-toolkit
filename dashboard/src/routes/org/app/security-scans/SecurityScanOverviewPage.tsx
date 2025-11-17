@@ -30,7 +30,7 @@ interface SecurityScanOverviewPageProps {
     history: ScanHistory;
 }
 
-export function SecurityScanOverviewPage({ history }: SecurityScanOverviewPageProps) {
+export default function SecurityScanOverviewPage({ history }: SecurityScanOverviewPageProps) {
     const channelGroups = useMemo(() => {
         const groups: { [channel: string]: ScanMetadata[] } = {};
         if (!history?.scans) {
