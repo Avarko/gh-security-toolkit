@@ -15,8 +15,8 @@ import {
     type ScanRunMetadata,
     type TrivyScan,
     type SemgrepScan,
-} from "~/features/scans/types/scanRun";
-import { ScanRunDetailPage } from "~/features/scans/components/ScanRunDetailPage";
+} from "../features/scans/types/scanRun";
+import { ScanRunDetailPage } from "../features/scans/components/ScanRunDetailPage";
 
 type LoaderData = {
     channel: string;
@@ -26,44 +26,36 @@ type LoaderData = {
 };
 
 export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
-    const { channel, timestamp } = params;
+    try {
+        const { channel, timestamp } = params;
 
-    if (!channel || !timestamp) {
-        throw new Error("Both channel and timestamp route params are required");
+        if (!channel || !timestamp) {
+            throw new Error("Both channel and timestamp route params are required");
+        }
+
+        const baseUrl = `/data/runs/${channel}/${timestamp}`;
+
+        const [metadataRes, trivyRes, semgrepRes] = await Promise.all([
+            fetch(`${baseUrl}/scan-metadata.json`),
+            fetch(`${baseUrl}/trivy-fs-results.json`),
+            fetch(`${baseUrl}/semgrep-results.json`),
+        ]);
+
+        if (!metadataRes.ok || !trivyRes.ok || !semgrepRes.ok) {
+            throw new Error("Failed to load scan data");
+        }
+
+        const metadataJson = await metadataRes.json();
+        const metadata = scanRunMetadataSchema.parse(metadataJson);
+
+        const trivyData = trivyScanSchema.parse(await trivyRes.json());
+        const semgrepData = semgrepScanSchema.parse(await semgrepRes.json());
+
+        return { channel, metadata, trivyData, semgrepData };
+    } catch (error) {
+        console.error("Unexpected error during clientLoader:", error);
+        throw new Error("Failed to load scan run details");
     }
-
-    const baseUrl = `/data/runs/${channel}/${timestamp}`;
-
-    const [metadataRes, trivyRes, semgrepRes] = await Promise.all([
-        fetch(`${baseUrl}/scan-metadata.json`),
-        fetch(`${baseUrl}/trivy-fs-results.json`),
-        fetch(`${baseUrl}/semgrep-results.json`),
-    ]);
-
-    if (!metadataRes.ok) {
-        throw new Error(
-            `Failed to load scan metadata (${metadataRes.status} ${metadataRes.statusText})`
-        );
-    }
-
-    const metadataJson = await metadataRes.json();
-    const metadata = scanRunMetadataSchema.parse(metadataJson);
-
-    // Trivy ja Semgrep voivat puuttua; käytetään tyhjää objektia fallbackina.
-    const trivyJson = trivyRes.ok ? await trivyRes.json() : {};
-    const semgrepJson = semgrepRes.ok ? await semgrepRes.json() : {};
-
-    const trivyData = trivyScanSchema.parse(trivyJson);
-    const semgrepData = semgrepScanSchema.parse(semgrepJson);
-
-    const data: LoaderData = {
-        channel,
-        metadata,
-        trivyData,
-        semgrepData,
-    };
-
-    return data;
 }
 
 export default function RunDetailRoute() {

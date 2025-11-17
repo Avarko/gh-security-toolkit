@@ -6,20 +6,25 @@
 import type { ClientLoaderFunctionArgs } from "@remix-run/react";
 import { useLoaderData } from "@remix-run/react";
 import { Box, Container, Typography } from "@mui/material";
-import { fetchScanHistory, type ScanHistoryLoadResult } from "~/features/scans/api/historyClient";
-import { ScanOverviewPage } from "~/features/scans/components/ScanOverviewPage";
-import { ValidationErrorDisplay } from "~/features/scans/components/ValidationErrorDisplay";
+import { fetchScanHistory, type ScanHistoryLoadResult } from "../features/scans/api/historyClient";
+import { ScanOverviewPage } from "../features/scans/components/ScanOverviewPage";
+import { ValidationErrorDisplay } from "../features/scans/components/ValidationErrorDisplay";
 
 type LoaderData = {
     result: ScanHistoryLoadResult;
 };
 
 export async function clientLoader(_args: ClientLoaderFunctionArgs) {
-    const result = await fetchScanHistory();
-    if (!result.success) {
-        console.error("Failed to load scan history:", result.error, result.details);
+    try {
+        const result = await fetchScanHistory();
+        if (!result.success) {
+            console.error("Failed to load scan history:", result.error, result.details);
+        }
+        return { result } as const;
+    } catch (error) {
+        console.error("Unexpected error during clientLoader:", error);
+        return { result: { success: false, error: "Unexpected error", details: null } };
     }
-    return { result } as const;
 }
 
 export default function IndexRoute() {
