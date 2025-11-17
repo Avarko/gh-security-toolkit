@@ -1,9 +1,7 @@
 {
     "include": [
-        "**/*.server.ts",
-        "**/*.server.tsx",
-        "**/*.client.ts",
-        "**/*.client.tsx"
+        "**/*.ts",
+        "**/*.tsx"
     ],
     "compilerOptions": {
         "lib": [

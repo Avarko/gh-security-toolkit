@@ -30,8 +30,9 @@ export async function clientLoader(_args: ClientLoaderFunctionArgs) {
 export default function IndexRoute() {
     const { result } = useLoaderData<typeof clientLoader>();
 
-    // Handle validation errors gracefully
-    if (!result.success) {
+    if (result.success && "data" in result) {
+        return <ScanOverviewPage history={result.data} />;
+    } else {
         return (
             <Container maxWidth="lg" sx={{ mt: 4 }}>
                 <ValidationErrorDisplay
@@ -46,7 +47,4 @@ export default function IndexRoute() {
             </Container>
         );
     }
-
-    return <ScanOverviewPage history={result.data} />;
 }
-
