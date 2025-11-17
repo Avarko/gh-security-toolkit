@@ -7,15 +7,21 @@ import { scanHistorySchema, type ScanHistory, type ValidationResult } from "../m
 import { ZodError } from "zod";
 
 /**
+ * Result type for scan history loading.
+ * Either successful with validated data, or failed with error details.
+ */
+export type ScanHistoryLoadResult = ValidationResult<ScanHistory>;
+
+/**
  * Fetches and validates scan history data from the server.
- * 
+ *
  * @returns ValidationResult with either validated data or error details
  * @throws Never throws - returns validation errors in result object
  */
-export async function fetchScanHistory(): Promise<ValidationResult<ScanHistory>> {
+export async function fetchScanHistory(): Promise<ScanHistoryLoadResult> {
     try {
         const response = await fetch("/data/hist/scan-history.json");
-        
+
         if (!response.ok) {
             return {
                 success: false,
@@ -37,13 +43,13 @@ export async function fetchScanHistory(): Promise<ValidationResult<ScanHistory>>
 
         // Validate with Zod schema
         const parseResult = scanHistorySchema.safeParse(jsonData);
-        
+
         if (!parseResult.success) {
             // Extract human-readable error messages
             const errorMessages = parseResult.error.issues
                 .map((err) => `${err.path.join('.')}: ${err.message}`)
                 .join('; ');
-            
+
             return {
                 success: false,
                 error: `Invalid scan history data: ${errorMessages}`,

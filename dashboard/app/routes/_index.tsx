@@ -6,13 +6,24 @@
 import type { ClientLoaderFunctionArgs } from "@remix-run/react";
 import { useLoaderData } from "@remix-run/react";
 import { Box, Container, Typography } from "@mui/material";
-import { fetchScanHistory } from "~/features/scans/api/historyClient";
+import { fetchScanHistory, type ScanHistoryLoadResult } from "~/features/scans/api/historyClient";
 import { ScanOverviewPage } from "~/features/scans/components/ScanOverviewPage";
 import { ValidationErrorDisplay } from "~/features/scans/components/ValidationErrorDisplay";
 
+type LoaderData = {
+    result: ScanHistoryLoadResult;
+};
+
 export async function clientLoader(_args: ClientLoaderFunctionArgs) {
     const result = await fetchScanHistory();
-    return { result };
+
+    // Log validation failures for debugging (dev console only)
+    if (!result.success) {
+        console.error("Failed to load scan history:", result.error, result.details);
+    }
+
+    const data: LoaderData = { result };
+    return data;
 }
 
 export default function IndexRoute() {
