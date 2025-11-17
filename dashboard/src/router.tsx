@@ -1,39 +1,104 @@
-// src/router.tsx
 import React from "react";
 import { createBrowserRouter } from "react-router-dom";
 
-import { AppShell } from "./App";
+import { OrgLayout } from "./layouts/OrgLayout";
+import { AppLayout } from "./layouts/AppLayout";
+import { RepoLayout } from "./layouts/RepoLayout";
 
-// routes
-import IndexPage, {
-    loader as indexLoader,
-} from "./routes/Index";
+import OrgOverviewPage from "./routes/org/OrgOverviewPage";
+import AppOverviewPage from "./routes/org/app/AppOverviewPage";
+
+import SecurityScansLayout from "./layouts/SecurityScansLayout";
+import SecurityScanOverviewPage from "./routes/org/app/security-scans/SecurityScanOverviewPage";
+
 import ChannelScansRoute, {
     loader as channelScansLoader,
-} from "./routes/scans/ChannelScansRoute";
+} from "./routes/org/app/security-scans/ChannelScansRoute";
+
 import ChannelScanRunDetailRoute, {
     loader as channelScanRunDetailLoader,
-} from "./routes/scans/ChannelScanRunDetailRoute";
+} from "./routes/org/app/security-scans/ChannelScanRunDetailRoute";
+
+// Placeholder pages for other content areas
+const TestReportsPage = () => <div>TODO: Test Reports</div>;
+const CloudFindingsPage = () => <div>TODO: Cloud Findings</div>;
 
 export const router = createBrowserRouter([
     {
-        path: "/",
-        element: <AppShell />,
+        path: "/org/:orgSlug",
+        element: <OrgLayout />,
         children: [
             {
                 index: true,
-                element: <IndexPage />,
-                loader: indexLoader,
+                element: <OrgOverviewPage />,
             },
             {
-                path: "scans/:channel",
-                element: <ChannelScansRoute />,
-                loader: channelScansLoader,
-            },
-            {
-                path: "scans/:channel/:timestamp",
-                element: <ChannelScanRunDetailRoute />,
-                loader: channelScanRunDetailLoader,
+                path: "app/:appSlug",
+                element: <AppLayout />,
+                children: [
+                    {
+                        index: true,
+                        element: <AppOverviewPage />,
+                    },
+
+                    // Optional repo section
+                    {
+                        path: "repo/:repoSlug",
+                        element: <RepoLayout />,
+                        children: [
+                            {
+                                index: true,
+                                element: <AppOverviewPage />,
+                            },
+                            {
+                                path: "security-scans",
+                                element: <SecurityScansLayout />,
+                                children: [
+                                    {
+                                        index: true,
+                                        element: <SecurityScanOverviewPage />,
+                                    },
+                                    {
+                                        path: "channel/:channel",
+                                        loader: channelScansLoader,
+                                        element: <ChannelScansRoute />,
+                                    },
+                                    {
+                                        path: "channel/:channel/run/:timestamp",
+                                        loader: channelScanRunDetailLoader,
+                                        element: <ChannelScanRunDetailRoute />,
+                                    },
+                                ],
+                            },
+                            { path: "test-reports", element: <TestReportsPage /> },
+                            { path: "cloud-findings", element: <CloudFindingsPage /> },
+                        ],
+                    },
+
+                    // Content areas without repoSlug
+                    {
+                        path: "security-scans",
+                        element: <SecurityScansLayout />,
+                        children: [
+                            {
+                                index: true,
+                                element: <SecurityScanOverviewPage />,
+                            },
+                            {
+                                path: "channel/:channel",
+                                loader: channelScansLoader,
+                                element: <ChannelScansRoute />,
+                            },
+                            {
+                                path: "channel/:channel/run/:timestamp",
+                                loader: channelScanRunDetailLoader,
+                                element: <ChannelScanRunDetailRoute />,
+                            },
+                        ],
+                    },
+                    { path: "test-reports", element: <TestReportsPage /> },
+                    { path: "cloud-findings", element: <CloudFindingsPage /> },
+                ],
             },
         ],
     },
