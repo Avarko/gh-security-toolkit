@@ -17,8 +17,8 @@ import {
     type ScanRunMetadata,
     type TrivyScan,
     type SemgrepScan,
-} from "../../features/scans/types/scanRun";
-import { ScanRunDetailPage } from "../../features/scans/components/ScanRunDetailPage";
+} from "../../../../features/scans/types/scanRun";
+import { ScanRunDetailPage } from "../../../../features/scans/components/ScanRunDetailPage";
 
 type LoaderData = {
     channel: string;

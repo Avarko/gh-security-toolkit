@@ -10,9 +10,9 @@
 import type { LoaderFunctionArgs } from "react-router-dom";
 import { useLoaderData } from "react-router-dom";
 
-import type { ScanMetadata } from "../../features/scans/model/historyTypes";
-import { fetchScanHistory } from "../../features/scans/api/historyClient";
-import { ChannelScansPage } from "../../features/scans/components/ChannelScansPage";
+import type { ScanMetadata } from "../../../../features/scans/model/historyTypes";
+import { fetchScanHistory } from "../../../../features/scans/api/historyClient";
+import { ChannelScansPage } from "../../../../features/scans/components/ChannelScansPage";
 
 type LoaderData = {
     channel: string;
