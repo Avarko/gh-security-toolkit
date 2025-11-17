@@ -169,7 +169,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                 </Typography>
                                 <Link
                                     component={RemixLink}
-                                    to={`/data/channels/${channel}`}
+                                    to={`/scans/${channel}`}
                                     underline="hover"
                                 >
                                     View All →
@@ -270,7 +270,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                             <TableCell>
                                                 <Link
                                                     component={RemixLink}
-                                                    to={`/data/runs/${channel}/${scan.timestamp}`}
+                                                    to={`/scans/${channel}/${scan.timestamp}`}
                                                     underline="hover"
                                                 >
                                                     {new Date(scan.timestamp).toLocaleString()}

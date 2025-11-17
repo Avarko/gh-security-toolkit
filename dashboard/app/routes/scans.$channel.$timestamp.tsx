@@ -1,4 +1,10 @@
-// app/routes/data.runs.$channel.$timestamp.tsx
+/**
+ * Scan run detail route.
+ * Loads a single scan run (metadata + Trivy + Semgrep) and displays it.
+ *
+ * Route path: /scans/:channel/:timestamp
+ */
+
 import type { ClientLoaderFunctionArgs } from "@remix-run/react";
 import { useLoaderData } from "@remix-run/react";
 
@@ -9,8 +15,8 @@ import {
     type ScanRunMetadata,
     type TrivyScan,
     type SemgrepScan,
-} from "../features/scans/types/scanRun";
-import { ScanRunDetailPage } from "../features/scans/components/ScanRunDetailPage";
+} from "~/features/scans/types/scanRun";
+import { ScanRunDetailPage } from "~/features/scans/components/ScanRunDetailPage";
 
 type LoaderData = {
     channel: string;
@@ -43,7 +49,7 @@ export async function clientLoader({ params }: ClientLoaderFunctionArgs) {
     const metadataJson = await metadataRes.json();
     const metadata = scanRunMetadataSchema.parse(metadataJson);
 
-    // Trivy ja Semgrep voivat teoriassa puuttua; käytetään tyhjää objektia fallbackina.
+    // Trivy ja Semgrep voivat puuttua; käytetään tyhjää objektia fallbackina.
     const trivyJson = trivyRes.ok ? await trivyRes.json() : {};
     const semgrepJson = semgrepRes.ok ? await semgrepRes.json() : {};
 
