@@ -1,4 +1,5 @@
 // app/features/scans/components/ScanRunDetailPage.tsx
+import { Link as RemixLink } from "@remix-run/react";
 import {
     Box,
     Breadcrumbs,
@@ -68,21 +69,28 @@ export function ScanRunDetailPage({
                 sx={{ mb: 2 }}
             >
                 <MuiLink
+                    component={RemixLink}
+                    to="/"
                     underline="hover"
                     sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
                     color="inherit"
-                    href="/"
                 >
                     <HomeIcon fontSize="small" />
                     Home
                 </MuiLink>
-                <MuiLink underline="hover" color="inherit" href="/">
+                <MuiLink
+                    component={RemixLink}
+                    to="/"
+                    underline="hover"
+                    color="inherit"
+                >
                     Security Scans
                 </MuiLink>
                 <MuiLink
+                    component={RemixLink}
+                    to={`/scans/${channel}`}
                     underline="hover"
                     color="inherit"
-                    href={`/scans/${channel}`}
                 >
                     {channel}
                 </MuiLink>

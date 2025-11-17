@@ -3,6 +3,7 @@
  * Displays all scans for a single channel with detailed table.
  */
 
+import { Link as RemixLink } from "@remix-run/react";
 import {
     Box,
     Typography,
@@ -19,7 +20,7 @@ import {
 } from "@mui/material";
 import HomeIcon from "@mui/icons-material/Home";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
-import type { ScanMetadata } from "~/features/scans/model/historyTypes";
+import type { ScanMetadata } from "../model/historyTypes";
 
 type ChannelScansPageProps = {
     channel: string;
@@ -63,15 +64,23 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                 sx={{ mb: 2 }}
             >
                 <MuiLink
+                    component={RemixLink}
+                    to="/"
                     underline="hover"
                     sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
                     color="inherit"
-                    href="/"
                 >
                     <HomeIcon fontSize="small" />
                     Home
                 </MuiLink>
-                <Typography color="text.primary">Security Scans</Typography>
+                <MuiLink
+                    component={RemixLink}
+                    to="/"
+                    underline="hover"
+                    color="inherit"
+                >
+                    Security Scans
+                </MuiLink>
                 <Typography color="text.primary">{channel}</Typography>
             </Breadcrumbs>
 
@@ -158,11 +167,14 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                                     const semErr = scan.semgrepResults?.totalErrors || 0;
                                     const semWarn = scan.semgrepResults?.totalWarnings || 0;
 
+                                    const detailPath = `/scans/${channel}/${scan.timestamp}`;
+
                                     return (
                                         <TableRow key={scan.timestamp} hover>
                                             <TableCell>
                                                 <MuiLink
-                                                    href={`/scans/${channel}/${scan.timestamp}`}
+                                                    component={RemixLink}
+                                                    to={detailPath}
                                                     underline="hover"
                                                 >
                                                     {new Date(scan.timestamp).toLocaleString()}
@@ -227,7 +239,8 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                                             </TableCell>
                                             <TableCell>
                                                 <MuiLink
-                                                    href={`/scans/${channel}/${scan.timestamp}`}
+                                                    component={RemixLink}
+                                                    to={detailPath}
                                                     underline="hover"
                                                 >
                                                     View →
