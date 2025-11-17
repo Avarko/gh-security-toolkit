@@ -26,5 +26,48 @@ export const theme = createTheme({
     },
     typography: {
         fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+        body1: {
+            lineHeight: 1.6,
+        },
+    },
+    components: {
+        // Vastaavat vanhan CSS:n reset + body padding-bottom + linkkityyliä
+        MuiCssBaseline: {
+            styleOverrides: {
+                "*, *::before, *::after": {
+                    boxSizing: "border-box",
+                },
+                body: {
+                    margin: 0,
+                    paddingBottom: "5rem", // tila sticky-footerille
+                },
+                a: {
+                    color: "#3498db",
+                    textDecoration: "none",
+                },
+                "a:hover": {
+                    textDecoration: "underline",
+                },
+            },
+        },
+        // Korttien border-radius (vanhan section-kortin hengessä)
+        MuiPaper: {
+            styleOverrides: {
+                root: {
+                    borderRadius: 8,
+                },
+            },
+        },
+        // Taulukoiden perusfonttikoko ja head-soluja hieman korostetaan
+        MuiTableCell: {
+            styleOverrides: {
+                head: {
+                    fontWeight: 600,
+                },
+                body: {
+                    fontSize: "0.9rem",
+                },
+            },
+        },
     },
 });

@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 import HomeIcon from "@mui/icons-material/Home";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
+import { severityToHexColor } from "./severity";
 
 import type {
     ScanRunMetadata,
@@ -31,24 +32,6 @@ type ScanRunDetailPageProps = {
     trivyData: TrivyScan;
     semgrepData: SemgrepScan;
 };
-
-function getSeverityColor(severity: string) {
-    const upper = severity.toUpperCase();
-    switch (upper) {
-        case "CRITICAL":
-        case "ERROR":
-            return "#d32f2f";
-        case "HIGH":
-        case "WARNING":
-            return "#f57c00";
-        case "MEDIUM":
-            return "#fbc02d";
-        case "LOW":
-        case "INFO":
-        default:
-            return "#9e9e9e";
-    }
-}
 
 export function ScanRunDetailPage({
     channel,
@@ -144,8 +127,8 @@ export function ScanRunDetailPage({
                     <Typography variant="body2">No Trivy vulnerabilities found. ✅</Typography>
                 ) : (
                     <Paper sx={{ p: 2 }}>
-                        <TableContainer>
-                            <Table size="small">
+                        <TableContainer sx={{ maxHeight: 600 }}>
+                            <Table size="small" stickyHeader>
                                 <TableHead>
                                     <TableRow>
                                         <TableCell sx={{ fontWeight: 600 }}>ID</TableCell>
@@ -177,7 +160,7 @@ export function ScanRunDetailPage({
                                                     label={v.Severity}
                                                     size="small"
                                                     sx={{
-                                                        bgcolor: getSeverityColor(v.Severity),
+                                                        bgcolor: severityToHexColor(v.Severity),
                                                         color: "#fff",
                                                     }}
                                                 />
@@ -202,8 +185,8 @@ export function ScanRunDetailPage({
                     <Typography variant="body2">No Semgrep findings. ✅</Typography>
                 ) : (
                     <Paper sx={{ p: 2 }}>
-                        <TableContainer>
-                            <Table size="small">
+                        <TableContainer sx={{ maxHeight: 600 }}>
+                            <Table size="small" stickyHeader>
                                 <TableHead>
                                     <TableRow>
                                         <TableCell sx={{ fontWeight: 600 }}>Rule</TableCell>
@@ -236,7 +219,7 @@ export function ScanRunDetailPage({
                                                     label={f.extra.severity}
                                                     size="small"
                                                     sx={{
-                                                        bgcolor: getSeverityColor(f.extra.severity),
+                                                        bgcolor: severityToHexColor(f.extra.severity),
                                                         color: "#fff",
                                                     }}
                                                 />
