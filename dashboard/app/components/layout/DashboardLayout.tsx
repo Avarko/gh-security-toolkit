@@ -8,6 +8,7 @@ import { Link as RemixLink, useLocation } from "@remix-run/react";
 import {
     AppBar,
     Box,
+    Container,
     Drawer,
     List,
     ListItem,
@@ -18,6 +19,7 @@ import {
     Typography,
 } from "@mui/material";
 import { Security as SecurityIcon } from "@mui/icons-material";
+import { ReportFooter } from "./ReportFooter";
 
 const DRAWER_WIDTH = 240;
 
@@ -127,7 +129,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             >
                 {/* Spacer for AppBar */}
                 <Toolbar />
-                {children}
+                <Container maxWidth="lg" sx={{ maxWidth: 1200 }}>
+                    {children}
+                </Container>
+                <ReportFooter />
             </Box>
         </Box>
     );

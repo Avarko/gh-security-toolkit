@@ -21,32 +21,12 @@ import {
 import HomeIcon from "@mui/icons-material/Home";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import type { ScanMetadata } from "../model/historyTypes";
+import { severityToChipColor } from "./severity";
 
 type ChannelScansPageProps = {
     channel: string;
     scans: ScanMetadata[];
 };
-
-function getSeverityColor(
-    severity: string,
-    count: number
-): "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning" {
-    if (count === 0) return "success";
-    switch (severity.toUpperCase()) {
-        case "CRITICAL":
-        case "ERROR":
-            return "error";
-        case "HIGH":
-        case "WARNING":
-            return "warning";
-        case "MEDIUM":
-            return "info";
-        case "LOW":
-        case "INFO":
-        default:
-            return "default";
-    }
-}
 
 export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
     const sorted = [...scans].sort(
@@ -106,8 +86,8 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                 </Typography>
             ) : (
                 <Paper sx={{ p: 2 }}>
-                    <TableContainer>
-                        <Table size="small">
+                    <TableContainer sx={{ maxHeight: 600 }}>
+                        <Table size="small" stickyHeader>
                             <TableHead>
                                 <TableRow>
                                     <TableCell sx={{ fontWeight: 600 }}>Timestamp</TableCell>
@@ -198,42 +178,42 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                                             <TableCell align="right">
                                                 <Chip
                                                     label={fsCrit}
-                                                    color={getSeverityColor("CRITICAL", fsCrit)}
+                                                    color={severityToChipColor("CRITICAL", fsCrit)}
                                                     size="small"
                                                 />
                                             </TableCell>
                                             <TableCell align="right">
                                                 <Chip
                                                     label={fsHigh}
-                                                    color={getSeverityColor("HIGH", fsHigh)}
+                                                    color={severityToChipColor("HIGH", fsHigh)}
                                                     size="small"
                                                 />
                                             </TableCell>
                                             <TableCell align="right">
                                                 <Chip
                                                     label={imgCrit}
-                                                    color={getSeverityColor("CRITICAL", imgCrit)}
+                                                    color={severityToChipColor("CRITICAL", imgCrit)}
                                                     size="small"
                                                 />
                                             </TableCell>
                                             <TableCell align="right">
                                                 <Chip
                                                     label={imgHigh}
-                                                    color={getSeverityColor("HIGH", imgHigh)}
+                                                    color={severityToChipColor("HIGH", imgHigh)}
                                                     size="small"
                                                 />
                                             </TableCell>
                                             <TableCell align="right">
                                                 <Chip
                                                     label={semErr}
-                                                    color={getSeverityColor("ERROR", semErr)}
+                                                    color={severityToChipColor("ERROR", semErr)}
                                                     size="small"
                                                 />
                                             </TableCell>
                                             <TableCell align="right">
                                                 <Chip
                                                     label={semWarn}
-                                                    color={getSeverityColor("WARNING", semWarn)}
+                                                    color={severityToChipColor("WARNING", semWarn)}
                                                     size="small"
                                                 />
                                             </TableCell>

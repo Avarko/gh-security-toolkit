@@ -24,34 +24,10 @@ import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import ReactECharts from "echarts-for-react";
 import type { ScanHistory, ScanMetadata } from "../model/historyTypes";
 import { buildChannelChartOption } from "../charts/channelHistoryOptions";
+import { severityToChipColor } from "./severity";
 
 interface ScanOverviewPageProps {
     history: ScanHistory;
-}
-
-function getSeverityColor(
-    severity: string,
-    count: number
-): "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning" {
-    if (count === 0) return "success";
-    switch (severity.toUpperCase()) {
-        case "CRITICAL":
-            return "error";
-        case "HIGH":
-            return "warning";
-        case "MEDIUM":
-            return "info";
-        case "LOW":
-            return "default";
-        case "ERROR":
-            return "error";
-        case "WARNING":
-            return "warning";
-        case "INFO":
-            return "info";
-        default:
-            return "default";
-    }
 }
 
 export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
@@ -187,8 +163,8 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                         </Box>
 
                         {/* Table */}
-                        <TableContainer>
-                            <Table size="small">
+                        <TableContainer sx={{ maxHeight: 600 }}>
+                            <Table size="small" stickyHeader>
                                 <TableHead>
                                     <TableRow>
                                         <TableCell rowSpan={2} sx={{ fontWeight: 600 }}>
@@ -267,7 +243,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                 <TableBody>
                                     {scans.slice(0, 5).map((scan) => (
                                         <TableRow key={`${channel}-${scan.timestamp}`} hover>
-                                            <TableCell>
+                                            <TableCell sx={{ whiteSpace: "nowrap" }}>
                                                 <Link
                                                     component={RemixLink}
                                                     to={`/scans/${channel}/${scan.timestamp}`}
@@ -294,7 +270,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                                     label={
                                                         scan.trivyFsResults?.totalVulnerabilities?.CRITICAL || 0
                                                     }
-                                                    color={getSeverityColor(
+                                                    color={severityToChipColor(
                                                         "CRITICAL",
                                                         scan.trivyFsResults?.totalVulnerabilities?.CRITICAL || 0
                                                     )}
@@ -304,7 +280,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                             <TableCell align="center">
                                                 <Chip
                                                     label={scan.trivyFsResults?.totalVulnerabilities?.HIGH || 0}
-                                                    color={getSeverityColor(
+                                                    color={severityToChipColor(
                                                         "HIGH",
                                                         scan.trivyFsResults?.totalVulnerabilities?.HIGH || 0
                                                     )}
@@ -316,7 +292,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                                     label={
                                                         scan.trivyFsResults?.totalVulnerabilities?.MEDIUM || 0
                                                     }
-                                                    color={getSeverityColor(
+                                                    color={severityToChipColor(
                                                         "MEDIUM",
                                                         scan.trivyFsResults?.totalVulnerabilities?.MEDIUM || 0
                                                     )}
@@ -326,7 +302,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                             <TableCell align="center">
                                                 <Chip
                                                     label={scan.trivyFsResults?.totalVulnerabilities?.LOW || 0}
-                                                    color={getSeverityColor(
+                                                    color={severityToChipColor(
                                                         "LOW",
                                                         scan.trivyFsResults?.totalVulnerabilities?.LOW || 0
                                                     )}
@@ -340,7 +316,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                                         scan.trivyImageResults?.totalVulnerabilities
                                                             ?.CRITICAL || 0
                                                     }
-                                                    color={getSeverityColor(
+                                                    color={severityToChipColor(
                                                         "CRITICAL",
                                                         scan.trivyImageResults?.totalVulnerabilities
                                                             ?.CRITICAL || 0
@@ -353,7 +329,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                                     label={
                                                         scan.trivyImageResults?.totalVulnerabilities?.HIGH || 0
                                                     }
-                                                    color={getSeverityColor(
+                                                    color={severityToChipColor(
                                                         "HIGH",
                                                         scan.trivyImageResults?.totalVulnerabilities?.HIGH || 0
                                                     )}
@@ -366,7 +342,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                                         scan.trivyImageResults?.totalVulnerabilities?.MEDIUM ||
                                                         0
                                                     }
-                                                    color={getSeverityColor(
+                                                    color={severityToChipColor(
                                                         "MEDIUM",
                                                         scan.trivyImageResults?.totalVulnerabilities?.MEDIUM ||
                                                         0
@@ -379,7 +355,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                                     label={
                                                         scan.trivyImageResults?.totalVulnerabilities?.LOW || 0
                                                     }
-                                                    color={getSeverityColor(
+                                                    color={severityToChipColor(
                                                         "LOW",
                                                         scan.trivyImageResults?.totalVulnerabilities?.LOW || 0
                                                     )}
@@ -390,7 +366,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                             <TableCell align="center">
                                                 <Chip
                                                     label={scan.semgrepResults?.totalErrors || 0}
-                                                    color={getSeverityColor(
+                                                    color={severityToChipColor(
                                                         "ERROR",
                                                         scan.semgrepResults?.totalErrors || 0
                                                     )}
@@ -400,7 +376,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                             <TableCell align="center">
                                                 <Chip
                                                     label={scan.semgrepResults?.totalWarnings || 0}
-                                                    color={getSeverityColor(
+                                                    color={severityToChipColor(
                                                         "WARNING",
                                                         scan.semgrepResults?.totalWarnings || 0
                                                     )}
@@ -410,7 +386,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                             <TableCell align="center">
                                                 <Chip
                                                     label={scan.semgrepResults?.totalInfos || 0}
-                                                    color={getSeverityColor(
+                                                    color={severityToChipColor(
                                                         "INFO",
                                                         scan.semgrepResults?.totalInfos || 0
                                                     )}
