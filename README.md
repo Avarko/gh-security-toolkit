@@ -8,21 +8,21 @@ Provides reusable GitHub Actions workflows and Makefile integration for vulnerab
 
 ## 📋 Table of contents
 
-- [✨ Overview](#-overview)
-- [🚀 Quick start](#-quick-start)
-- [🎯 Use cases](#-use-cases)
-- [🏗️ Architecture](#-architecture)
-- [🔧 Components](#-components)
-- [📊 GitHub Pages features](#-github-pages-features)
-- [⚙️ Configuration](#️-configuration)
-- [🔐 Security considerations](#-security-considerations)
-- [📚 Advanced topics](#-advanced-topics)
-- [🛠️ Local development](#️-local-development)
-- [📖 Examples](#-examples)
+- [Overview](#overview)
+- [Quick start](#quick-start)
+- [Use cases](#use-cases)
+- [Architecture](#architecture)
+- [Components](#components)
+- [GitHub Pages features](#github-pages-features)
+- [Configuration](#configuration)
+- [Security considerations](#security-considerations)
+- [Advanced topics](#advanced-topics)
+- [Local development](#local-development)
+- [Examples](#examples)
 
 ---
 
-## ✨ Overview
+## Overview
 
 `gh-security-toolkit` is a modular security scanning solution that integrates multiple industry-standard tools into a unified workflow. Results are published as GitHub Releases with retention policies or as interactive HTML reports on GitHub Pages.
 
@@ -34,7 +34,7 @@ Provides reusable GitHub Actions workflows and Makefile integration for vulnerab
 
 ---
 
-## 🚀 Quick start
+## Quick start
 
 ### Manual scans during local development
 
@@ -112,8 +112,7 @@ jobs:
 
 ---
 
-
-## 🎯 Use cases
+## Use cases
 
 ### 1. **Shift left development**
 > "As a developer, I want to easily run local vulnerability scans to assess the impact of updates to Docker images, Terraform, application libraries, and utility scripts."
@@ -151,6 +150,7 @@ jobs:
 
 
 ---
+
 ## Architecture
 
 ```
@@ -209,7 +209,7 @@ gh-security-toolkit/
 
 ---
 
-## 🔧 Components
+## Components
 
 ### Scanners
 
