@@ -10,8 +10,11 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import fi.evolver.secops.githubPages.loader.ScanResultLoader;
 import fi.evolver.secops.githubPages.loader.ScanResultLoader.RawScanData;
+import fi.evolver.secops.githubPages.model.HistoryEntry;
+import fi.evolver.secops.githubPages.model.ScanHistory;
 import fi.evolver.secops.githubPages.model.ScanMetadata;
 import fi.evolver.secops.githubPages.model.ScanStats;
+import fi.evolver.secops.githubPages.model.TenantConfig;
 import fi.evolver.secops.githubPages.transformer.FindingsTransformer;
 import fi.evolver.secops.githubPages.transformer.FindingsTransformer.TransformedScanData;
 
@@ -35,11 +38,14 @@ import java.util.List;
  * 4. Maintain
  * data/<org>/<app>/<repo>/hist/scan-history.json
  *
- * If org/app/repo slugs are not provided, falls back to legacy layout:
- * data/runs/<channel>/<timestamp>/
- * data/hist/scan-history.json
+ * Tenant resolution:
+ * - If org/app/repo CLI-arguments are given, they are used:
+ * <pages_root>/data/<org>/<app>/<repo>
+ * - Otherwise, defaults.json (single-tenant mode) is read if available.
+ * - If neither is available, the legacy path is used:
+ * <pages_root>/data
  *
- * UI rendering is handled separately by the React dashboard.
+ * UI rendering is done in a separate React dashboard.
  *
  * Usage:
  * GitHubPagesBuilder <output_dir> <pages_root> <scan_timestamp> <channel>
@@ -73,71 +79,53 @@ public class GitHubPagesBuilder {
         System.out.println("   Channel: " + channel);
 
         Path pagesPath = Path.of(pagesRoot);
-        TenantConfig tenant = TenantConfig.load(pagesPath);
-        Path dataRoot = tenant.resolveDataRoot(pagesPath);
 
-        // Merge dashboard first if provided
+        // Tenant configuration (CLI slugs > defaults.json > legacy /data)
+        TenantConfig tenantConfig = TenantConfig.loadOrDefault(pagesPath);
+        Path dataRoot = tenantConfig.resolveDataRoot(pagesPath, orgSlug, appSlug, repoSlug);
+
+        // Merge dashboard build artifacts first
         if (dashboardDir != null) {
             mergeDashboard(pagesPath, Path.of(dashboardDir));
         }
 
-        Path dataRunsPath = dataRoot.resolve("runs").resolve(channel).resolve(timestamp);
+        Path dataRunsPath = dataRoot
+                .resolve("runs")
+                .resolve(channel)
+                .resolve(timestamp);
         Files.createDirectories(dataRunsPath);
 
-        // Initialize data processors
+        // === LOAD & TRANSFORM ===
         ScanResultLoader loader = new ScanResultLoader(GSON);
         FindingsTransformer transformer = new FindingsTransformer();
 
-        // === LOAD & TRANSFORM ===
         RawScanData rawData = loader.load(outputDir, metadataJson);
         TransformedScanData transformedData = transformer.transform(rawData);
-        boolean hasDependabot = rawData.dependabotSummary != null && !rawData.dependabotSummary.isBlank();
+
+        boolean hasDependabot = rawData.dependabotSummary != null
+                && !rawData.dependabotSummary.isBlank();
+
         ScanStats currentStats = transformer.extractStats(
                 rawData.trivyFs,
                 rawData.trivyImage,
                 rawData.semgrep,
                 hasDependabot);
+
         ScanMetadata metadata = transformedData.metadata;
 
         // === WRITE DATA ===
 
-        // 1) Copy scan result JSONs to data/runs directory
+        // 1) Copy scan result JSON files to runs directory
         copyJsonFiles(outputDir, dataRunsPath);
 
-        // 2) Write scan-metadata.json
+        // 2) Write concise scan metadata (branch, commit_sha, repository)
         writeMetadataJson(dataRunsPath, metadata);
 
-        // 3) Update scan-history.json
+        // 3) Update tenant-specific scan-history.json
         appendScanHistory(dataRoot, channel, timestamp, currentStats, metadata);
 
         System.out.println("✅ Data processing complete!");
         System.out.println("   Run data: " + dataRunsPath);
-    }
-
-    /**
-     * Resolves the tenant root directory for data:
-     *
-     * If org/app/repo are provided:
-     * <pagesRoot>/data/<org>/<app>/<repo>
-     *
-     * Otherwise (legacy mode):
-     * <pagesRoot>/data
-     */
-    private static Path resolveTenantRoot(Path pagesPath, String orgSlug, String appSlug, String repoSlug)
-            throws IOException {
-        Path dataRoot = pagesPath.resolve("data");
-
-        if (orgSlug != null && appSlug != null && repoSlug != null) {
-            Path tenantRoot = dataRoot.resolve(orgSlug).resolve(appSlug).resolve(repoSlug);
-            Files.createDirectories(tenantRoot);
-            System.out.println("   Tenant data root: " + tenantRoot);
-            return tenantRoot;
-        }
-
-        // Legacy fallback
-        Files.createDirectories(dataRoot);
-        System.out.println("   ⚠️  No org/app/repo slugs provided - using legacy data layout under: " + dataRoot);
-        return dataRoot;
     }
 
     private static void copyJsonFiles(String sourceDir, Path targetDir) throws IOException {
@@ -160,12 +148,17 @@ public class GitHubPagesBuilder {
 
     private static void writeMetadataJson(Path targetDir, ScanMetadata metadata) throws IOException {
         var json = new java.util.HashMap<String, String>();
-        if (metadata.branch != null)
-            json.put("branch", metadata.branch);
-        if (metadata.commitSha != null)
-            json.put("commit_sha", metadata.commitSha);
-        if (metadata.repository != null)
-            json.put("repository", metadata.repository);
+        if (metadata != null) {
+            if (metadata.branch != null) {
+                json.put("branch", metadata.branch);
+            }
+            if (metadata.commitSha != null) {
+                json.put("commit_sha", metadata.commitSha);
+            }
+            if (metadata.repository != null) {
+                json.put("repository", metadata.repository);
+            }
+        }
 
         Path metaPath = targetDir.resolve("scan-metadata.json");
         Files.writeString(metaPath, GSON.toJson(json), StandardCharsets.UTF_8);
@@ -184,7 +177,9 @@ public class GitHubPagesBuilder {
 
             ScanHistory history = readHistory(historyPath);
 
-            history.scans.removeIf(entry -> channel.equals(entry.channel) && timestamp.equals(entry.timestamp));
+            // Remove possible duplicate for the same channel+timestamp combination
+            history.scans.removeIf(entry -> channel.equals(entry.channel)
+                    && timestamp.equals(entry.timestamp));
 
             HistoryEntry entry = HistoryEntry.from(channel, timestamp, stats, metadata);
             history.scans.add(entry);
@@ -216,13 +211,12 @@ public class GitHubPagesBuilder {
                 history.scans = new ArrayList<>();
             }
 
-            // Varmista versionumero
             if (history.version < 2) {
                 System.out.println("   📦 Upgrading scan history from v" + history.version + " to v2");
                 history.version = 2;
             }
 
-            // Filteröi rikkinäiset entryt pois
+            // Filter out broken entries
             List<HistoryEntry> valid = new ArrayList<>();
             for (HistoryEntry entry : history.scans) {
                 if (entry == null || entry.channel == null || entry.timestamp == null) {
@@ -237,131 +231,6 @@ public class GitHubPagesBuilder {
         } catch (Exception e) {
             System.err.println("⚠️  Failed to read existing scan history (corrupt format): " + e.getMessage());
             return new ScanHistory();
-        }
-    }
-
-    private static class ScanHistory {
-        int version = 2;
-        List<HistoryEntry> scans = new ArrayList<>();
-    }
-
-    private static class HistoryEntry {
-        String channel;
-        String timestamp;
-        HistoryStats stats;
-        HistoryMetadata metadata;
-
-        static HistoryEntry from(String channel, String timestamp, ScanStats stats, ScanMetadata metadata) {
-            HistoryEntry entry = new HistoryEntry();
-            entry.channel = channel;
-            entry.timestamp = timestamp;
-            if (stats == null) {
-                stats = new ScanStats();
-            }
-            entry.stats = new HistoryStats();
-            entry.stats.trivyFs = SeverityCounts.from(stats.trivyFs);
-            entry.stats.trivyFsMisconfig = SeverityCounts.from(stats.trivyFsMisconfig);
-            entry.stats.trivyImage = SeverityCounts.from(stats.trivyImage);
-            entry.stats.trivyImageMisconfig = SeverityCounts.from(stats.trivyImageMisconfig);
-            entry.stats.semgrep = SemgrepCounts.from(stats);
-
-            if (metadata != null) {
-                entry.metadata = new HistoryMetadata();
-                entry.metadata.branch = metadata.branch;
-                entry.metadata.commitSha = metadata.commitSha;
-                entry.metadata.repository = metadata.repository;
-            }
-            return entry;
-        }
-    }
-
-    private static final class TenantConfig {
-        String mode;
-        String defaultOrg;
-        String defaultApp;
-        String defaultRepo;
-
-        static TenantConfig load(Path pagesRoot) {
-            Path defaults = pagesRoot.resolve("data").resolve("defaults.json");
-            if (!Files.exists(defaults)) {
-                // fallback: vanha single-tenant data-root /data
-                TenantConfig cfg = new TenantConfig();
-                cfg.mode = "multi-tenant";
-                return cfg;
-            }
-            try {
-                String json = Files.readString(defaults, StandardCharsets.UTF_8);
-                return GSON.fromJson(json, TenantConfig.class);
-            } catch (IOException e) {
-                System.err.println("⚠️  Failed to read defaults.json, using legacy data root: " + e.getMessage());
-                TenantConfig cfg = new TenantConfig();
-                cfg.mode = "multi-tenant";
-                return cfg;
-            }
-        }
-
-        Path resolveDataRoot(Path pagesRoot) {
-            Path base = pagesRoot.resolve("data");
-            if (!"single-tenant".equalsIgnoreCase(mode)) {
-                return base; // multi-tenant: vanha /data
-            }
-            if (defaultOrg == null || defaultApp == null || defaultRepo == null) {
-                System.err.println("⚠️  defaults.json is missing org/app/repo, falling back to /data");
-                return base;
-            }
-            return base.resolve(defaultOrg).resolve(defaultApp).resolve(defaultRepo);
-        }
-    }
-
-    private static class HistoryMetadata {
-        String branch;
-        String commitSha;
-        String repository;
-    }
-
-    private static class HistoryStats {
-        SeverityCounts trivyFs;
-        SeverityCounts trivyFsMisconfig;
-        SeverityCounts trivyImage;
-        SeverityCounts trivyImageMisconfig;
-        SemgrepCounts semgrep;
-    }
-
-    private static class SeverityCounts {
-        int critical;
-        int high;
-        int medium;
-        int low;
-        boolean scanned;
-
-        static SeverityCounts from(ScanStats.VulnStats stats) {
-            SeverityCounts counts = new SeverityCounts();
-            if (stats == null) {
-                return counts;
-            }
-            counts.critical = stats.critical;
-            counts.high = stats.high;
-            counts.medium = stats.medium;
-            counts.low = stats.low;
-            counts.scanned = stats.scanned;
-            return counts;
-        }
-    }
-
-    private static class SemgrepCounts {
-        int errors;
-        int warnings;
-        int info;
-
-        static SemgrepCounts from(ScanStats stats) {
-            SemgrepCounts counts = new SemgrepCounts();
-            if (stats == null) {
-                return counts;
-            }
-            counts.errors = stats.semgrepErrors;
-            counts.warnings = stats.semgrepWarnings;
-            counts.info = stats.semgrepInfo;
-            return counts;
         }
     }
 
