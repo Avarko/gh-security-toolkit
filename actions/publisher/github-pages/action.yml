@@ -460,10 +460,13 @@ runs:
       uses: actions/upload-pages-artifact@v3
       with:
         path: ${{ inputs.pages_root }}
+        name: security-dashboard-pages-${{ inputs.channel }}
 
     - name: Deploy to GitHub Pages
       id: deployment
       uses: actions/deploy-pages@v4
+      with:
+        artifact_name: security-dashboard-pages-${{ inputs.channel }}
 
 outputs:
   pages_url:
