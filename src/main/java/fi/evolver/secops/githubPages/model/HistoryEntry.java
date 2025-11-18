@@ -7,15 +7,17 @@ public class HistoryEntry {
 
     public String channel;
     public String timestamp;
-    // public HistoryStats stats; // stats removed
+    public HistoryStats stats;
     public HistoryMetadata metadata;
 
     public static HistoryEntry from(String channel,
             String timestamp,
-            ScanMetadata metadata) {
+            ScanMetadata metadata,
+            HistoryStats stats) {
         HistoryEntry entry = new HistoryEntry();
         entry.channel = channel;
         entry.timestamp = timestamp;
+        entry.stats = stats;
         if (metadata != null) {
             HistoryMetadata m = new HistoryMetadata();
             m.branch = metadata.branch;
