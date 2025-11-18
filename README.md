@@ -6,7 +6,7 @@ Provides reusable GitHub Actions workflows and Makefile integration for vulnerab
 
 ---
 
-## 📋 Table of contents
+## Table of contents
 
 - [Overview](#overview)
 - [Quick start](#quick-start)
@@ -187,13 +187,13 @@ gh-security-toolkit/
 │  ├─ slack_integration.java
 │  └─ trivy_summarize.java
 │
-├─ dashboard/                    # React+Remix SPA for GitHub Pages UI
-│  ├─ app/
-│  │  ├─ root.tsx
-│  │  └─ routes/
-│  │     ├─ _index.tsx                              # Main dashboard
-│  │     ├─ data.channels.$channel.tsx              # Channel scan list
-│  │     └─ data.runs.$channel.$timestamp.tsx       # Scan details
+├─ dashboard/                    # React + Vite SPA for GitHub Pages UI
+│  ├─ src/
+│  │  ├─ features/scans/        # Scan visualization components
+│  │  │  ├─ model/              # Zod schemas for data validation
+│  │  │  ├─ charts/             # ECharts configurations
+│  │  │  └─ api/                # Data fetching from /data/*
+│  │  └─ lib/                   # Utilities (tenant path resolution, etc.)
 │  ├─ package.json
 │  ├─ vite.config.ts
 │  └─ tsconfig.json
@@ -235,7 +235,7 @@ publish_to: "github-release,github-pages"  # Both
 
 ---
 
-## 📊 GitHub Pages features
+## GitHub Pages features
 
 **Channel-based organization**
 
@@ -275,8 +275,7 @@ docs/
 
 ---
 
-
-## ⚙️ Configuration
+## Configuration
 
 ### Workflow inputs
 
@@ -316,7 +315,7 @@ severity:
 
 ---
 
-## 🔐 Security considerations and data privacy
+## Security considerations and data privacy
 
 ### Data privacy and air-gapped execution
 
@@ -353,19 +352,27 @@ GitHub Pages publisher **refuses to deploy** if Pages is configured as public:
 
 ### Retention policies
 
-Two independent retention mechanisms:
+Three independent retention mechanisms:
 
-1. **GitHub artifact retention** (`retention_days: 30`)
-   - Artifacts auto-deleted after N days
-   - Cannot be prevented (GitHub enforced)
+1. **GitHub artifact retention** (`retention_days`)
+   - Artifacts auto-deleted after N days (GitHub enforced)
+   - Default: 90 days for scan history, 1 day for temporary artifacts
+   - Cannot be prevented (GitHub platform policy)
 
 2. **Scan count retention** (`retention_keep: 10`)
-   - Keeps only N newest scans per channel
-   - Older scans removed from artifact before upload
+   - Keeps only N newest full scan results per channel
+   - Older scans removed from GitHub Pages data before deployment
+   - Stats remain in `scan-history.json` (compact format)
+
+3. **Artifact cleanup** (optional, `.github/workflows/clean-artifacts.yml`)
+   - Scheduled workflow to cleanup old artifacts
+   - Configurable retention per artifact type (filesystem, docker image, etc.)
+   - Recommended for client repositories to prevent artifact accumulation
+   - Can be triggered manually or scheduled (e.g., nightly)
 
 ---
 
-## 📚 Advanced topics
+## Advanced topics
 
 ### Channel naming strategy
 
@@ -404,9 +411,40 @@ with:
   toolkit_version: v1.2.3
 ```
 
+### Artifact cleanup workflow
+
+The toolkit creates several types of artifacts during scanning. To prevent accumulation, use the reusable cleanup workflow:
+
+```yaml
+name: Cleanup Artifacts
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Nightly at 2 AM UTC
+  workflow_dispatch:     # Manual trigger
+
+jobs:
+  cleanup:
+    uses: Avarko/gh-security-toolkit/.github/workflows/clean-artifacts.yml@main
+    with:
+      filesystem_keep: 3        # Keep 3 newest filesystem artifacts
+      docker_image_keep: 3      # Keep 3 newest Docker image artifacts
+      dashboard_build_keep: 3   # Keep 3 newest dashboard builds
+      scan_history_keep: 3      # Keep 3 newest scan history per channel
+      dashboard_pages_keep: 3   # Keep 3 newest dashboard pages per channel
+    permissions:
+      actions: write  # Required to delete artifacts
+```
+
+**Artifact types cleaned:**
+- `__gh_security_toolkit__filesystem__` - Uploaded source code for scanning
+- `__gh_security_toolkit__docker_image__` - Uploaded Docker images
+- `__gh_security_toolkit__security-dashboard-build` - Dashboard build artifacts
+- `__gh_security_toolkit__scan_history_<channel>` - Scan history per channel
+- `__gh_security_toolkit__security-dashboard-pages-<channel>` - Pages deployment artifacts per channel
+
 ---
 
-## 🛠️ Local development of gh-security-toolkit
+## Local development of gh-security-toolkit
 
 ### Run JBang scripts
 
@@ -430,13 +468,16 @@ jbang scripts/github_pages_builder.java \
   my-channel
 ```
 
-### Dashboard Architecture
+### Dashboard architecture
 
-The GitHub Pages UI is built with **React+Remix** (SPA mode):
+The GitHub Pages UI is built with **React + Vite** as a single-page application:
 
 - **Data Processing** (Java): `GitHubPagesBuilder.java` generates JSON files in `data/` directory
-- **UI Rendering** (React): Remix app in `dashboard/` reads `/data/*.json` client-side
+- **UI Rendering** (React): Dashboard reads `/data/*.json` files client-side using `fetch()`
 - **Deployment**: Dashboard build artifact merged with data during GitHub Pages publishing
+- **Routing**: `react-router-dom` for client-side navigation
+- **Charts**: Apache ECharts via `echarts-for-react`
+- **UI Components**: Material-UI (MUI)
 
 **Routes**:
 - `/` - Main dashboard (reads `data/hist/scan-history.json`)
@@ -452,7 +493,7 @@ npm run dev
 
 ---
 
-## 📖 Examples
+## Examples
 
 See individual action READMEs:
 
@@ -463,6 +504,6 @@ See individual action READMEs:
 
 ---
 
-## 📄 License
+## License
 
 MIT License — feel free to fork, extend, and reuse.
