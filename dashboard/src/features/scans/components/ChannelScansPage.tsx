@@ -3,7 +3,7 @@
  * Displays all scans for a single channel with detailed table.
  */
 
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useParams } from "react-router-dom";
 import {
     Box,
     Typography,
@@ -29,6 +29,22 @@ type ChannelScansPageProps = {
 };
 
 export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
+    const { orgSlug, appSlug, repoSlug } = useParams<{
+        orgSlug: string;
+        appSlug: string;
+        repoSlug?: string;
+    }>();
+
+    const baseAppPath =
+        orgSlug && appSlug
+            ? repoSlug
+                ? `/org/${orgSlug}/app/${appSlug}/repo/${repoSlug}`
+                : `/org/${orgSlug}/app/${appSlug}`
+            : "";
+
+    const securityScansBasePath = baseAppPath
+        ? `${baseAppPath}/security-scans`
+        : "/";
     const sorted = [...scans].sort(
         (a, b) =>
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
@@ -55,7 +71,7 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                 </MuiLink>
                 <MuiLink
                     component={RouterLink}
-                    to="/"
+                    to={securityScansBasePath}
                     underline="hover"
                     color="inherit"
                 >
@@ -147,7 +163,7 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                                     const semErr = scan.semgrepResults?.totalErrors || 0;
                                     const semWarn = scan.semgrepResults?.totalWarnings || 0;
 
-                                    const detailPath = `/scans/${channel}/${scan.timestamp}`;
+                                    const detailPath = `${securityScansBasePath}/channel/${channel}/run/${scan.timestamp}`;
 
                                     return (
                                         <TableRow key={scan.timestamp} hover>

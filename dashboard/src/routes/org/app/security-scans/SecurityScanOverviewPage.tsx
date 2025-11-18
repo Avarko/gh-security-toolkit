@@ -22,6 +22,7 @@ import {
 import HomeIcon from "@mui/icons-material/Home";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import ReactECharts from "echarts-for-react";
+import React, { useRef } from "react";
 import type { ScanHistory, ScanMetadata } from "../../../../features/scans/model/historyTypes";
 import { buildChannelChartOption } from "../../../../features/scans/charts/channelHistoryOptions";
 import { severityToChipColor } from "./severity";
@@ -30,26 +31,70 @@ interface SecurityScanOverviewPageProps {
     history: ScanHistory;
 }
 
+function DebugEChartsWrapper(props: any) {
+    // Error boundary for ECharts
+    // eslint-disable-next-line react/display-name
+    return React.createElement(
+        class extends React.Component<any, { hasError: boolean }> {
+            constructor(props: any) {
+                super(props);
+                this.state = { hasError: false };
+            }
+            static getDerivedStateFromError(error: any) {
+                // Suppress known ResizeObserver/sensor errors
+                if (
+                    error &&
+                    typeof error.message === "string" &&
+                    error.message.includes("disconnect") &&
+                    error.message.includes("sensor")
+                ) {
+                    // eslint-disable-next-line no-console
+                    console.debug("Suppressed ECharts sensor/ResizeObserver error:", error);
+                    return { hasError: false };
+                }
+                // eslint-disable-next-line no-console
+                console.error("ECharts error:", error);
+                return { hasError: true };
+            }
+            componentDidCatch(error: any, info: any) {
+                // eslint-disable-next-line no-console
+                console.debug("ECharts error boundary caught:", error, info);
+            }
+            render() {
+                if (this.state.hasError) {
+                    return <div style={{ color: "red" }}>ECharts error</div>;
+                }
+                return this.props.children;
+            }
+        },
+        null,
+        props.children
+    );
+}
+
 export default function SecurityScanOverviewPage({ history }: SecurityScanOverviewPageProps) {
     const channelGroups = useMemo(() => {
-        const groups: { [channel: string]: ScanMetadata[] } = {};
-        if (!history?.scans) {
-            return groups;
-        }
-        history.scans.forEach((scan) => {
-            if (!groups[scan.channel]) {
-                groups[scan.channel] = [];
+        const groups: Record<string, ScanMetadata[]> = {};
+
+        const scans = history?.scans ?? [];
+        for (const scan of scans) {
+            const channelKey = scan.channel ?? "(unlabeled)";
+            if (!groups[channelKey]) {
+                groups[channelKey] = [];
             }
-            groups[scan.channel].push(scan);
-        });
-        Object.keys(groups).forEach((channel) => {
-            groups[channel].sort(
+            groups[channelKey].push(scan);
+        }
+        Object.entries(groups).forEach(([channel, scansForChannel]) => {
+            scansForChannel.sort(
                 (a, b) =>
-                    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                    new Date(b.timestamp).getTime() -
+                    new Date(a.timestamp).getTime(),
             );
         });
+
         return groups;
     }, [history?.scans]);
+
 
     return (
         <Box sx={{ p: 3 }}>
@@ -155,11 +200,13 @@ export default function SecurityScanOverviewPage({ history }: SecurityScanOvervi
 
                         {/* Chart */}
                         <Box sx={{ mb: 3 }}>
-                            <ReactECharts
-                                option={buildChannelChartOption(scans)}
-                                style={{ height: 300 }}
-                                theme="dark"
-                            />
+                            <DebugEChartsWrapper>
+                                <ReactECharts
+                                    option={buildChannelChartOption(scans)}
+                                    style={{ height: 300 }}
+                                    theme="dark"
+                                />
+                            </DebugEChartsWrapper>
                         </Box>
 
                         {/* Table */}

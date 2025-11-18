@@ -1,5 +1,5 @@
 // features/scans/components/ScanRunDetailPage.tsx
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useParams } from "react-router-dom";
 import {
     Box,
     Breadcrumbs,
@@ -39,6 +39,24 @@ export function ScanRunDetailPage({
     trivyData,
     semgrepData,
 }: ScanRunDetailPageProps) {
+    const { orgSlug, appSlug, repoSlug } = useParams<{
+        orgSlug: string;
+        appSlug: string;
+        repoSlug?: string;
+    }>();
+
+    const baseAppPath =
+        orgSlug && appSlug
+            ? repoSlug
+                ? `/org/${orgSlug}/app/${appSlug}/repo/${repoSlug}`
+                : `/org/${orgSlug}/app/${appSlug}`
+            : "";
+
+    const securityScansBasePath = baseAppPath
+        ? `${baseAppPath}/security-scans`
+        : "/";
+
+    const channelPath = `${securityScansBasePath}/channel/${channel}`;
     const trivyVulns: TrivyVulnerability[] =
         trivyData.Results?.flatMap((r) => r.Vulnerabilities ?? []) ?? [];
 
@@ -63,7 +81,7 @@ export function ScanRunDetailPage({
                 </MuiLink>
                 <MuiLink
                     component={RouterLink}
-                    to="/"
+                    to={securityScansBasePath}
                     underline="hover"
                     color="inherit"
                 >
@@ -71,7 +89,7 @@ export function ScanRunDetailPage({
                 </MuiLink>
                 <MuiLink
                     component={RouterLink}
-                    to={`/scans/${channel}`}
+                    to={channelPath}
                     underline="hover"
                     color="inherit"
                 >
@@ -81,7 +99,6 @@ export function ScanRunDetailPage({
                     {new Date(metadata.timestamp).toLocaleString()}
                 </Typography>
             </Breadcrumbs>
-
             {/* Perustiedot */}
             <Box sx={{ mb: 3 }}>
                 <Typography variant="h4" sx={{ mb: 1, fontWeight: 600 }}>

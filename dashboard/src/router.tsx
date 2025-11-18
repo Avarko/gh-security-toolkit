@@ -20,6 +20,7 @@ import ChannelScansRoute, {
 import ChannelScanRunDetailRoute, {
     loader as channelScanRunDetailLoader,
 } from "./routes/org/app/security-scans/ChannelScanRunDetailRoute";
+import ScanRunDetailErrorPage from "./features/scans/components/ScanRunDetailErrorPage";
 
 // TODO
 const TestReportsPage = () => <div>TODO: Test Reports</div>;
@@ -63,6 +64,7 @@ export const router = createBrowserRouter([
                                                 path: "channel/:channel/run/:timestamp",
                                                 element: <ChannelScanRunDetailRoute />,
                                                 loader: channelScanRunDetailLoader,
+                                                errorElement: <ScanRunDetailErrorPage />,
                                             },
                                         ],
                                     },

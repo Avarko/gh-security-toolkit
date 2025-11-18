@@ -4,7 +4,7 @@
  */
 
 import type { ReactNode } from "react";
-import { Link as RouterLink, useLocation } from "react-router-dom";
+import { Link as RouterLink, useLocation, useParams } from "react-router-dom";
 import {
     AppBar,
     Box,
@@ -29,15 +29,12 @@ type DashboardLayoutProps = {
 
 type NavItem = {
     label: string;
-    to: string;
     icon: ReactNode;
-    // Future: could add "section" or "group" for categorization
 };
 
 const NAV_ITEMS: NavItem[] = [
     {
         label: "Security Scans",
-        to: "/",
         icon: <SecurityIcon />,
     },
     // Future navigation items:
@@ -46,7 +43,22 @@ const NAV_ITEMS: NavItem[] = [
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
     const location = useLocation();
+    const { orgSlug, appSlug, repoSlug } = useParams<{
+        orgSlug?: string;
+        appSlug?: string;
+        repoSlug?: string;
+    }>();
 
+    const baseAppPath =
+        orgSlug && appSlug
+            ? repoSlug
+                ? `/org/${orgSlug}/app/${appSlug}/repo/${repoSlug}`
+                : `/org/${orgSlug}/app/${appSlug}`
+            : null;
+
+    const securityScansPath = baseAppPath
+        ? `${baseAppPath}/security-scans`
+        : "/"; // fallback
     return (
         <Box sx={{ display: "flex" }}>
             {/* AppBar */}
@@ -60,7 +72,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             >
                 <Toolbar>
                     <Typography variant="h6" noWrap component="div">
-                        Security Scan Dashboard
+                        {orgSlug && appSlug
+                            ? `${orgSlug} / ${appSlug} – Security Dashboard`
+                            : "Security Scan Dashboard"}
                     </Typography>
                 </Toolbar>
             </AppBar>
@@ -90,23 +104,23 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 </Toolbar>
                 <List>
                     {NAV_ITEMS.map((item) => {
+                        // tällä hetkellä vain Security Scans
+                        const to = securityScansPath;
+
                         const isActive =
-                            location.pathname === item.to ||
-                            (item.to !== "/" &&
-                                location.pathname.startsWith(item.to));
+                            location.pathname === to ||
+                            location.pathname.startsWith(`${to}/`);
 
                         return (
-                            <ListItem key={item.to} disablePadding>
+                            <ListItem key={item.label} disablePadding>
                                 <ListItemButton
                                     component={RouterLink}
-                                    to={item.to}
+                                    to={to}
                                     selected={isActive}
                                 >
                                     <ListItemIcon
                                         sx={{
-                                            color: isActive
-                                                ? "primary.main"
-                                                : "inherit",
+                                            color: isActive ? "primary.main" : "inherit",
                                         }}
                                     >
                                         {item.icon}

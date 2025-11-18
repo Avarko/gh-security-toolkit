@@ -4,7 +4,7 @@
  */
 
 import { useMemo } from "react";
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useParams } from "react-router-dom";
 import {
     Box,
     Typography,
@@ -31,6 +31,22 @@ interface ScanOverviewPageProps {
 }
 
 export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
+    const { orgSlug, appSlug, repoSlug } = useParams<{
+        orgSlug: string;
+        appSlug: string;
+        repoSlug?: string;
+    }>();
+
+    const baseAppPath =
+        orgSlug && appSlug
+            ? repoSlug
+                ? `/org/${orgSlug}/app/${appSlug}/repo/${repoSlug}`
+                : `/org/${orgSlug}/app/${appSlug}`
+            : "";
+
+    const securityScansBasePath = baseAppPath
+        ? `${baseAppPath}/security-scans`
+        : "/"; // fallback, if params are missing
     const channelGroups = useMemo(() => {
         const groups: { [channel: string]: ScanMetadata[] } = {};
         if (!history?.scans) {
@@ -145,7 +161,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                 </Typography>
                                 <Link
                                     component={RouterLink}
-                                    to={`/scans/${channel}`}
+                                    to={`${securityScansBasePath}/channel/${channel}`}
                                     underline="hover"
                                 >
                                     View All →
@@ -246,7 +262,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                             <TableCell sx={{ whiteSpace: "nowrap" }}>
                                                 <Link
                                                     component={RouterLink}
-                                                    to={`/scans/${channel}/${scan.timestamp}`}
+                                                    to={`${securityScansBasePath}/channel/${channel}/run/${scan.timestamp}`}
                                                     underline="hover"
                                                 >
                                                     {new Date(scan.timestamp).toLocaleString()}
