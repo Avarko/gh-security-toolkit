@@ -59,10 +59,17 @@ on:
 
   schedule:
     # Run nightly at 2 AM UTC (example - client repos can customize)
+    # IMPORTANT: Schedule this at a time when security scans are NOT running
+    # to avoid race conditions with artifact download/upload operations
     - cron: '0 2 * * *'
 
 permissions:
   actions: write  # Required to delete artifacts
+
+# Prevent concurrent cleanup runs to avoid race conditions with security-scan workflow
+concurrency:
+  group: cleanup-artifacts-${{ github.repository }}
+  cancel-in-progress: false  # Wait for previous cleanup to finish
 
 jobs:
   clean-artifacts:

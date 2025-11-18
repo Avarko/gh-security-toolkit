@@ -413,13 +413,15 @@ with:
 
 ### Artifact cleanup workflow
 
-The toolkit creates several types of artifacts during scanning. To prevent accumulation, use the reusable cleanup workflow:
+The toolkit creates several types of artifacts during scanning. To prevent accumulation, use the reusable cleanup workflow.
+
+**Important:** Schedule cleanup at a time when security scans are **not** running to avoid race conditions.
 
 ```yaml
 name: Cleanup Artifacts
 on:
   schedule:
-    - cron: '0 2 * * *'  # Nightly at 2 AM UTC
+    - cron: '0 2 * * *'  # Nightly at 2 AM UTC (avoid scan times!)
   workflow_dispatch:     # Manual trigger
 
 jobs:
