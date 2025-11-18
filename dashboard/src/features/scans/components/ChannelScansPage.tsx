@@ -163,6 +163,7 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                                     const semErr = scan.semgrepResults?.totalErrors || 0;
                                     const semWarn = scan.semgrepResults?.totalWarnings || 0;
 
+
                                     const detailPath = `${securityScansBasePath}/channel/${channel}/run/${scan.timestamp}`;
 
                                     return (
@@ -181,14 +182,14 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                                                     variant="body2"
                                                     sx={{ fontFamily: "monospace" }}
                                                 >
-                                                    {scan.branch}
+                                                    {scan.metadata?.branch}
                                                 </Typography>
                                                 <Typography
                                                     variant="caption"
                                                     color="text.secondary"
                                                     sx={{ fontFamily: "monospace" }}
                                                 >
-                                                    {scan.commit?.substring(0, 7) ?? ""}
+                                                    {scan.metadata?.commit?.substring(0, 7) ?? ""}
                                                 </Typography>
                                             </TableCell>
                                             <TableCell align="right">

@@ -119,16 +119,16 @@ export function ScanRunDetailPage({
                         </Typography>
 
                         <Typography variant="subtitle2">Repository</Typography>
-                        <Typography variant="body2">{metadata.repository}</Typography>
+                        <Typography variant="body2">{metadata.metadata?.repository}</Typography>
 
                         <Typography variant="subtitle2">Branch</Typography>
                         <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                            {metadata.branch}
+                            {metadata.metadata?.branch}
                         </Typography>
 
                         <Typography variant="subtitle2">Commit</Typography>
                         <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                            {metadata.commitSha}
+                            {metadata.metadata?.commit}
                         </Typography>
                     </Box>
                 </Paper>

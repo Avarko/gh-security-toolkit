@@ -270,14 +270,14 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                             </TableCell>
                                             <TableCell>
                                                 <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                                                    {scan.branch}
+                                                    {scan.metadata?.branch}
                                                 </Typography>
                                                 <Typography
                                                     variant="caption"
                                                     color="text.secondary"
                                                     sx={{ fontFamily: "monospace" }}
                                                 >
-                                                    {scan.commit.substring(0, 7)}
+                                                    {scan.metadata?.commit?.substring(0, 7)}
                                                 </Typography>
                                             </TableCell>
                                             {/* Trivy FS */}
