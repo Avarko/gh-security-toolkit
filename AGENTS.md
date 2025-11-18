@@ -150,13 +150,15 @@ We use **GitHub Actions Artifacts** as a "database" to maintain state between wo
 - **Contains**: `data/<org>/<app>/<repo>/runs/`, `hist/scan-history.json`
 - **Size**: ~400 KB (minimal, data-only)
 - **Retention**: 90 days
-- **Overwrite**: Yes (`overwrite: true`) - only 1 instance exists per channel
+- **Cleanup**: Automatic - deletes old artifacts after successful upload (only 1 exists per channel)
 - **Why needed**: GitHub Pages cannot be "downloaded" for incremental updates
+
+**Important**: `upload-artifact@v4`'s `overwrite: true` only works **within a single workflow run**, NOT across runs. Therefore, we implement explicit cleanup using GitHub API after each upload to ensure only the newest artifact exists.
 
 **Workflow**:
 ```
-Run N:   Download artifact → Restore → Add new scan → Upload artifact
-Run N+1: Download artifact → Restore → Add new scan → Upload artifact
+Run N:   Download artifact → Restore → Add new scan → Upload artifact → Cleanup old artifacts
+Run N+1: Download artifact → Restore → Add new scan → Upload artifact → Cleanup old artifacts
 ```
 
 #### Artifact 2: `security-dashboard-pages-<channel>`
@@ -327,7 +329,17 @@ When implementing S3 publisher:
 
 ## Common Pitfalls
 
-### 1. Missing Stats in scan-history.json
+### 1. Artifact Overwrite Misconception
+
+**Symptom**: Multiple `_scan_history_<channel>` artifacts accumulate in repository.
+
+**Cause**: `upload-artifact@v4`'s `overwrite: true` **only works within a single workflow run**, NOT across different runs.
+
+**Fix**: Implemented automatic cleanup step using GitHub API (see line 435 in `actions/publisher/github-pages/action.yml`). Deletes all old artifacts with same name after successful upload.
+
+**Why this matters**: Without cleanup, you'd have one artifact per workflow run for 90 days (potentially hundreds of duplicates), wasting storage.
+
+### 2. Missing Stats in scan-history.json
 
 **Symptom**: Dashboard graphs are empty.
 
@@ -335,7 +347,7 @@ When implementing S3 publisher:
 
 **Fix**: Ensure `GitHubPagesBuilder.java` calls `transformer.extractStats()` and `HistoryStats.from()`.
 
-### 2. Artifact Name Collisions
+### 3. Artifact Name Collisions
 
 **Symptom**: `actions/deploy-pages` fails with "Multiple artifacts named 'github-pages'".
 
@@ -343,7 +355,7 @@ When implementing S3 publisher:
 
 **Fix**: Use unique names: `security-dashboard-pages-${{ inputs.channel }}`.
 
-### 3. TypeScript Schema Validation Fails
+### 4. TypeScript Schema Validation Fails
 
 **Symptom**: Dashboard shows "Invalid scan history data".
 
@@ -351,7 +363,7 @@ When implementing S3 publisher:
 
 **Fix**: Match Java output to TypeScript `scanMetadataSchema` in `historyTypes.ts`. Use Zod error messages for debugging.
 
-### 4. Retention Policy Confusion
+### 5. Retention Policy Confusion
 
 **Symptom**: "Where did my old scans go?"
 

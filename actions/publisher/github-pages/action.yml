@@ -424,12 +424,54 @@ runs:
 
 
     - name: Upload scan history artifact
+      id: upload_history
       uses: actions/upload-artifact@v4
       with:
         name: _gh_security_toolkit_scan_history_${{ inputs.channel }}
         path: /tmp/scan-history-output/scan-history.tar.gz
         retention-days: ${{ inputs.retention_days }}
         overwrite: true
+
+    - name: Cleanup old scan history artifacts
+      if: ${{ steps.upload_history.outcome == 'success' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        ARTIFACT_NAME="_gh_security_toolkit_scan_history_${{ inputs.channel }}"
+        REPO="${{ github.repository }}"
+        CURRENT_ARTIFACT_ID="${{ steps.upload_history.outputs.artifact-id }}"
+
+        echo "🧹 Cleaning up old scan history artifacts for channel: ${{ inputs.channel }}"
+        echo "   Current artifact ID: $CURRENT_ARTIFACT_ID"
+
+        # List all artifacts with this name
+        ARTIFACTS=$(gh api \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "/repos/$REPO/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" \
+          --jq '.artifacts[] | select(.id != '$CURRENT_ARTIFACT_ID') | .id')
+
+        if [ -z "$ARTIFACTS" ]; then
+          echo "   ✅ No old artifacts to clean up"
+          exit 0
+        fi
+
+        # Delete old artifacts
+        DELETED=0
+        for ARTIFACT_ID in $ARTIFACTS; do
+          echo "   🗑️  Deleting artifact ID: $ARTIFACT_ID"
+          gh api \
+            --method DELETE \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/$REPO/actions/artifacts/$ARTIFACT_ID" || echo "   ⚠️  Failed to delete artifact $ARTIFACT_ID (may already be deleted)"
+          DELETED=$((DELETED + 1))
+        done
+
+        echo "   ✅ Deleted $DELETED old artifact(s)"
 
     - name: Write dashboard defaults.json
       if: ${{ inputs.dashboard_mode != '' }}
