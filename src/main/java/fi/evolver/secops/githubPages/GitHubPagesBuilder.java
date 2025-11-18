@@ -177,27 +177,29 @@ public class GitHubPagesBuilder {
     }
 
     private static void appendScanHistory(
-            Path tenantRoot,
+            Path pagesPath,
             String channel,
             String timestamp,
             ScanStats stats,
             ScanMetadata metadata) {
         try {
-            Path histDir = tenantRoot.resolve("hist");
+            Path histDir = pagesPath.resolve("data").resolve("hist");
             Files.createDirectories(histDir);
             Path historyPath = histDir.resolve("scan-history.json");
 
             ScanHistory history = readHistory(historyPath);
 
-            // Remove duplicates
-            history.entries.removeIf(entry -> channel.equals(entry.channel) && timestamp.equals(entry.timestamp));
+            // Poista duplikaatit tältä kanavalta/timestampilta
+            history.scans.removeIf(entry -> channel.equals(entry.channel) && timestamp.equals(entry.timestamp));
 
             HistoryEntry entry = HistoryEntry.from(channel, timestamp, stats, metadata);
-            history.entries.add(entry);
-            history.entries.sort(Comparator.comparing(e -> e.timestamp));
+            history.scans.add(entry);
+
+            // Lajittele aikaleiman mukaan (vanhin–uusin; frontti tekee oman järjestyksensä)
+            history.scans.sort(Comparator.comparing(e -> e.timestamp));
 
             Files.writeString(historyPath, GSON.toJson(history), StandardCharsets.UTF_8);
-            System.out.println("   ✅ Updated scan-history.json at: " + historyPath);
+            System.out.println("   ✅ Updated scan-history.json");
         } catch (Exception e) {
             System.err.println("⚠️  Failed to append scan history: " + e.getMessage());
         }
@@ -212,29 +214,33 @@ public class GitHubPagesBuilder {
             if (json == null || json.isBlank()) {
                 return new ScanHistory();
             }
+
             ScanHistory history = GSON.fromJson(json, ScanHistory.class);
             if (history == null) {
                 System.err.println("⚠️  Scan history JSON is null, starting fresh");
                 return new ScanHistory();
             }
-            if (history.entries == null) {
-                history.entries = new ArrayList<>();
+            if (history.scans == null) {
+                history.scans = new ArrayList<>();
             }
-            // Always upgrade to v2
+
+            // Varmista versionumero
             if (history.version < 2) {
                 System.out.println("   📦 Upgrading scan history from v" + history.version + " to v2");
                 history.version = 2;
             }
-            // Validate and filter out malformed entries
+
+            // Filteröi rikkinäiset entryt pois
             List<HistoryEntry> valid = new ArrayList<>();
-            for (HistoryEntry entry : history.entries) {
-                if (entry.channel == null || entry.timestamp == null) {
+            for (HistoryEntry entry : history.scans) {
+                if (entry == null || entry.channel == null || entry.timestamp == null) {
                     System.err.println("⚠️  Skipping history entry with missing channel or timestamp");
                     continue;
                 }
                 valid.add(entry);
             }
-            history.entries = valid;
+            history.scans = valid;
+
             return history;
         } catch (Exception e) {
             System.err.println("⚠️  Failed to read existing scan history (corrupt format): " + e.getMessage());
@@ -244,7 +250,7 @@ public class GitHubPagesBuilder {
 
     private static class ScanHistory {
         int version = 2;
-        List<HistoryEntry> entries = new ArrayList<>();
+        List<HistoryEntry> scans = new ArrayList<>();
     }
 
     private static class HistoryEntry {
