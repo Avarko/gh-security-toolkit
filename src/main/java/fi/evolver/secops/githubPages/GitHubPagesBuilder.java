@@ -11,6 +11,8 @@ import com.google.gson.GsonBuilder;
 import fi.evolver.secops.githubPages.loader.ScanResultLoader;
 import fi.evolver.secops.githubPages.loader.ScanResultLoader.RawScanData;
 import fi.evolver.secops.githubPages.model.HistoryEntry;
+import fi.evolver.secops.githubPages.model.HistoryMetadata;
+import fi.evolver.secops.githubPages.model.HistoryStats;
 import fi.evolver.secops.githubPages.model.ScanHistory;
 import fi.evolver.secops.githubPages.model.ScanMetadata;
 import fi.evolver.secops.githubPages.model.ScanStats;
