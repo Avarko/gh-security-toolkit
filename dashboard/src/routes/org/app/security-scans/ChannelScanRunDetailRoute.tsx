@@ -45,21 +45,35 @@ export async function loader(args: LoaderFunctionArgs): Promise<LoaderData> {
         const dataRoot = getDataRoot({ orgSlug, appSlug, repoSlug });
         const baseUrl = `${dataRoot}/runs/${channel}/${timestamp}`;
 
+        // Helper to safely parse JSON or throw a user-friendly error
+        async function safeParseJson(res: Response, fileLabel: string) {
+            if (!res.ok) {
+                throw new Error(`Scan run file missing: ${fileLabel}`);
+            }
+            const contentType = res.headers.get("content-type") || "";
+            if (!contentType.includes("application/json")) {
+                throw new Error(`Scan run file is not valid JSON: ${fileLabel}`);
+            }
+            try {
+                return await res.json();
+            } catch (e) {
+                throw new Error(`Scan run file is not valid JSON: ${fileLabel}`);
+            }
+        }
+
         const [metadataRes, trivyRes, semgrepRes] = await Promise.all([
             fetch(`${baseUrl}/scan-metadata.json`),
             fetch(`${baseUrl}/trivy-fs-results.json`),
             fetch(`${baseUrl}/semgrep-results.json`),
         ]);
 
-        if (!metadataRes.ok || !trivyRes.ok || !semgrepRes.ok) {
-            throw new Error("Failed to load scan data");
-        }
+        const metadataJson = await safeParseJson(metadataRes, "scan-metadata.json");
+        const trivyJson = await safeParseJson(trivyRes, "trivy-fs-results.json");
+        const semgrepJson = await safeParseJson(semgrepRes, "semgrep-results.json");
 
-        const metadataJson = await metadataRes.json();
         const metadata = scanRunMetadataSchema.parse(metadataJson);
-
-        const trivyData = trivyScanSchema.parse(await trivyRes.json());
-        const semgrepData = semgrepScanSchema.parse(await semgrepRes.json());
+        const trivyData = trivyScanSchema.parse(trivyJson);
+        const semgrepData = semgrepScanSchema.parse(semgrepJson);
 
         return { channel, metadata, trivyData, semgrepData };
     } catch (error) {
@@ -70,6 +84,10 @@ export async function loader(args: LoaderFunctionArgs): Promise<LoaderData> {
             throw error;
         }
 
+        // If error is a user-friendly error, pass its message
+        if (error instanceof Error) {
+            throw new Error(error.message);
+        }
         throw new Error("Failed to load scan run details");
     }
 }
