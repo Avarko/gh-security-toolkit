@@ -331,7 +331,7 @@ When implementing S3 publisher:
 
 ### 1. Artifact Overwrite Misconception
 
-**Symptom**: Multiple `_scan_history_<channel>` artifacts accumulate in repository.
+**Symptom**: Multiple `__gh_security_toolkit__scan_history_<channel>` artifacts accumulate in repository.
 
 **Cause**: `upload-artifact@v4`'s `overwrite: true` **only works within a single workflow run**, NOT across different runs.
 
