@@ -3,12 +3,12 @@ name: Clean Artifacts
 on:
   workflow_call:
     inputs:
-      filesystem_keep:
+      scan_filesystem_keep:
         description: 'Number of __gh_security_toolkit__filesystem__ artifacts to keep'
         type: number
         required: false
         default: 3
-      docker_image_keep:
+      scan_docker_image_keep:
         description: 'Number of __gh_security_toolkit__docker_image__ artifacts to keep'
         type: number
         required: false
@@ -31,12 +31,12 @@ on:
 
   workflow_dispatch:
     inputs:
-      filesystem_keep:
+      scan_filesystem_keep:
         description: 'Number of __gh_security_toolkit__filesystem__ artifacts to keep'
         type: number
         required: false
         default: 3
-      docker_image_keep:
+      scan_docker_image_keep:
         description: 'Number of __gh_security_toolkit__docker_image__ artifacts to keep'
         type: number
         required: false
@@ -75,7 +75,7 @@ jobs:
           set -euo pipefail
 
           ARTIFACT_NAME="__gh_security_toolkit__filesystem__"
-          KEEP=${{ inputs.filesystem_keep || 3 }}
+          KEEP=${{ inputs.scan_filesystem_keep || 3 }}
           REPO="${{ github.repository }}"
 
           echo "🧹 Cleaning $ARTIFACT_NAME artifacts (keeping $KEEP newest)"
@@ -125,7 +125,7 @@ jobs:
           set -euo pipefail
 
           ARTIFACT_NAME="__gh_security_toolkit__docker_image__"
-          KEEP=${{ inputs.docker_image_keep || 3 }}
+          KEEP=${{ inputs.scan_docker_image_keep || 3 }}
           REPO="${{ github.repository }}"
 
           echo "🧹 Cleaning $ARTIFACT_NAME artifacts (keeping $KEEP newest)"
@@ -351,8 +351,8 @@ jobs:
           echo "✅ Artifact cleanup complete!"
           echo ""
           echo "Retention policy applied:"
-          echo "  • __gh_security_toolkit__filesystem__: keep ${{ inputs.filesystem_keep || 3 }} newest"
-          echo "  • __gh_security_toolkit__docker_image__: keep ${{ inputs.docker_image_keep || 3 }} newest"
+          echo "  • __gh_security_toolkit__filesystem__: keep ${{ inputs.scan_filesystem_keep || 3 }} newest"
+          echo "  • __gh_security_toolkit__docker_image__: keep ${{ inputs.scan_docker_image_keep || 3 }} newest"
           echo "  • __gh_security_toolkit__security-dashboard-build: keep ${{ inputs.dashboard_build_keep || 3 }} newest"
           echo "  • __gh_security_toolkit__scan_history_*: keep ${{ inputs.scan_history_keep || 3 }} newest per channel"
           echo "  • __gh_security_toolkit__security-dashboard-pages-*: keep ${{ inputs.dashboard_pages_keep || 3 }} newest per channel"
