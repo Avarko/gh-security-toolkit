@@ -35,7 +35,7 @@ make test-data    # Generate test data
 ```bash
 npm install
 npm run dev       # Dev server at http://localhost:5173
-npm run build     # Production build → build/client/
+npm run build     # Production build → dist/
 npm run preview   # Preview production build
 ```
 

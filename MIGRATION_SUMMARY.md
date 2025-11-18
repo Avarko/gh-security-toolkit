@@ -40,7 +40,7 @@ Created complete Remix application structure:
 #### 3. **actions/builder/dashboard/** - Dashboard Builder Action
 - Installs Node.js (v20)
 - Runs `npm ci` and `npm run build`
-- Uploads `build/client/` as artifact (`security-dashboard-build`)
+- Uploads `dist/` as artifact (`security-dashboard-build`)
 - Cached npm dependencies for faster builds
 
 #### 4. **actions/publisher/github-pages/action.yml** - Updated Publisher
