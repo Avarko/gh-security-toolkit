@@ -260,18 +260,44 @@ runs:
         echo "meta_json=$META_FILE" >> "$GITHUB_OUTPUT"
 
     - name: Download scan history artifact
-      uses: dawidd6/action-download-artifact@v6
       continue-on-error: true
       id: download_history
-      with:
-        name: __gh_security_toolkit__scan_history_${{ inputs.channel }}
-        path: /tmp/scan-history-artifact
-        workflow_conclusion: success
-        repo: ${{ github.repository }}
-        workflow: ${{ github.workflow }}
-        check_artifacts: true
-        search_artifacts: true
-        if_no_artifact_found: ignore
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -euo pipefail
+
+        ARTIFACT_NAME="__gh_security_toolkit__scan_history_${{ inputs.channel }}"
+        REPO="${{ github.repository }}"
+        OUTPUT_DIR="/tmp/scan-history-artifact"
+
+        echo "==> Searching for artifact: $ARTIFACT_NAME"
+
+        # Find the most recent artifact with this name (sorted by created_at DESC)
+        ARTIFACT_URL=$(gh api \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "/repos/$REPO/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" \
+          --jq '.artifacts | sort_by(.created_at) | reverse | .[0].archive_download_url // empty')
+
+        if [ -z "$ARTIFACT_URL" ]; then
+          echo "==> No artifact found with name: $ARTIFACT_NAME"
+          echo "found=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "==> Downloading artifact from: $ARTIFACT_URL"
+        mkdir -p "$OUTPUT_DIR"
+
+        # Download and extract artifact
+        gh api "$ARTIFACT_URL" > "$OUTPUT_DIR/artifact.zip"
+        cd "$OUTPUT_DIR"
+        unzip -q artifact.zip
+        rm artifact.zip
+
+        echo "==> Artifact downloaded successfully"
+        echo "found=true" >> "$GITHUB_OUTPUT"
 
     - name: Restore scan history
       shell: bash
