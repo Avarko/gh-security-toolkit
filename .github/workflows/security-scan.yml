@@ -156,8 +156,8 @@ jobs:
       - name: Timestamp
         id: ts
         run: |
-          # Always use current time for unique releases
-          echo "ts=$(date -u +%Y-%m-%d-%H%M%SZ)" >> "$GITHUB_OUTPUT"
+          # ISO 8601 timestamp for scan identification
+          echo "ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Validate channel name
         run: |
