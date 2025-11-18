@@ -426,8 +426,8 @@ jobs:
   cleanup:
     uses: Avarko/gh-security-toolkit/.github/workflows/clean-artifacts.yml@main
     with:
-      filesystem_keep: 3        # Keep 3 newest filesystem artifacts
-      docker_image_keep: 3      # Keep 3 newest Docker image artifacts
+      scan_filesystem_keep: 3   # Keep 3 newest filesystem artifacts
+      scan_docker_image_keep: 3 # Keep 3 newest Docker image artifacts
       dashboard_build_keep: 3   # Keep 3 newest dashboard builds
       scan_history_keep: 3      # Keep 3 newest scan history per channel
       dashboard_pages_keep: 3   # Keep 3 newest dashboard pages per channel
