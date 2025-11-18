@@ -8,7 +8,7 @@ Builds the React+Remix security dashboard SPA from `dashboard/` directory.
 - name: Build Dashboard
   uses: ./.github/workflows/actions/dashboard
   with:
-    node-version: '20'  # Optional, defaults to 20
+    node-version: '24'  # Optional, defaults to 24
 ```
 
 ## Outputs
@@ -17,7 +17,7 @@ Builds the React+Remix security dashboard SPA from `dashboard/` directory.
 
 ## Build Process
 
-1. Setup Node.js (default: v20)
+1. Setup Node.js (default: v24)
 2. Install dependencies (`npm ci`)
 3. Build Remix app in SPA mode (`npm run build`)
 4. Upload `dist/` as artifact

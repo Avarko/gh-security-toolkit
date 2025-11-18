@@ -38,7 +38,7 @@ Created complete Remix application structure:
   - Responsive inline styles
 
 #### 3. **actions/builder/dashboard/** - Dashboard Builder Action
-- Installs Node.js (v20)
+- Installs Node.js (v24)
 - Runs `npm ci` and `npm run build`
 - Uploads `dist/` as artifact (`security-dashboard-build`)
 - Cached npm dependencies for faster builds
@@ -151,7 +151,7 @@ To complete the migration:
 - **No backward compatibility**: Old `scans/` layout removed
 - **FreeMarker removed**: No HTML generation in Java
 - **New parameter**: `GitHubPagesBuilder.java` requires `[dashboard_dir]` for full functionality
-- **Build requirement**: Node.js 20+ needed for dashboard builds
+- **Build requirement**: Node.js 24+ needed for dashboard builds
 
 ### ✅ Migration Validation
 
