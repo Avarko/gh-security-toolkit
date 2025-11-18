@@ -57,12 +57,6 @@ on:
         required: false
         default: 3
 
-  schedule:
-    # Run nightly at 2 AM UTC (example - client repos can customize)
-    # IMPORTANT: Schedule this at a time when security scans are NOT running
-    # to avoid race conditions with artifact download/upload operations
-    - cron: '0 2 * * *'
-
 permissions:
   actions: write  # Required to delete artifacts
 
