@@ -77,11 +77,11 @@ describe('scanMetadataSchema', () => {
         const invalidScan = {
             timestamp: '2024-01-15-120000Z',
             channel: 'prod',
-                metadata: {
-                    branch: 'main',
-                    commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
-                    repository: 'owner/repo',
-                },
+            metadata: {
+                branch: 'main',
+                commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+                repository: 'owner/repo',
+            },
         };
 
         const result = scanMetadataSchema.safeParse(invalidScan);
@@ -107,84 +107,84 @@ describe('scanMetadataSchema', () => {
         // With .catch(0), this should actually pass and convert to 0
         expect(result.success).toBe(true);
 
-    it('should handle string instead of number with .catch()', () => {
-        const scanWithString = {
-            timestamp: '2024-01-15-120000Z',
-            channel: 'prod',
-            metadata: {
-                branch: 'main',
-                commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
-            },
-            trivyFsResults: {
-                totalVulnerabilities: {
-                    CRITICAL: 'not-a-number',
-                },
-            },
-        };
-
-        const result = scanMetadataSchema.safeParse(scanWithString);
-        // With .catch(0), this should convert invalid values to 0
-        if (result.success) {
-            expect(result.data.trivyFsResults?.totalVulnerabilities.CRITICAL).toBe(0);
-        }
-    });
-
-    it('should reject unknown fields with .strict()', () => {
-        const scanWithExtra = {
-            timestamp: '2024-01-15-120000Z',
-            channel: 'prod',
-            metadata: {
-                branch: 'main',
-                commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
-            },
-            extraField: 123,
-        };
-
-        const result = scanMetadataSchema.safeParse(scanWithExtra);
-        expect(result.success).toBe(false);
-    });
-});
-
-describe('scanHistorySchema', () => {
-    it('should validate correct scan history', () => {
-        const validHistory = {
-            version: '1.0',
-            scans: [
-                {
-                    timestamp: '2024-01-15-120000Z',
-                    channel: 'prod',
-                    branch: 'main',
-                    commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
-                },
-            ],
-        };
-
-        const result = scanHistorySchema.safeParse(validHistory);
-        expect(result.success).toBe(true);
-    });
-
-    it('should reject missing version field', () => {
-        const invalidHistory = {
-            scans: [],
-        };
-
-        const result = scanHistorySchema.safeParse(invalidHistory);
-        expect(result.success).toBe(false);
-    });
-
-    it('should reject too large array (DoS protection)', () => {
-        const hugeHistory = {
-            version: '1.0',
-            scans: new Array(10001).fill({
+        it('should handle string instead of number with .catch()', () => {
+            const scanWithString = {
                 timestamp: '2024-01-15-120000Z',
                 channel: 'prod',
                 metadata: {
                     branch: 'main',
                     commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
                 },
-            }),
-        };
+                trivyFsResults: {
+                    totalVulnerabilities: {
+                        CRITICAL: 'not-a-number',
+                    },
+                },
+            };
 
-        const result = scanHistorySchema.safeParse(hugeHistory);
-        expect(result.success).toBe(false);
+            const result = scanMetadataSchema.safeParse(scanWithString);
+            // With .catch(0), this should convert invalid values to 0
+            if (result.success) {
+                expect(result.data.trivyFsResults?.totalVulnerabilities.CRITICAL).toBe(0);
+            }
+        });
+
+        it('should reject unknown fields with .strict()', () => {
+            const scanWithExtra = {
+                timestamp: '2024-01-15-120000Z',
+                channel: 'prod',
+                metadata: {
+                    branch: 'main',
+                    commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+                },
+                extraField: 123,
+            };
+
+            const result = scanMetadataSchema.safeParse(scanWithExtra);
+            expect(result.success).toBe(false);
+        });
     });
+
+    describe('scanHistorySchema', () => {
+        it('should validate correct scan history', () => {
+            const validHistory = {
+                version: '1.0',
+                scans: [
+                    {
+                        timestamp: '2024-01-15-120000Z',
+                        channel: 'prod',
+                        branch: 'main',
+                        commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+                    },
+                ],
+            };
+
+            const result = scanHistorySchema.safeParse(validHistory);
+            expect(result.success).toBe(true);
+        });
+
+        it('should reject missing version field', () => {
+            const invalidHistory = {
+                scans: [],
+            };
+
+            const result = scanHistorySchema.safeParse(invalidHistory);
+            expect(result.success).toBe(false);
+        });
+
+        it('should reject too large array (DoS protection)', () => {
+            const hugeHistory = {
+                version: '1.0',
+                scans: new Array(10001).fill({
+                    timestamp: '2024-01-15-120000Z',
+                    channel: 'prod',
+                    metadata: {
+                        branch: 'main',
+                        commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+                    },
+                }),
+            };
+
+            const result = scanHistorySchema.safeParse(hugeHistory);
+            expect(result.success).toBe(false);
+        });
