@@ -1,0 +1,358 @@
+name: Clean Artifacts
+
+on:
+  workflow_call:
+    inputs:
+      filesystem_keep:
+        description: 'Number of __gh_security_toolkit__filesystem__ artifacts to keep'
+        type: number
+        required: false
+        default: 3
+      docker_image_keep:
+        description: 'Number of __gh_security_toolkit__docker_image__ artifacts to keep'
+        type: number
+        required: false
+        default: 3
+      dashboard_build_keep:
+        description: 'Number of __gh_security_toolkit__security-dashboard-build artifacts to keep'
+        type: number
+        required: false
+        default: 3
+      scan_history_keep:
+        description: 'Number of __gh_security_toolkit__scan_history_<channel> artifacts to keep per channel'
+        type: number
+        required: false
+        default: 3
+      dashboard_pages_keep:
+        description: 'Number of __gh_security_toolkit__security-dashboard-pages-<channel> artifacts to keep per channel'
+        type: number
+        required: false
+        default: 3
+
+  workflow_dispatch:
+    inputs:
+      filesystem_keep:
+        description: 'Number of __gh_security_toolkit__filesystem__ artifacts to keep'
+        type: number
+        required: false
+        default: 3
+      docker_image_keep:
+        description: 'Number of __gh_security_toolkit__docker_image__ artifacts to keep'
+        type: number
+        required: false
+        default: 3
+      dashboard_build_keep:
+        description: 'Number of __gh_security_toolkit__security-dashboard-build artifacts to keep'
+        type: number
+        required: false
+        default: 3
+      scan_history_keep:
+        description: 'Number of __gh_security_toolkit__scan_history_<channel> artifacts to keep per channel'
+        type: number
+        required: false
+        default: 3
+      dashboard_pages_keep:
+        description: 'Number of __gh_security_toolkit__security-dashboard-pages-<channel> artifacts to keep per channel'
+        type: number
+        required: false
+        default: 3
+
+  schedule:
+    # Run nightly at 2 AM UTC (example - client repos can customize)
+    - cron: '0 2 * * *'
+
+permissions:
+  actions: write  # Required to delete artifacts
+
+jobs:
+  clean-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clean filesystem artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          ARTIFACT_NAME="__gh_security_toolkit__filesystem__"
+          KEEP=${{ inputs.filesystem_keep || 3 }}
+          REPO="${{ github.repository }}"
+
+          echo "🧹 Cleaning $ARTIFACT_NAME artifacts (keeping $KEEP newest)"
+
+          # Get all artifacts with this name, sorted by creation date (newest first)
+          ARTIFACT_IDS=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/$REPO/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" \
+            --jq '[.artifacts | sort_by(.created_at) | reverse | .[].id] | @json' | jq -r '.[]')
+
+          if [ -z "$ARTIFACT_IDS" ]; then
+            echo "   ℹ️  No artifacts found"
+            exit 0
+          fi
+
+          # Convert to array
+          mapfile -t IDS <<< "$ARTIFACT_IDS"
+          TOTAL=${#IDS[@]}
+
+          echo "   Found $TOTAL artifact(s)"
+
+          if [ $TOTAL -le $KEEP ]; then
+            echo "   ✅ No cleanup needed (total=$TOTAL, keep=$KEEP)"
+            exit 0
+          fi
+
+          # Delete old artifacts (keep only the first $KEEP)
+          DELETED=0
+          for ((i=KEEP; i<TOTAL; i++)); do
+            ARTIFACT_ID="${IDS[$i]}"
+            echo "   🗑️  Deleting artifact ID: $ARTIFACT_ID"
+            gh api \
+              --method DELETE \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/repos/$REPO/actions/artifacts/$ARTIFACT_ID" || echo "   ⚠️  Failed to delete (may already be deleted)"
+            DELETED=$((DELETED + 1))
+          done
+
+          echo "   ✅ Deleted $DELETED artifact(s), kept $KEEP newest"
+
+      - name: Clean Docker image artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          ARTIFACT_NAME="__gh_security_toolkit__docker_image__"
+          KEEP=${{ inputs.docker_image_keep || 3 }}
+          REPO="${{ github.repository }}"
+
+          echo "🧹 Cleaning $ARTIFACT_NAME artifacts (keeping $KEEP newest)"
+
+          ARTIFACT_IDS=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/$REPO/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" \
+            --jq '[.artifacts | sort_by(.created_at) | reverse | .[].id] | @json' | jq -r '.[]')
+
+          if [ -z "$ARTIFACT_IDS" ]; then
+            echo "   ℹ️  No artifacts found"
+            exit 0
+          fi
+
+          mapfile -t IDS <<< "$ARTIFACT_IDS"
+          TOTAL=${#IDS[@]}
+
+          echo "   Found $TOTAL artifact(s)"
+
+          if [ $TOTAL -le $KEEP ]; then
+            echo "   ✅ No cleanup needed (total=$TOTAL, keep=$KEEP)"
+            exit 0
+          fi
+
+          DELETED=0
+          for ((i=KEEP; i<TOTAL; i++)); do
+            ARTIFACT_ID="${IDS[$i]}"
+            echo "   🗑️  Deleting artifact ID: $ARTIFACT_ID"
+            gh api \
+              --method DELETE \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/repos/$REPO/actions/artifacts/$ARTIFACT_ID" || echo "   ⚠️  Failed to delete (may already be deleted)"
+            DELETED=$((DELETED + 1))
+          done
+
+          echo "   ✅ Deleted $DELETED artifact(s), kept $KEEP newest"
+
+      - name: Clean dashboard build artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          ARTIFACT_NAME="__gh_security_toolkit__security-dashboard-build"
+          KEEP=${{ inputs.dashboard_build_keep || 3 }}
+          REPO="${{ github.repository }}"
+
+          echo "🧹 Cleaning $ARTIFACT_NAME artifacts (keeping $KEEP newest)"
+
+          ARTIFACT_IDS=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/$REPO/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" \
+            --jq '[.artifacts | sort_by(.created_at) | reverse | .[].id] | @json' | jq -r '.[]')
+
+          if [ -z "$ARTIFACT_IDS" ]; then
+            echo "   ℹ️  No artifacts found"
+            exit 0
+          fi
+
+          mapfile -t IDS <<< "$ARTIFACT_IDS"
+          TOTAL=${#IDS[@]}
+
+          echo "   Found $TOTAL artifact(s)"
+
+          if [ $TOTAL -le $KEEP ]; then
+            echo "   ✅ No cleanup needed (total=$TOTAL, keep=$KEEP)"
+            exit 0
+          fi
+
+          DELETED=0
+          for ((i=KEEP; i<TOTAL; i++)); do
+            ARTIFACT_ID="${IDS[$i]}"
+            echo "   🗑️  Deleting artifact ID: $ARTIFACT_ID"
+            gh api \
+              --method DELETE \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/repos/$REPO/actions/artifacts/$ARTIFACT_ID" || echo "   ⚠️  Failed to delete (may already be deleted)"
+            DELETED=$((DELETED + 1))
+          done
+
+          echo "   ✅ Deleted $DELETED artifact(s), kept $KEEP newest"
+
+      - name: Clean scan history artifacts (all channels)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          ARTIFACT_PREFIX="__gh_security_toolkit__scan_history_"
+          KEEP=${{ inputs.scan_history_keep || 3 }}
+          REPO="${{ github.repository }}"
+
+          echo "🧹 Cleaning $ARTIFACT_PREFIX* artifacts (keeping $KEEP newest per channel)"
+
+          # Get all artifacts matching the prefix
+          ALL_ARTIFACTS=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/$REPO/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | select(.name | startswith("'$ARTIFACT_PREFIX'")) | {name: .name, id: .id, created_at: .created_at}')
+
+          if [ -z "$ALL_ARTIFACTS" ]; then
+            echo "   ℹ️  No artifacts found"
+            exit 0
+          fi
+
+          # Group by channel name and clean each channel
+          CHANNELS=$(echo "$ALL_ARTIFACTS" | jq -r '.name' | sort -u)
+
+          TOTAL_DELETED=0
+          for CHANNEL_ARTIFACT_NAME in $CHANNELS; do
+            echo ""
+            echo "   📦 Processing: $CHANNEL_ARTIFACT_NAME"
+
+            # Get artifact IDs for this channel, sorted by creation date
+            ARTIFACT_IDS=$(echo "$ALL_ARTIFACTS" | \
+              jq -r 'select(.name == "'$CHANNEL_ARTIFACT_NAME'") | .id' | \
+              sort -rn)  # Assuming higher ID = newer (not perfect, but works usually)
+
+            mapfile -t IDS <<< "$ARTIFACT_IDS"
+            TOTAL=${#IDS[@]}
+
+            echo "      Found $TOTAL artifact(s)"
+
+            if [ $TOTAL -le $KEEP ]; then
+              echo "      ✅ No cleanup needed (total=$TOTAL, keep=$KEEP)"
+              continue
+            fi
+
+            # Delete old artifacts
+            DELETED=0
+            for ((i=KEEP; i<TOTAL; i++)); do
+              ARTIFACT_ID="${IDS[$i]}"
+              echo "      🗑️  Deleting artifact ID: $ARTIFACT_ID"
+              gh api \
+                --method DELETE \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "/repos/$REPO/actions/artifacts/$ARTIFACT_ID" || echo "      ⚠️  Failed to delete (may already be deleted)"
+              DELETED=$((DELETED + 1))
+              TOTAL_DELETED=$((TOTAL_DELETED + 1))
+            done
+
+            echo "      ✅ Deleted $DELETED artifact(s), kept $KEEP newest"
+          done
+
+          echo ""
+          echo "   ✅ Total deleted across all channels: $TOTAL_DELETED"
+
+      - name: Clean dashboard pages artifacts (all channels)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          ARTIFACT_PREFIX="__gh_security_toolkit__security-dashboard-pages-"
+          KEEP=${{ inputs.dashboard_pages_keep || 3 }}
+          REPO="${{ github.repository }}"
+
+          echo "🧹 Cleaning $ARTIFACT_PREFIX* artifacts (keeping $KEEP newest per channel)"
+
+          # Get all artifacts matching the prefix
+          ALL_ARTIFACTS=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/$REPO/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | select(.name | startswith("'$ARTIFACT_PREFIX'")) | {name: .name, id: .id, created_at: .created_at}')
+
+          if [ -z "$ALL_ARTIFACTS" ]; then
+            echo "   ℹ️  No artifacts found"
+            exit 0
+          fi
+
+          # Group by channel name and clean each channel
+          CHANNELS=$(echo "$ALL_ARTIFACTS" | jq -r '.name' | sort -u)
+
+          TOTAL_DELETED=0
+          for CHANNEL_ARTIFACT_NAME in $CHANNELS; do
+            echo ""
+            echo "   📦 Processing: $CHANNEL_ARTIFACT_NAME"
+
+            # Get artifact IDs for this channel, sorted by creation date
+            ARTIFACT_IDS=$(echo "$ALL_ARTIFACTS" | \
+              jq -r 'select(.name == "'$CHANNEL_ARTIFACT_NAME'") | .id' | \
+              sort -rn)
+
+            mapfile -t IDS <<< "$ARTIFACT_IDS"
+            TOTAL=${#IDS[@]}
+
+            echo "      Found $TOTAL artifact(s)"
+
+            if [ $TOTAL -le $KEEP ]; then
+              echo "      ✅ No cleanup needed (total=$TOTAL, keep=$KEEP)"
+              continue
+            fi
+
+            # Delete old artifacts
+            DELETED=0
+            for ((i=KEEP; i<TOTAL; i++)); do
+              ARTIFACT_ID="${IDS[$i]}"
+              echo "      🗑️  Deleting artifact ID: $ARTIFACT_ID"
+              gh api \
+                --method DELETE \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "/repos/$REPO/actions/artifacts/$ARTIFACT_ID" || echo "      ⚠️  Failed to delete (may already be deleted)"
+              DELETED=$((DELETED + 1))
+              TOTAL_DELETED=$((TOTAL_DELETED + 1))
+            done
+
+            echo "      ✅ Deleted $DELETED artifact(s), kept $KEEP newest"
+          done
+
+          echo ""
+          echo "   ✅ Total deleted across all channels: $TOTAL_DELETED"
+
+      - name: Cleanup summary
+        run: |
+          echo "✅ Artifact cleanup complete!"
+          echo ""
+          echo "Retention policy applied:"
+          echo "  • __gh_security_toolkit__filesystem__: keep ${{ inputs.filesystem_keep || 3 }} newest"
+          echo "  • __gh_security_toolkit__docker_image__: keep ${{ inputs.docker_image_keep || 3 }} newest"
+          echo "  • __gh_security_toolkit__security-dashboard-build: keep ${{ inputs.dashboard_build_keep || 3 }} newest"
+          echo "  • __gh_security_toolkit__scan_history_*: keep ${{ inputs.scan_history_keep || 3 }} newest per channel"
+          echo "  • __gh_security_toolkit__security-dashboard-pages-*: keep ${{ inputs.dashboard_pages_keep || 3 }} newest per channel"
