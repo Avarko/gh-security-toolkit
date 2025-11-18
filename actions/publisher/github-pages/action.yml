@@ -264,7 +264,7 @@ runs:
       continue-on-error: true
       id: download_history
       with:
-        name: _gh_security_toolkit_scan_history_${{ inputs.channel }}
+        name: __gh_security_toolkit__scan_history_${{ inputs.channel }}
         path: /tmp/scan-history-artifact
         workflow_conclusion: success
         repo: ${{ github.repository }}
@@ -362,7 +362,7 @@ runs:
     - name: Download Dashboard Artifact
       uses: actions/download-artifact@v4
       with:
-        name: security-dashboard-build
+        name: __gh_security_toolkit__security-dashboard-build
         path: /tmp/dashboard-build
 
     - name: Build GitHub Pages
@@ -427,7 +427,7 @@ runs:
       id: upload_history
       uses: actions/upload-artifact@v4
       with:
-        name: _gh_security_toolkit_scan_history_${{ inputs.channel }}
+        name: __gh_security_toolkit__scan_history_${{ inputs.channel }}
         path: /tmp/scan-history-output/scan-history.tar.gz
         retention-days: ${{ inputs.retention_days }}
         overwrite: true
@@ -440,7 +440,7 @@ runs:
       run: |
         set -euo pipefail
 
-        ARTIFACT_NAME="_gh_security_toolkit_scan_history_${{ inputs.channel }}"
+        ARTIFACT_NAME="__gh_security_toolkit__scan_history_${{ inputs.channel }}"
         REPO="${{ github.repository }}"
         CURRENT_ARTIFACT_ID="${{ steps.upload_history.outputs.artifact-id }}"
 
@@ -503,14 +503,14 @@ runs:
       uses: actions/upload-pages-artifact@v3
       with:
         path: ${{ inputs.pages_root }}
-        name: security-dashboard-pages-${{ inputs.channel }}
+        name: __gh_security_toolkit__security-dashboard-pages-${{ inputs.channel }}
         retention-days: 1
 
     - name: Deploy to GitHub Pages
       id: deployment
       uses: actions/deploy-pages@v4
       with:
-        artifact_name: security-dashboard-pages-${{ inputs.channel }}
+        artifact_name: __gh_security_toolkit__security-dashboard-pages-${{ inputs.channel }}
 
 outputs:
   pages_url:

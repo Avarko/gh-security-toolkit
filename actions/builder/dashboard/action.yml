@@ -10,7 +10,7 @@ inputs:
 outputs:
   artifact-name:
     description: 'Name of the uploaded dashboard artifact'
-    value: security-dashboard-build
+    value: __gh_security_toolkit__security-dashboard-build
 
 runs:
   using: composite
@@ -50,6 +50,6 @@ runs:
     - name: Upload dashboard artifact
       uses: actions/upload-artifact@v4
       with:
-        name: security-dashboard-build
+        name: __gh_security_toolkit__security-dashboard-build
         path: _toolkit/dashboard/dist
         retention-days: 1

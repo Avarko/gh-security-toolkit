@@ -144,7 +144,7 @@ Every `actions/deploy-pages@v4` call **replaces the entire site**.
 
 We use **GitHub Actions Artifacts** as a "database" to maintain state between workflow runs:
 
-#### Artifact 1: `_gh_security_toolkit_scan_history_<channel>`
+#### Artifact 1: `__gh_security_toolkit__scan_history_<channel>`
 
 - **Purpose**: Carries scan data forward between workflow runs
 - **Contains**: `data/<org>/<app>/<repo>/runs/`, `hist/scan-history.json`
@@ -161,7 +161,7 @@ Run N:   Download artifact → Restore → Add new scan → Upload artifact → 
 Run N+1: Download artifact → Restore → Add new scan → Upload artifact → Cleanup old artifacts
 ```
 
-#### Artifact 2: `security-dashboard-pages-<channel>`
+#### Artifact 2: `__gh_security_toolkit__security-dashboard-pages-<channel>`
 
 - **Purpose**: Temporary artifact for Pages deployment
 - **Contains**: Complete site (dashboard + data)
@@ -173,7 +173,7 @@ Run N+1: Download artifact → Restore → Add new scan → Upload artifact → 
 
 - `__gh_security_toolkit__filesystem__`: 1 day retention
 - `__gh_security_toolkit__docker_image__`: 1 day retention
-- `security-dashboard-build`: 1 day retention
+- `__gh_security_toolkit__security-dashboard-build`: 1 day retention
 
 All used only for passing data between workflow jobs, not persistence.
 

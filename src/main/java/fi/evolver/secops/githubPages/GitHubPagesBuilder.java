@@ -109,9 +109,9 @@ public class GitHubPagesBuilder {
 
         // Extract statistics for history
         ScanStats scanStats = transformer.extractStats(
-                rawData.trivyFsJson,
-                rawData.trivyImageJson,
-                rawData.semgrepJson,
+                rawData.trivyFs,
+                rawData.trivyImage,
+                rawData.semgrep,
                 hasDependabot);
         HistoryStats historyStats = HistoryStats.from(scanStats);
 
