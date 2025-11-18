@@ -51,7 +51,7 @@ jobs:
           FILE_PATTERN="${{ inputs.file_pattern }}"
 
           echo "Operation: $OPERATION"
-          echo "Artifact ID: $ARTIFACT_ID"
+          echo "Artifact ID(s): $ARTIFACT_ID"
           echo "File Pattern: $FILE_PATTERN"
 
           if [[ "$OPERATION" == "GET" || "$OPERATION" == "DELETE" ]]; then
@@ -59,7 +59,22 @@ jobs:
               echo "::error::Artifact ID is required for $OPERATION operation"
               exit 1
             fi
-            echo "artifact_id=$ARTIFACT_ID" >> $GITHUB_OUTPUT
+            # Expand comma-separated and from-to ranges into a list
+            ID_LIST=""
+            IFS=',' read -ra PARTS <<< "$ARTIFACT_ID"
+            for PART in "${PARTS[@]}"; do
+              if [[ "$PART" =~ ^[0-9]+-[0-9]+$ ]]; then
+                START=$(echo $PART | cut -d'-' -f1)
+                END=$(echo $PART | cut -d'-' -f2)
+                for ((i=START;i<=END;i++)); do
+                  ID_LIST+="$i "
+                done
+              else
+                ID_LIST+="$PART "
+              fi
+            done
+            ID_LIST=$(echo $ID_LIST)
+            echo "artifact_ids=$ID_LIST" >> $GITHUB_OUTPUT
           fi
 
           if [[ "$OPERATION" == "DELETE" ]]; then
@@ -263,40 +278,37 @@ jobs:
             exit 1
           fi
 
-      - name: Delete artifact
+      - name: Delete artifact(s)
         if: inputs.operation == 'DELETE'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "🗑️  Deleting artifact ID: ${{ steps.validate.outputs.artifact_id }}"
+          echo "🗑️  Deleting artifact ID(s): ${{ steps.validate.outputs.artifact_ids }}"
           echo ""
 
-          # First, get artifact details before deletion
-          echo "Artifact details before deletion:"
-          gh api \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            /repos/${{ github.repository }}/actions/artifacts/${{ steps.validate.outputs.artifact_id }} \
-            --jq '{id: .id, name: .name, size_in_bytes: .size_in_bytes, created_at: .created_at}'
+          for ART_ID in ${{ steps.validate.outputs.artifact_ids }}; do
+            echo "Artifact details before deletion (ID: $ART_ID):"
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              /repos/${{ github.repository }}/actions/artifacts/$ART_ID \
+              --jq '{id: .id, name: .name, size_in_bytes: .size_in_bytes, created_at: .created_at}'
 
-          echo ""
-          echo "Deleting artifact..."
+            echo "Deleting artifact $ART_ID..."
+            gh api \
+              --method DELETE \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              /repos/${{ github.repository }}/actions/artifacts/$ART_ID
 
-          # Delete the artifact
-          gh api \
-            --method DELETE \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            /repos/${{ github.repository }}/actions/artifacts/${{ steps.validate.outputs.artifact_id }}
-
-          if [ $? -eq 0 ]; then
-            echo ""
-            echo "✅ Artifact ${{ steps.validate.outputs.artifact_id }} deleted successfully"
-          else
-            echo ""
-            echo "❌ Failed to delete artifact ${{ steps.validate.outputs.artifact_id }}"
-            exit 1
-          fi
+            if [ $? -eq 0 ]; then
+              echo "✅ Artifact $ART_ID deleted successfully"
+            else
+              echo "❌ Failed to delete artifact $ART_ID"
+              exit 1
+            fi
+            echo "---"
+          done
 
       - name: Summary
         if: always()
