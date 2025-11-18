@@ -184,6 +184,39 @@ runs:
         echo "✅ Dashboard tenant configuration is valid:"
         echo "   org=${{ inputs.dashboard_org_slug }}, app=${{ inputs.dashboard_app_slug }}, repo=${{ inputs.dashboard_repo_slug }}"
 
+    - name: Compute tenant data root
+      id: tenant_root
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        DATA_ROOT="data"
+
+        # 1) Primarily use action inputs in single-tenant mode
+        if [ "${{ inputs.dashboard_mode }}" = "single-tenant" ] && \
+           [ -n "${{ inputs.dashboard_org_slug }}" ] && \
+           [ -n "${{ inputs.dashboard_app_slug }}" ] && \
+           [ -n "${{ inputs.dashboard_repo_slug }}" ]; then
+          DATA_ROOT="data/${{ inputs.dashboard_org_slug }}/${{ inputs.dashboard_app_slug }}/${{ inputs.dashboard_repo_slug }}"
+        else
+          # 2) Fallback: read defaults.json if it exists
+          if [ -f "${{ inputs.pages_root }}/data/defaults.json" ]; then
+            MODE=$(jq -r '.mode // empty' "${{ inputs.pages_root }}/data/defaults.json")
+            if [ "$MODE" = "single-tenant" ]; then
+              ORG=$(jq -r '.defaultOrg // empty' "${{ inputs.pages_root }}/data/defaults.json")
+              APP=$(jq -r '.defaultApp // empty' "${{ inputs.pages_root }}/data/defaults.json")
+              REPO=$(jq -r '.defaultRepo // empty' "${{ inputs.pages_root }}/data/defaults.json")
+              if [ -n "$ORG" ] && [ -n "$APP" ] && [ -n "$REPO" ]; then
+                DATA_ROOT="data/$ORG/$APP/$REPO"
+              fi
+            fi
+          fi
+        fi
+
+        echo "Tenant DATA_ROOT=$DATA_ROOT"
+        echo "data_root=$DATA_ROOT" >> "$GITHUB_OUTPUT"
+
+
     - name: Setup JBang
       uses: jbangdev/setup-jbang@main
 
@@ -245,30 +278,30 @@ runs:
         set -euo pipefail
 
         PAGES_ROOT="${{ inputs.pages_root }}"
+        DATA_ROOT="${{ steps.tenant_root.outputs.data_root }}"
         HISTORY_ARCHIVE="/tmp/scan-history-artifact/scan-history.tar.gz"
-        TENANT_ROOT="$PAGES_ROOT/data/${{ inputs.dashboard_org_slug }}/${{ inputs.dashboard_app_slug }}/${{ inputs.dashboard_repo_slug }}"
 
         if [ -f "$HISTORY_ARCHIVE" ]; then
           echo "📦 Restoring scan data from artifact..."
           mkdir -p "$PAGES_ROOT"
           tar -xzf "$HISTORY_ARCHIVE" -C "$PAGES_ROOT" 2>/dev/null || echo "⚠️  Archive extraction had warnings (may be legacy format)"
 
-          mkdir -p "$TENANT_ROOT/runs" "$TENANT_ROOT/hist" "$TENANT_ROOT/channels"
+          mkdir -p "$PAGES_ROOT/$DATA_ROOT/runs" "$PAGES_ROOT/$DATA_ROOT/hist" "$PAGES_ROOT/$DATA_ROOT/channels"
 
           # Count existing scans within this tenant
-          if [ -d "$TENANT_ROOT/runs" ]; then
-            TOTAL_SCANS=$(find "$TENANT_ROOT/runs" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
-            CHANNELS=$(find "$TENANT_ROOT/runs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+          if [ -d "$PAGES_ROOT/$DATA_ROOT/runs" ]; then
+            TOTAL_SCANS=$(find "$PAGES_ROOT/$DATA_ROOT/runs" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
+            CHANNELS=$(find "$PAGES_ROOT/$DATA_ROOT/runs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
             echo "   ✅ Restored $TOTAL_SCANS runs across $CHANNELS channels for this tenant"
           fi
-          if [ -f "$TENANT_ROOT/hist/scan-history.json" ]; then
+          if [ -f "$PAGES_ROOT/$DATA_ROOT/hist/scan-history.json" ]; then
             echo "   ✅ Restored persistent scan history JSON (v2) for this tenant"
           fi
         else
           echo "ℹ️  No existing scan data found - starting fresh for this tenant"
-          mkdir -p "$TENANT_ROOT/runs/${{ inputs.channel }}"
-          mkdir -p "$TENANT_ROOT/hist"
-          mkdir -p "$TENANT_ROOT/channels"
+          mkdir -p "$PAGES_ROOT/$DATA_ROOT/runs/${{ inputs.channel }}"
+          mkdir -p "$PAGES_ROOT/$DATA_ROOT/hist"
+          mkdir -p "$PAGES_ROOT/$DATA_ROOT/channels"
         fi
 
 
@@ -281,12 +314,12 @@ runs:
         CHANNEL="${{ inputs.channel }}"
         KEEP="${{ inputs.retention_keep }}"
         PAGES_ROOT="${{ inputs.pages_root }}"
-        TENANT_ROOT="$PAGES_ROOT/data/${{ inputs.dashboard_org_slug }}/${{ inputs.dashboard_app_slug }}/${{ inputs.dashboard_repo_slug }}"
-        CHANNEL_PATH="$TENANT_ROOT/runs/$CHANNEL"
+        DATA_ROOT="${{ steps.tenant_root.outputs.data_root }}"
+        CHANNEL_PATH="$PAGES_ROOT/$DATA_ROOT/runs/$CHANNEL"
         NEW_SCAN="${{ inputs.metadata_timestamp }}"
 
         echo "🧹 Applying retention policy for tenant:"
-        echo "   org=${{ inputs.dashboard_org_slug }}, app=${{ inputs.dashboard_app_slug }}, repo=${{ inputs.dashboard_repo_slug }}, channel=$CHANNEL (keep=$KEEP)"
+        echo "   data_root=$DATA_ROOT, channel=$CHANNEL (keep=$KEEP)"
 
         if [ ! -d "$CHANNEL_PATH" ]; then
           echo "   ⏭️  No existing runs for this channel - retention not needed"
@@ -349,30 +382,28 @@ runs:
           "${{ inputs.dashboard_app_slug }}" \
           "${{ inputs.dashboard_repo_slug }}"
 
-
     - name: Archive scan history
       shell: bash
       run: |
         set -euo pipefail
 
         PAGES_ROOT="${{ inputs.pages_root }}"
-        TENANT_SUBPATH="data/${{ inputs.dashboard_org_slug }}/${{ inputs.dashboard_app_slug }}/${{ inputs.dashboard_repo_slug }}"
-        TENANT_ROOT="$PAGES_ROOT/$TENANT_SUBPATH"
+        DATA_ROOT="${{ steps.tenant_root.outputs.data_root }}"
         ARCHIVE_DIR="/tmp/scan-history-output"
 
-        echo "📦 Archiving scan data for tenant $TENANT_SUBPATH ..."
+        echo "📦 Archiving scan data for tenant root '$DATA_ROOT' ..."
 
         mkdir -p "$ARCHIVE_DIR"
 
         ITEMS=()
-        if [ -d "$TENANT_ROOT/runs" ]; then
-          ITEMS+=("$TENANT_SUBPATH/runs")
+        if [ -d "$PAGES_ROOT/$DATA_ROOT/runs" ]; then
+          ITEMS+=("$DATA_ROOT/runs")
         fi
-        if [ -d "$TENANT_ROOT/channels" ]; then
-          ITEMS+=("$TENANT_SUBPATH/channels")
+        if [ -d "$PAGES_ROOT/$DATA_ROOT/channels" ]; then
+          ITEMS+=("$DATA_ROOT/channels")
         fi
-        if [ -f "$TENANT_ROOT/hist/scan-history.json" ]; then
-          ITEMS+=("$TENANT_SUBPATH/hist")
+        if [ -f "$PAGES_ROOT/$DATA_ROOT/hist/scan-history.json" ]; then
+          ITEMS+=("$DATA_ROOT/hist")
         fi
 
         if [ ${#ITEMS[@]} -eq 0 ]; then
@@ -383,8 +414,8 @@ runs:
         fi
 
         SIZE=$(du -h "$ARCHIVE_DIR/scan-history.tar.gz" | cut -f1)
-        if [ -d "$TENANT_ROOT/runs" ]; then
-          RUN_COUNT=$(find "$TENANT_ROOT/runs" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
+        if [ -d "$PAGES_ROOT/$DATA_ROOT/runs" ]; then
+          RUN_COUNT=$(find "$PAGES_ROOT/$DATA_ROOT/runs" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
           echo "   ✅ Archived $RUN_COUNT runs ($SIZE) with persistent history (v2) for this tenant"
         else
           echo "   ✅ Archived persistent history ($SIZE) for this tenant"

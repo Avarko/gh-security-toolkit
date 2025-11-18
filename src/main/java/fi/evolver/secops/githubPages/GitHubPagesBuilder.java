@@ -73,19 +73,15 @@ public class GitHubPagesBuilder {
         System.out.println("   Channel: " + channel);
 
         Path pagesPath = Path.of(pagesRoot);
-
-        // Determine tenant data root
-        Path tenantRoot = resolveTenantRoot(pagesPath, orgSlug, appSlug, repoSlug);
+        TenantConfig tenant = TenantConfig.load(pagesPath);
+        Path dataRoot = tenant.resolveDataRoot(pagesPath);
 
         // Merge dashboard first if provided
         if (dashboardDir != null) {
             mergeDashboard(pagesPath, Path.of(dashboardDir));
         }
 
-        Path dataRunsPath = tenantRoot
-                .resolve("runs")
-                .resolve(channel)
-                .resolve(timestamp);
+        Path dataRunsPath = dataRoot.resolve("runs").resolve(channel).resolve(timestamp);
         Files.createDirectories(dataRunsPath);
 
         // Initialize data processors
@@ -112,7 +108,7 @@ public class GitHubPagesBuilder {
         writeMetadataJson(dataRunsPath, metadata);
 
         // 3) Update scan-history.json
-        appendScanHistory(tenantRoot, channel, timestamp, currentStats, metadata);
+        appendScanHistory(dataRoot, channel, timestamp, currentStats, metadata);
 
         System.out.println("✅ Data processing complete!");
         System.out.println("   Run data: " + dataRunsPath);
@@ -176,30 +172,26 @@ public class GitHubPagesBuilder {
         System.out.println("   ✅ Wrote scan-metadata.json");
     }
 
-    private static void appendScanHistory(
-            Path pagesPath,
+    private static void appendScanHistory(Path dataRoot,
             String channel,
             String timestamp,
             ScanStats stats,
             ScanMetadata metadata) {
         try {
-            Path histDir = pagesPath.resolve("data").resolve("hist");
+            Path histDir = dataRoot.resolve("hist");
             Files.createDirectories(histDir);
             Path historyPath = histDir.resolve("scan-history.json");
 
             ScanHistory history = readHistory(historyPath);
 
-            // Poista duplikaatit tältä kanavalta/timestampilta
             history.scans.removeIf(entry -> channel.equals(entry.channel) && timestamp.equals(entry.timestamp));
 
             HistoryEntry entry = HistoryEntry.from(channel, timestamp, stats, metadata);
             history.scans.add(entry);
-
-            // Lajittele aikaleiman mukaan (vanhin–uusin; frontti tekee oman järjestyksensä)
             history.scans.sort(Comparator.comparing(e -> e.timestamp));
 
             Files.writeString(historyPath, GSON.toJson(history), StandardCharsets.UTF_8);
-            System.out.println("   ✅ Updated scan-history.json");
+            System.out.println("   ✅ Updated scan-history.json at " + historyPath);
         } catch (Exception e) {
             System.err.println("⚠️  Failed to append scan history: " + e.getMessage());
         }
@@ -280,6 +272,44 @@ public class GitHubPagesBuilder {
                 entry.metadata.repository = metadata.repository;
             }
             return entry;
+        }
+    }
+
+    private static final class TenantConfig {
+        String mode;
+        String defaultOrg;
+        String defaultApp;
+        String defaultRepo;
+
+        static TenantConfig load(Path pagesRoot) {
+            Path defaults = pagesRoot.resolve("data").resolve("defaults.json");
+            if (!Files.exists(defaults)) {
+                // fallback: vanha single-tenant data-root /data
+                TenantConfig cfg = new TenantConfig();
+                cfg.mode = "multi-tenant";
+                return cfg;
+            }
+            try {
+                String json = Files.readString(defaults, StandardCharsets.UTF_8);
+                return GSON.fromJson(json, TenantConfig.class);
+            } catch (IOException e) {
+                System.err.println("⚠️  Failed to read defaults.json, using legacy data root: " + e.getMessage());
+                TenantConfig cfg = new TenantConfig();
+                cfg.mode = "multi-tenant";
+                return cfg;
+            }
+        }
+
+        Path resolveDataRoot(Path pagesRoot) {
+            Path base = pagesRoot.resolve("data");
+            if (!"single-tenant".equalsIgnoreCase(mode)) {
+                return base; // multi-tenant: vanha /data
+            }
+            if (defaultOrg == null || defaultApp == null || defaultRepo == null) {
+                System.err.println("⚠️  defaults.json is missing org/app/repo, falling back to /data");
+                return base;
+            }
+            return base.resolve(defaultOrg).resolve(defaultApp).resolve(defaultRepo);
         }
     }
 
