@@ -13,14 +13,14 @@ Builds the React+Remix security dashboard SPA from `dashboard/` directory.
 
 ## Outputs
 
-- **artifact-name**: `security-dashboard-build` - Name of the uploaded artifact containing `build/client/` static files
+- **artifact-name**: `security-dashboard-build` - Name of the uploaded artifact containing `dist/` static files
 
 ## Build Process
 
 1. Setup Node.js (default: v20)
 2. Install dependencies (`npm ci`)
 3. Build Remix app in SPA mode (`npm run build`)
-4. Upload `build/client/` as artifact
+4. Upload `dist/` as artifact
 
 ## Integration
 
