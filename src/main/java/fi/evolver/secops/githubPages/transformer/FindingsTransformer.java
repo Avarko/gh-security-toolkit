@@ -179,7 +179,7 @@ public class FindingsTransformer {
 
         return new ScanMetadata(
                 getString(metadataJson, "branch", null),
-                getString(metadataJson, "commit_sha", null),
+                getString(metadataJson, "commitSha", null),
                 getString(metadataJson, "repository", null),
                 timestamp,
                 footer);
