@@ -1,5 +1,5 @@
 {
     "branch": "main",
-    "commitSha": "abc123def456789",
+    "commit": "abc123def456789",
     "repository": "Avarko/gh-security-toolkit"
 }

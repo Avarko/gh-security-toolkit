@@ -5,14 +5,14 @@ package fi.evolver.secops.githubPages.model;
  */
 public class ScanMetadata {
     public final String branch;
-    public final String commitSha;
+    public final String commit;
     public final String repository;
     public final String timestamp;
     public final FooterMetadata footer;
 
-    public ScanMetadata(String branch, String commitSha, String repository, String timestamp, FooterMetadata footer) {
+    public ScanMetadata(String branch, String commit, String repository, String timestamp, FooterMetadata footer) {
         this.branch = branch;
-        this.commitSha = commitSha;
+        this.commit = commit;
         this.repository = repository;
         this.timestamp = timestamp;
         this.footer = footer != null ? footer : FooterMetadata.empty();

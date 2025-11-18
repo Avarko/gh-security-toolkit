@@ -5,7 +5,7 @@
  * Run with: node test-validation-manual.mjs
  */
 
-import { scanMetadataSchema, scanHistorySchema } from './app/features/scans/model/historyTypes.ts';
+import { scanMetadataSchema, scanHistorySchema } from './src/features/scans/model/historyTypes.ts';
 
 console.log('🧪 Testing Zod Validation Schemas\n');
 
@@ -14,8 +14,6 @@ console.log('Test 1: Valid scan metadata');
 const validScan = {
     timestamp: '2024-01-15-120000Z',
     channel: 'prod-main',
-    branch: 'main',
-    commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
     metadata: {
         branch: 'main',
         commit: 'a1b2c3d4e5f6789012345678901234567890abcd',

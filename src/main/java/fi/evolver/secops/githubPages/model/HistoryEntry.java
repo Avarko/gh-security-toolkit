@@ -19,7 +19,7 @@ public class HistoryEntry {
         if (metadata != null) {
             HistoryMetadata m = new HistoryMetadata();
             m.branch = metadata.branch;
-            m.commitSha = metadata.commitSha;
+            m.commit = metadata.commit;
             m.repository = metadata.repository;
             entry.metadata = m;
         }

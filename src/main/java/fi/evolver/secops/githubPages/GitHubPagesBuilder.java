@@ -112,7 +112,7 @@ public class GitHubPagesBuilder {
         // 1) Copy scan result JSON files to runs directory
         copyJsonFiles(outputDir, dataRunsPath);
 
-        // 2) Write concise scan metadata (branch, commitSha, repository)
+        // 2) Write concise scan metadata (branch, commit, repository)
         writeMetadataJson(dataRunsPath, metadata);
 
         // 3) Update tenant-specific scan-history.json
@@ -146,8 +146,8 @@ public class GitHubPagesBuilder {
             if (metadata.branch != null) {
                 json.put("branch", metadata.branch);
             }
-            if (metadata.commitSha != null) {
-                json.put("commitSha", metadata.commitSha);
+            if (metadata.commit != null) {
+                json.put("commit", metadata.commit);
             }
             if (metadata.repository != null) {
                 json.put("repository", metadata.repository);
