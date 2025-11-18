@@ -4,11 +4,16 @@ import { z } from "zod";
 /**
  * scan-metadata.json
  */
+
+const scanRunMetadataInnerSchema = z.object({
+    branch: z.string(),
+    commit: z.string(),
+    repository: z.string(),
+});
+
 export const scanRunMetadataSchema = z.object({
     timestamp: z.string(),
-    branch: z.string(),
-    commitSha: z.string(),
-    repository: z.string(),
+    metadata: scanRunMetadataInnerSchema,
 });
 
 export type ScanRunMetadata = z.infer<typeof scanRunMetadataSchema>;

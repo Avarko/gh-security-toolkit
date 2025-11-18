@@ -79,11 +79,18 @@ const channelSchema = z.string()
     .regex(/^[a-zA-Z0-9\-_]+$/, "Invalid channel name");
 
 // Main scan metadata schema
+
+// Metadata schema for branch, commit, repository
+const metadataSchema = z.object({
+    branch: branchSchema,
+    commit: commitSchema,
+    repository: z.string().max(MAX_STRING_LENGTH).optional().default("")
+}).strict();
+
 export const scanMetadataSchema = z.object({
     timestamp: timestampSchema,
     channel: channelSchema,
-    branch: branchSchema,
-    commit: commitSchema,
+    metadata: metadataSchema,
     trivyFsResults: trivyResultsSchema,
     trivyImageResults: trivyResultsSchema,
     semgrepResults: semgrepResultsSchema,
