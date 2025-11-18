@@ -70,13 +70,13 @@ inputs:
     required: false
     default: "docs"
   retention_keep:
-    description: "Keep at most N scans per channel (0=unlimited)"
+    description: "Keep at most N full scan results per channel in /runs (0=unlimited). Note: scan-history.json retains stats for all scans regardless of this limit."
     required: false
-    default: "50"
+    default: "10"
   retention_days:
     description: "Days to retain scan history artifact in GitHub (0=maximum allowed by GitHub)"
     required: false
-    default: "30"
+    default: "90"
 
   # Dashboard / tenant configuration
   dashboard_mode:
@@ -268,6 +268,7 @@ runs:
         path: /tmp/scan-history-artifact
         workflow_conclusion: success
         repo: ${{ github.repository }}
+        workflow: ${{ github.workflow }}
         check_artifacts: true
         search_artifacts: true
         if_no_artifact_found: ignore
@@ -461,6 +462,7 @@ runs:
       with:
         path: ${{ inputs.pages_root }}
         name: security-dashboard-pages-${{ inputs.channel }}
+        retention-days: 1
 
     - name: Deploy to GitHub Pages
       id: deployment

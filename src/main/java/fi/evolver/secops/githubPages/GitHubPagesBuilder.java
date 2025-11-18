@@ -107,6 +107,14 @@ public class GitHubPagesBuilder {
 
         ScanMetadata metadata = transformedData.metadata;
 
+        // Extract statistics for history
+        ScanStats scanStats = transformer.extractStats(
+                rawData.trivyFsJson,
+                rawData.trivyImageJson,
+                rawData.semgrepJson,
+                hasDependabot);
+        HistoryStats historyStats = HistoryStats.from(scanStats);
+
         // === WRITE DATA ===
 
         // 1) Copy scan result JSON files to runs directory
@@ -116,7 +124,7 @@ public class GitHubPagesBuilder {
         writeMetadataJson(dataRunsPath, metadata);
 
         // 3) Update tenant-specific scan-history.json
-        appendScanHistory(dataRoot, channel, timestamp, metadata);
+        appendScanHistory(dataRoot, channel, timestamp, metadata, historyStats);
 
         System.out.println("✅ Data processing complete!");
         System.out.println("   Run data: " + dataRunsPath);
@@ -162,7 +170,8 @@ public class GitHubPagesBuilder {
     private static void appendScanHistory(Path dataRoot,
             String channel,
             String timestamp,
-            ScanMetadata metadata) {
+            ScanMetadata metadata,
+            HistoryStats stats) {
         try {
             Path histDir = dataRoot.resolve("hist");
             Files.createDirectories(histDir);
@@ -174,7 +183,7 @@ public class GitHubPagesBuilder {
             history.scans.removeIf(entry -> channel.equals(entry.channel)
                     && timestamp.equals(entry.timestamp));
 
-            HistoryEntry entry = HistoryEntry.from(channel, timestamp, metadata);
+            HistoryEntry entry = HistoryEntry.from(channel, timestamp, metadata, stats);
             history.scans.add(entry);
             history.scans.sort(Comparator.comparing(e -> e.timestamp));
 
