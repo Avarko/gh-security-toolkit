@@ -1,5 +1,5 @@
 name: 'Build Security Dashboard'
-description: 'Builds the React+Remix security dashboard SPA'
+description: 'Builds the React security dashboard SPA'
 
 inputs:
   node-version:
@@ -33,15 +33,18 @@ runs:
     - name: Install dependencies
       shell: bash
       run: |
+        set -euo pipefail
         cd _toolkit/dashboard
         npm ci
 
     - name: Build dashboard
       shell: bash
       run: |
+        set -euo pipefail
         cd _toolkit/dashboard
         npm run build
         echo "✅ Dashboard build complete"
+        # Vite build output
         ls -lh dist/
 
     - name: Upload dashboard artifact
@@ -50,4 +53,3 @@ runs:
         name: security-dashboard-build
         path: _toolkit/dashboard/dist
         retention-days: 1
-
