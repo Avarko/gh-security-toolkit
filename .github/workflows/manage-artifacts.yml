@@ -59,22 +59,7 @@ jobs:
               echo "::error::Artifact ID is required for $OPERATION operation"
               exit 1
             fi
-            # Expand comma-separated and from-to ranges into a list
-            ID_LIST=""
-            IFS=',' read -ra PARTS <<< "$ARTIFACT_ID"
-            for PART in "${PARTS[@]}"; do
-              if [[ "$PART" =~ ^[0-9]+-[0-9]+$ ]]; then
-                START=$(echo $PART | cut -d'-' -f1)
-                END=$(echo $PART | cut -d'-' -f2)
-                for ((i=START;i<=END;i++)); do
-                  ID_LIST+="$i "
-                done
-              else
-                ID_LIST+="$PART "
-              fi
-            done
-            ID_LIST=$(echo $ID_LIST)
-            echo "artifact_ids=$ID_LIST" >> $GITHUB_OUTPUT
+            echo "artifact_id=$ARTIFACT_ID" >> $GITHUB_OUTPUT
           fi
 
           if [[ "$OPERATION" == "DELETE" ]]; then
@@ -283,10 +268,40 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "🗑️  Deleting artifact ID(s): ${{ steps.validate.outputs.artifact_ids }}"
-          echo ""
+          echo "🗑️  Deleting artifact(s) matching: ${{ steps.validate.outputs.artifact_id }}"
+          echo "Fetching all artifact IDs from GitHub..."
+          ALL_ARTIFACTS_JSON=$(gh api -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" /repos/${{ github.repository }}/actions/artifacts)
+          ALL_IDS=$(echo "$ALL_ARTIFACTS_JSON" | jq -r '.artifacts[].id')
 
-          for ART_ID in ${{ steps.validate.outputs.artifact_ids }}; do
+          # Parse user input for IDs/ranges
+          USER_IDS="${{ steps.validate.outputs.artifact_id }}"
+          TO_DELETE=""
+          IFS=',' read -ra PARTS <<< "$USER_IDS"
+          for PART in "${PARTS[@]}"; do
+            if [[ "$PART" =~ ^[0-9]+-[0-9]+$ ]]; then
+              START=$(echo $PART | cut -d'-' -f1)
+              END=$(echo $PART | cut -d'-' -f2)
+              for ID in $ALL_IDS; do
+                if (( ID >= START && ID <= END )); then
+                  TO_DELETE+="$ID "
+                fi
+              done
+            else
+              for ID in $ALL_IDS; do
+                if [[ "$ID" == "$PART" ]]; then
+                  TO_DELETE+="$ID "
+                fi
+              done
+            fi
+          done
+          TO_DELETE=$(echo $TO_DELETE | xargs -n1 | sort -u | xargs)
+
+          if [[ -z "$TO_DELETE" ]]; then
+            echo "No matching artifact IDs found to delete."
+            exit 0
+          fi
+
+          for ART_ID in $TO_DELETE; do
             echo "Artifact details before deletion (ID: $ART_ID):"
             gh api \
               -H "Accept: application/vnd.github+json" \
