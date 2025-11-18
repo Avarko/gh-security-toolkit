@@ -42,11 +42,12 @@ runs:
         cd _toolkit/dashboard
         npm run build
         echo "✅ Dashboard build complete"
-        ls -lh build/client/
+        ls -lh dist/
 
     - name: Upload dashboard artifact
       uses: actions/upload-artifact@v4
       with:
         name: security-dashboard-build
-        path: _toolkit/dashboard/build/client
+        path: _toolkit/dashboard/dist
         retention-days: 1
+

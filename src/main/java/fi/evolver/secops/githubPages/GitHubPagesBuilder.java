@@ -30,10 +30,21 @@ import java.util.List;
  * Responsibilities:
  * 1. Load scan results (Trivy, Semgrep, etc.)
  * 2. Transform and normalize data
- * 3. Write structured JSON to data/runs/<channel>/<timestamp>/
- * 4. Maintain data/hist/scan-history.json
+ * 3. Write structured JSON to
+ * data/<org>/<app>/<repo>/runs/<channel>/<timestamp>/
+ * 4. Maintain
+ * data/<org>/<app>/<repo>/hist/scan-history.json
  *
- * UI rendering is handled separately by the React+Remix dashboard.
+ * If org/app/repo slugs are not provided, falls back to legacy layout:
+ * data/runs/<channel>/<timestamp>/
+ * data/hist/scan-history.json
+ *
+ * UI rendering is handled separately by the React dashboard.
+ *
+ * Usage:
+ * GitHubPagesBuilder <output_dir> <pages_root> <scan_timestamp> <channel>
+ * [metadata_json] [dashboard_dir]
+ * [org_slug] [app_slug] [repo_slug]
  */
 public class GitHubPagesBuilder {
 
@@ -42,7 +53,8 @@ public class GitHubPagesBuilder {
     public static void main(String[] args) throws Exception {
         if (args.length < 4) {
             System.err.println(
-                    "Usage: GitHubPagesBuilder <output_dir> <pages_root> <scan_timestamp> <channel> [metadata_json] [dashboard_dir]");
+                    "Usage: GitHubPagesBuilder <output_dir> <pages_root> <scan_timestamp> <channel> "
+                            + "[metadata_json] [dashboard_dir] [org_slug] [app_slug] [repo_slug]");
             System.exit(1);
         }
 
@@ -53,16 +65,27 @@ public class GitHubPagesBuilder {
         String metadataJson = args.length > 4 && !args[4].isEmpty() ? args[4] : null;
         String dashboardDir = args.length > 5 && !args[5].isEmpty() ? args[5] : null;
 
+        String orgSlug = args.length > 6 && !args[6].isEmpty() ? args[6] : null;
+        String appSlug = args.length > 7 && !args[7].isEmpty() ? args[7] : null;
+        String repoSlug = args.length > 8 && !args[8].isEmpty() ? args[8] : null;
+
         System.out.println("📦 Processing scan data for: " + timestamp);
+        System.out.println("   Channel: " + channel);
 
         Path pagesPath = Path.of(pagesRoot);
+
+        // Determine tenant data root
+        Path tenantRoot = resolveTenantRoot(pagesPath, orgSlug, appSlug, repoSlug);
 
         // Merge dashboard first if provided
         if (dashboardDir != null) {
             mergeDashboard(pagesPath, Path.of(dashboardDir));
         }
 
-        Path dataRunsPath = pagesPath.resolve("data").resolve("runs").resolve(channel).resolve(timestamp);
+        Path dataRunsPath = tenantRoot
+                .resolve("runs")
+                .resolve(channel)
+                .resolve(timestamp);
         Files.createDirectories(dataRunsPath);
 
         // Initialize data processors
@@ -89,10 +112,36 @@ public class GitHubPagesBuilder {
         writeMetadataJson(dataRunsPath, metadata);
 
         // 3) Update scan-history.json
-        appendScanHistory(pagesPath, channel, timestamp, currentStats, metadata);
+        appendScanHistory(tenantRoot, channel, timestamp, currentStats, metadata);
 
         System.out.println("✅ Data processing complete!");
         System.out.println("   Run data: " + dataRunsPath);
+    }
+
+    /**
+     * Resolves the tenant root directory for data:
+     *
+     * If org/app/repo are provided:
+     * <pagesRoot>/data/<org>/<app>/<repo>
+     *
+     * Otherwise (legacy mode):
+     * <pagesRoot>/data
+     */
+    private static Path resolveTenantRoot(Path pagesPath, String orgSlug, String appSlug, String repoSlug)
+            throws IOException {
+        Path dataRoot = pagesPath.resolve("data");
+
+        if (orgSlug != null && appSlug != null && repoSlug != null) {
+            Path tenantRoot = dataRoot.resolve(orgSlug).resolve(appSlug).resolve(repoSlug);
+            Files.createDirectories(tenantRoot);
+            System.out.println("   Tenant data root: " + tenantRoot);
+            return tenantRoot;
+        }
+
+        // Legacy fallback
+        Files.createDirectories(dataRoot);
+        System.out.println("   ⚠️  No org/app/repo slugs provided - using legacy data layout under: " + dataRoot);
+        return dataRoot;
     }
 
     private static void copyJsonFiles(String sourceDir, Path targetDir) throws IOException {
@@ -127,10 +176,14 @@ public class GitHubPagesBuilder {
         System.out.println("   ✅ Wrote scan-metadata.json");
     }
 
-    private static void appendScanHistory(Path pagesPath, String channel, String timestamp, ScanStats stats,
+    private static void appendScanHistory(
+            Path tenantRoot,
+            String channel,
+            String timestamp,
+            ScanStats stats,
             ScanMetadata metadata) {
         try {
-            Path histDir = pagesPath.resolve("data").resolve("hist");
+            Path histDir = tenantRoot.resolve("hist");
             Files.createDirectories(histDir);
             Path historyPath = histDir.resolve("scan-history.json");
 
@@ -144,7 +197,7 @@ public class GitHubPagesBuilder {
             history.entries.sort(Comparator.comparing(e -> e.timestamp));
 
             Files.writeString(historyPath, GSON.toJson(history), StandardCharsets.UTF_8);
-            System.out.println("   ✅ Updated scan-history.json");
+            System.out.println("   ✅ Updated scan-history.json at: " + historyPath);
         } catch (Exception e) {
             System.err.println("⚠️  Failed to append scan history: " + e.getMessage());
         }

@@ -98,6 +98,31 @@ on:
         required: false
         default: ''
 
+      # === DASHBOARD CONFIGURATION ===
+      dashboard_mode:
+        description: 'Dashboard mode for GitHub Pages (e.g., "single-tenant")'
+        type: string
+        required: false
+        default: 'single-tenant'
+
+      dashboard_org_slug:
+        description: 'Dashboard organization slug for GitHub Pages /data/<org>/<app>/<repo>'
+        type: string
+        required: false
+        default: ''
+
+      dashboard_app_slug:
+        description: 'Dashboard application slug for GitHub Pages /data/<org>/<app>/<repo>'
+        type: string
+        required: false
+        default: ''
+
+      dashboard_repo_slug:
+        description: 'Dashboard repository slug for GitHub Pages /data/<org>/<app>/<repo>'
+        type: string
+        required: false
+        default: ''
+
     secrets:
       SLACK_BOT_TOKEN:
         description: 'Slack OAuth token (xoxb-...) for notifications'
@@ -283,3 +308,7 @@ jobs:
           trivy_version: ${{ steps.trivy.outputs.version }}
           semgrep_version: ${{ steps.semgrep.outputs.version }}
           toolkit_version: ${{ inputs.toolkit_version }}
+          dashboard_mode: ${{ inputs.dashboard_mode }}
+          dashboard_org_slug: ${{ inputs.dashboard_org_slug }}
+          dashboard_app_slug: ${{ inputs.dashboard_app_slug }}
+          dashboard_repo_slug: ${{ inputs.dashboard_repo_slug }}

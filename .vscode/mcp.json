@@ -1,8 +1,0 @@
-{
-    "servers": {
-        "gh-security-toolkit": {
-            "type": "sse",
-            "url": "https://gitmcp.io/avarko/gh-security-toolkit"
-        }
-    }
-}
