@@ -27,6 +27,27 @@ on:
         required: false
         default: 30
 
+      dashboard_mode:
+        description: 'Dashboard mode for GitHub Pages (e.g., "single-tenant")'
+        type: string
+        required: false
+        default: 'single-tenant'
+
+      dashboard_org_slug:
+        description: 'Dashboard organization slug for GitHub Pages /data/<org>/<app>/<repo>'
+        type: string
+        required: true
+
+      dashboard_app_slug:
+        description: 'Dashboard application slug for GitHub Pages /data/<org>/<app>/<repo>'
+        type: string
+        required: true
+
+      dashboard_repo_slug:
+        description: 'Dashboard repository slug for GitHub Pages /data/<org>/<app>/<repo>'
+        type: string
+        required: true
+
 jobs:
   publish-dashboard:
     name: Publish Dashboard
@@ -98,3 +119,8 @@ jobs:
           ci_job_name: ${{ github.workflow }}
           ci_job_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           toolkit_version: 'dashboard-only'
+          dashboard_mode: ${{ inputs.dashboard_mode }}
+          dashboard_org_slug: ${{ inputs.dashboard_org_slug }}
+          dashboard_app_slug: ${{ inputs.dashboard_app_slug }}
+          dashboard_repo_slug: ${{ inputs.dashboard_repo_slug }}
+
