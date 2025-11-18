@@ -12,6 +12,7 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
 
     return {
         backgroundColor: "transparent",
+        animation: false,
         tooltip: {
             trigger: "axis",
             backgroundColor: "#1e1e1e",
