@@ -1,0 +1,26 @@
+name: "Upload filesystem for scanning"
+description: "Uploads filesystem artifacts for security scanning."
+inputs:
+  path:
+    description: "Path(s) to upload. Supports glob patterns and multiple paths (one per line or comma-separated)"
+    required: true
+  retention-days:
+    description: "Number of days to retain the artifact"
+    required: false
+    default: "1"
+  compression-level:
+    description: "Compression level (0-9). 0 = no compression (fastest), 9 = maximum compression (slowest)"
+    required: false
+    default: "0"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Upload filesystem artifact
+      uses: actions/upload-artifact@v5
+      with:
+        name: __gh_security_toolkit__filesystem_for_scan__
+        path: ${{ inputs.path }}
+        retention-days: ${{ inputs.retention-days }}
+        compression-level: ${{ inputs.compression-level }}
+        if-no-files-found: error
