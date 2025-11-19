@@ -8,28 +8,22 @@ type DataPathParams = {
 };
 
 /**
- * Generates the data path prefix based on the provided parameters.
- * /data
- * /data/:org
- * /data/:org/:app
- * /data/:org/:app/:repo
+ * Generates the data path: /data/<org>/<app>/<repo>
  *
- * Multi-tenant-case: org + app (+ repo) always come from route parameters.
- * Single-tenant-case: they are practically always the same (defaults.json + redirect),
- * but the code does not change.
+ * All three tenant slugs (org, app, repo) are required for both single-tenant
+ * and multi-tenant deployments. This ensures consistent path structure.
+ *
+ * - Single-tenant: Fixed values (e.g., vr/fcciam/app-fc-ciam-backend)
+ * - Multi-tenant: Variable per organization/app/repo
  */
 export function getDataRoot(params: DataPathParams): string {
     const { orgSlug, appSlug, repoSlug } = params;
 
-    if (!orgSlug || !appSlug) {
+    if (!orgSlug || !appSlug || !repoSlug) {
         throw new MissingTenantParamsError(
-            `Invalid tenant path: orgSlug=${orgSlug}, appSlug=${appSlug}`
+            `All tenant slugs are required: orgSlug=${orgSlug}, appSlug=${appSlug}, repoSlug=${repoSlug}`
         );
     }
 
-    if (repoSlug) {
-        return `/data/${orgSlug}/${appSlug}/${repoSlug}`;
-    }
-
-    return `/data/${orgSlug}/${appSlug}`;
+    return `/data/${orgSlug}/${appSlug}/${repoSlug}`;
 }

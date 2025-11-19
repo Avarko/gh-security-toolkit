@@ -49,11 +49,12 @@ public final class TenantConfig {
     }
 
     /**
-     * Resolves the data root:
-     * 1) If CLI slugs are provided → data/<org>/<app>/<repo>
-     * 2) Otherwise if defaults.json has mode == single-tenant and
-     * defaultOrg/App/Repo are present
-     * 3) Otherwise legacy: data/
+     * Resolves the data root path.
+     * Requires tenant slugs (org, app, repo) to be provided - either via CLI arguments
+     * or via defaults.json configuration.
+     *
+     * Always uses /data/<org>/<app>/<repo>/ structure for consistency between
+     * single-tenant and multi-tenant deployments.
      */
     public Path resolveDataRoot(Path pagesRoot,
             String orgSlug,
@@ -61,28 +62,27 @@ public final class TenantConfig {
             String repoSlug) throws IOException {
         Path base = pagesRoot.resolve("data");
 
-        // 1) CLI-argumentit voittavat kaiken muun
-        if (orgSlug != null && appSlug != null && repoSlug != null) {
-            Path tenantRoot = base.resolve(orgSlug).resolve(appSlug).resolve(repoSlug);
-            Files.createDirectories(tenantRoot);
-            System.out.println("   Tenant data root (from args): " + tenantRoot);
-            return tenantRoot;
+        // Resolve tenant slugs: CLI arguments override defaults.json
+        String org = (orgSlug != null && !orgSlug.isEmpty()) ? orgSlug : defaultOrg;
+        String app = (appSlug != null && !appSlug.isEmpty()) ? appSlug : defaultApp;
+        String repo = (repoSlug != null && !repoSlug.isEmpty()) ? repoSlug : defaultRepo;
+
+        // Validate that we have all required slugs
+        if (org == null || org.isEmpty() ||
+            app == null || app.isEmpty() ||
+            repo == null || repo.isEmpty()) {
+            throw new IllegalArgumentException(
+                "❌ ERROR: Tenant slugs (org, app, repo) are required.\n" +
+                "   Provide them via:\n" +
+                "   - CLI arguments: orgSlug appSlug repoSlug\n" +
+                "   - workflow inputs: dashboard_org_slug, dashboard_app_slug, dashboard_repo_slug\n" +
+                "   Current values: org=" + org + " app=" + app + " repo=" + repo
+            );
         }
 
-        // 2) defaults.json single-tenant mode
-        if ("single-tenant".equalsIgnoreCase(mode)
-                && defaultOrg != null
-                && defaultApp != null
-                && defaultRepo != null) {
-            Path tenantRoot = base.resolve(defaultOrg).resolve(defaultApp).resolve(defaultRepo);
-            Files.createDirectories(tenantRoot);
-            System.out.println("   Tenant data root (from defaults.json): " + tenantRoot);
-            return tenantRoot;
-        }
-
-        // 3) fallback: legacy /data
-        Files.createDirectories(base);
-        System.out.println("   ⚠️  No tenant slugs available - using legacy data layout under: " + base);
-        return base;
+        Path tenantRoot = base.resolve(org).resolve(app).resolve(repo);
+        Files.createDirectories(tenantRoot);
+        System.out.println("   📁 Tenant data root: /data/" + org + "/" + app + "/" + repo);
+        return tenantRoot;
     }
 }
