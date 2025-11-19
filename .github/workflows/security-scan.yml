@@ -203,19 +203,11 @@ jobs:
 
           echo "✅ Channel name is valid: '$CHANNEL'"
 
-      # === CHECKOUT (needed for local actions) ===
-      - name: Checkout toolkit
-        uses: actions/checkout@v4
-        with:
-          repository: Avarko/gh-security-toolkit
-          ref: reactui
-          path: .gh-security-toolkit
-
       # === DOWNLOAD ARTIFACTS ===
       - name: Download filesystem artifact
         id: download_fs
         continue-on-error: true
-        uses: ./.gh-security-toolkit/actions/artifacts/filesystem/get
+        uses: Avarko/gh-security-toolkit/actions/artifacts/filesystem/get@reactui
         with:
           artifact_name_part: ${{ inputs.filesystem_artifact_name }}
           target_path: ${{ steps.setup.outputs.work_dir }}/filesystem
@@ -223,7 +215,7 @@ jobs:
       - name: Download docker image artifact
         id: download_image
         continue-on-error: true
-        uses: ./.gh-security-toolkit/actions/artifacts/docker-image/get
+        uses: Avarko/gh-security-toolkit/actions/artifacts/docker-image/get@reactui
         with:
           artifact_name_part: ${{ inputs.docker_image_artifact_name }}
           target_path: ${{ steps.setup.outputs.work_dir }}/image

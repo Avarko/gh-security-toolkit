@@ -11,14 +11,27 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Build artifact name
+    - name: Build and validate artifact name
       shell: bash
-      run: echo "ARTIFACT_NAME=__gh_security_toolkit__${{ inputs.artifact_name_part }}__" >> $GITHUB_ENV
+      run: |
+        ARTIFACT_NAME="__gh_security_toolkit__${{ inputs.artifact_name_part }}__"
 
-    - name: Validate artifact name
-      uses: ../../../validation/artifact-name
-      with:
-        artifact_name: ${{ env.ARTIFACT_NAME }}
+        # Validate length (max 100 characters)
+        if [ ${#ARTIFACT_NAME} -gt 100 ]; then
+          echo "ERROR: Artifact name too long (${#ARTIFACT_NAME} characters, max 100)"
+          echo "Artifact name: $ARTIFACT_NAME"
+          exit 1
+        fi
+
+        # Validate characters (only alphanumeric, dash, underscore)
+        if ! echo "$ARTIFACT_NAME" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+          echo "ERROR: Artifact name contains invalid characters (only [a-zA-Z0-9_-] allowed)"
+          echo "Artifact name: $ARTIFACT_NAME"
+          exit 1
+        fi
+
+        echo "Artifact name validation passed: $ARTIFACT_NAME (${#ARTIFACT_NAME} characters)"
+        echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> $GITHUB_ENV
 
     - name: Download artifact
       uses: actions/download-artifact@v6
