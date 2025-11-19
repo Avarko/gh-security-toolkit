@@ -1,0 +1,13 @@
+name: "Get Filesystem Artifact (for scan)"
+description: "Downloads a filesystem artifact for scanning (hardcoded name)"
+inputs:
+  out-path:
+    description: "Output path for filesystem directory or archive"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - uses: Avarko/gh-security-toolkit/actions/artifacts/filesystem/get@reactui
+      with:
+        out-path: ${{ inputs.out-path }}
+        artifact-name-part: "filesystem_for_scan"

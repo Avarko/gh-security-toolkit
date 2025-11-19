@@ -1,0 +1,13 @@
+name: "Put Filesystem Artifact (for scan)"
+description: "Uploads a filesystem artifact for scanning (hardcoded name)"
+inputs:
+  path:
+    description: "Path to filesystem directory or archive"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - uses: Avarko/gh-security-toolkit/actions/artifacts/filesystem/put@reactui
+      with:
+        path: ${{ inputs.path }}
+        artifact-name-part: "filesystem_for_scan"

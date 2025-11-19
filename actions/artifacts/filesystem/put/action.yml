@@ -1,8 +1,8 @@
 name: "Upload filesystem for security scan"
 description: "Uploads filesystem artifacts for security scanning. Artifact name is managed internally."
 inputs:
-  artifact_name_part:
-    description: "Short artifact name part (e.g., 'filesystem'). Will be prefixed with '__gh_security_toolkit__' and suffixed with '__'"
+  artifact-name-part:
+    description: "Short artifact name part (e.g., 'scan-filesystem'). Will be prefixed with '__gh_security_toolkit__' and suffixed with '__'"
     required: true
   path:
     description: "Path(s) to upload. Supports glob patterns and multiple paths (one per line or comma-separated)"
@@ -21,7 +21,7 @@ runs:
   steps:
     - name: Build artifact name
       shell: bash
-      run: echo "ARTIFACT_NAME=__gh_security_toolkit__${{ inputs.artifact_name_part }}__" >> $GITHUB_ENV
+      run: echo "ARTIFACT_NAME=__gh_security_toolkit__${{ inputs.artifact-name-part }}__" >> $GITHUB_ENV
 
     - name: Validate artifact name
       uses: Avarko/gh-security-toolkit/actions/validation/artifact-name@reactui
