@@ -25,6 +25,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -65,7 +68,7 @@ public class GitHubPagesBuilder {
 
         String outputDir = args[0];
         String pagesRoot = args[1];
-        String timestamp = args[2];
+        String isoTimestamp = args[2];  // Original ISO 8601 timestamp from input
         String channel = args[3];
         String metadataJson = args.length > 4 && !args[4].isEmpty() ? args[4] : null;
         String dashboardDir = args.length > 5 && !args[5].isEmpty() ? args[5] : null;
@@ -74,7 +77,11 @@ public class GitHubPagesBuilder {
         String displayName = args.length > 6 && !args[6].isEmpty() ? args[6] : null;
         String orgDisplayName = args.length > 7 && !args[7].isEmpty() ? args[7] : null;
 
-        System.out.println("📦 Processing scan data for: " + timestamp);
+        // Convert ISO timestamp to compact UTC format for URLs and file paths
+        String compactTimestamp = toCompactTimestamp(isoTimestamp);
+
+        System.out.println("📦 Processing scan data for: " + isoTimestamp);
+        System.out.println("   Compact timestamp: " + compactTimestamp);
         System.out.println("   Channel: " + channel);
 
         Path pagesPath = Path.of(pagesRoot);
@@ -123,10 +130,11 @@ public class GitHubPagesBuilder {
             mergeDashboard(pagesPath, Path.of(dashboardDir));
         }
 
+        // Use compact timestamp for file paths
         Path dataRunsPath = dataRoot
                 .resolve("runs")
                 .resolve(channel)
-                .resolve(timestamp);
+                .resolve(compactTimestamp);
         Files.createDirectories(dataRunsPath);
 
         // === LOAD & TRANSFORM ===
@@ -134,7 +142,8 @@ public class GitHubPagesBuilder {
         FindingsTransformer transformer = new FindingsTransformer();
 
         RawScanData rawData = loader.load(outputDir, metadataJson);
-        TransformedScanData transformedData = transformer.transform(rawData);
+        // Pass ISO timestamp to metadata (for display purposes)
+        TransformedScanData transformedData = transformer.transform(rawData, isoTimestamp);
 
         boolean hasDependabot = rawData.dependabotSummary != null
                 && !rawData.dependabotSummary.isBlank();
@@ -157,8 +166,8 @@ public class GitHubPagesBuilder {
         // 2) Write concise scan metadata (branch, commit, repository)
         writeMetadataJson(dataRunsPath, metadata);
 
-        // 3) Update tenant-specific scan-history.json
-        appendScanHistory(dataRoot, channel, timestamp, metadata, historyStats);
+        // 3) Update tenant-specific scan-history.json (use compact timestamp for URLs)
+        appendScanHistory(dataRoot, channel, compactTimestamp, metadata, historyStats);
 
         System.out.println("✅ Data processing complete!");
         System.out.println("   Run data: " + dataRunsPath);
@@ -273,6 +282,42 @@ public class GitHubPagesBuilder {
         } catch (Exception e) {
             System.err.println("⚠️  Failed to read existing scan history (corrupt format): " + e.getMessage());
             return new ScanHistory();
+        }
+    }
+
+    /**
+     * Converts an ISO 8601 timestamp to a compact URL-safe format in UTC.
+     *
+     * Examples:
+     * - "2025-11-19T17:56:24Z" → "20251119-175624"
+     * - "2025-11-19T17:56:24+02:00" → "20251119-155624" (converted to UTC)
+     * - "2025-11-19T17:56:24.123Z" → "20251119-175624" (milliseconds truncated)
+     *
+     * This ensures:
+     * 1. No URL encoding needed (no colons or special characters)
+     * 2. Timezone-independent (always UTC to avoid collisions)
+     * 3. Chronologically sortable
+     * 4. Human-readable
+     *
+     * @param isoTimestamp ISO 8601 formatted timestamp (with or without timezone)
+     * @return Compact timestamp in format YYYYMMDD-HHMMSS (UTC)
+     */
+    private static String toCompactTimestamp(String isoTimestamp) {
+        try {
+            // Parse ISO 8601 timestamp (handles various formats including timezones)
+            Instant instant = Instant.parse(isoTimestamp);
+
+            // Format as compact UTC timestamp: YYYYMMDD-HHMMSS
+            DateTimeFormatter formatter = DateTimeFormatter
+                .ofPattern("yyyyMMdd-HHmmss")
+                .withZone(ZoneOffset.UTC);
+
+            return formatter.format(instant);
+        } catch (Exception e) {
+            // If parsing fails, fall back to sanitized original timestamp
+            // (remove colons and keep only alphanumeric + hyphens)
+            System.err.println("⚠️  Warning: Failed to parse timestamp '" + isoTimestamp + "', using sanitized version");
+            return isoTimestamp.replaceAll("[^0-9A-Za-z-]", "");
         }
     }
 

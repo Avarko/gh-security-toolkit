@@ -15,7 +15,7 @@ import java.util.List;
  */
 public class FindingsTransformer {
 
-    public TransformedScanData transform(RawScanData raw) {
+    public TransformedScanData transform(RawScanData raw, String timestamp) {
         TransformedScanData result = new TransformedScanData();
 
         // Transform Trivy findings
@@ -28,7 +28,7 @@ public class FindingsTransformer {
         result.semgrepFindings = extractSemgrepFindings(raw.semgrep);
 
         // Extract metadata
-        result.metadata = extractMetadata(raw.metadata, "");
+        result.metadata = extractMetadata(raw.metadata, timestamp);
 
         // Copy summaries as-is
         result.trivySummary = raw.trivySummary;
