@@ -3,6 +3,7 @@
 //SOURCES ../src/main/java/fi/evolver/secops/githubPages/model/*.java
 //SOURCES ../src/main/java/fi/evolver/secops/githubPages/loader/*.java
 //SOURCES ../src/main/java/fi/evolver/secops/githubPages/transformer/*.java
+//SOURCES ../src/main/java/fi/evolver/secops/githubPages/TenantRegistry.java
 //SOURCES ../src/main/java/fi/evolver/secops/githubPages/GitHubPagesBuilder.java
 
 import fi.evolver.secops.githubPages.GitHubPagesBuilder;

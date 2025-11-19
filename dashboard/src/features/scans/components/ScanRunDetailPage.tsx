@@ -18,7 +18,6 @@ import HomeIcon from "@mui/icons-material/Home";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import { severityToHexColor } from "./severity";
 import { ReportFooter } from "../../../components/layout/ReportFooter";
-import { getDataRoot } from "../../../lib/dataPath";
 import { formatTimestamp } from "../../../lib/formatTimestamp";
 
 import type {
@@ -34,6 +33,7 @@ type ScanRunDetailPageProps = {
     metadata: ScanRunMetadata;
     trivyData: TrivyScan;
     semgrepData: SemgrepScan;
+    dataBasePath: string;
 };
 
 export function ScanRunDetailPage({
@@ -41,6 +41,7 @@ export function ScanRunDetailPage({
     metadata,
     trivyData,
     semgrepData,
+    dataBasePath,
 }: ScanRunDetailPageProps) {
     const { orgSlug, appSlug, repoSlug } = useParams<{
         orgSlug: string;
@@ -259,11 +260,7 @@ export function ScanRunDetailPage({
                 scanMetadata={metadata}
                 footerMeta={metadata?.footer}
                 channel={channel}
-                dataBasePath={(() => {
-                    const { orgSlug, appSlug, repoSlug } = useParams();
-                    const dataRoot = getDataRoot({ orgSlug, appSlug, repoSlug });
-                    return `${dataRoot}/runs/${channel}/${metadata?.timestamp}`;
-                })()}
+                dataBasePath={dataBasePath}
             />
         </Box>
     );
