@@ -21,13 +21,13 @@ on:
         description: 'Filesystem artifact name part (short name, e.g., "filesystem")'
         type: string
         required: false
-        default: 'filesystem'
+        default: 'filesystem_for_scan'
 
       docker_image_artifact_name:
         description: 'Docker image artifact name part (short name, e.g., "docker_image")'
         type: string
         required: false
-        default: 'docker_image'
+        default: 'docker_image_for_scan'
 
       # === RESULT RETENTION ===
       retention_days:
@@ -208,7 +208,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Avarko/gh-security-toolkit
-          ref: main
+          ref: reactui
           path: .gh-security-toolkit
 
       # === DOWNLOAD ARTIFACTS ===
@@ -238,7 +238,7 @@ jobs:
       # === RUN TRIVY SCANS ===
       - name: Run Trivy scans
         id: trivy
-        uses: Avarko/gh-security-toolkit/actions/scanner/trivy@main
+        uses: Avarko/gh-security-toolkit/actions/scanner/trivy@reactui
         with:
           filesystem_path: ${{ steps.download_fs.outcome == 'success' && format('{0}/filesystem', steps.setup.outputs.work_dir) || '' }}
           docker_image_tar: ${{ steps.download_image.outcome == 'success' && steps.find_tar.outputs.tar_path || '' }}
@@ -250,7 +250,7 @@ jobs:
       - name: Run Semgrep scan
         id: semgrep
         if: ${{ steps.download_fs.outcome == 'success' }}
-        uses: Avarko/gh-security-toolkit/actions/scanner/semgrep@main
+        uses: Avarko/gh-security-toolkit/actions/scanner/semgrep@reactui
         with:
           filesystem_path: ${{ format('{0}/filesystem', steps.setup.outputs.work_dir) }}
           semgrep_output_dir: ${{ steps.setup.outputs.output_dir }}
@@ -260,7 +260,7 @@ jobs:
       - name: Fetch Dependabot alerts
         id: dependabot
         if: ${{ inputs.dependabot_gh_token != '' }}
-        uses: Avarko/gh-security-toolkit/actions/scanner/dependabot@main
+        uses: Avarko/gh-security-toolkit/actions/scanner/dependabot@reactui
         with:
           repository: ${{ inputs.repository }}
           github_token: ${{ inputs.dependabot_gh_token }}
@@ -269,7 +269,7 @@ jobs:
       # === SUMMARIZE RESULTS ===
       - name: Summarizer
         id: sum
-        uses: Avarko/gh-security-toolkit/actions/summarizer@main
+        uses: Avarko/gh-security-toolkit/actions/summarizer@reactui
         with:
           fs_json: ${{ steps.trivy.outputs.fs_json || '' }}
           image_json: ${{ steps.trivy.outputs.image_json || '' }}
@@ -285,7 +285,7 @@ jobs:
       # === PUBLISH TO GITHUB RELEASE ===
       - name: Publish to GitHub Release
         if: contains(inputs.publish_to, 'github-release')
-        uses: Avarko/gh-security-toolkit/actions/publisher/github-release@main
+        uses: Avarko/gh-security-toolkit/actions/publisher/github-release@reactui
         with:
           outdir: ${{ steps.setup.outputs.output_dir }}
           metadata_timestamp: ${{ steps.ts.outputs.ts }}
