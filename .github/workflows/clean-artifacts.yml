@@ -4,12 +4,12 @@ on:
   workflow_call:
     inputs:
       scan_filesystem_keep:
-        description: 'Number of __gh_security_toolkit__filesystem__ artifacts to keep'
+        description: 'Number of __gh_security_toolkit__filesystem_for_scan__ artifacts to keep'
         type: number
         required: false
         default: 3
       scan_docker_image_keep:
-        description: 'Number of __gh_security_toolkit__docker_image__ artifacts to keep'
+        description: 'Number of __gh_security_toolkit__docker_image_for_scan__ artifacts to keep'
         type: number
         required: false
         default: 3
@@ -32,12 +32,12 @@ on:
   workflow_dispatch:
     inputs:
       scan_filesystem_keep:
-        description: 'Number of __gh_security_toolkit__filesystem__ artifacts to keep'
+        description: 'Number of __gh_security_toolkit__filesystem_for_scan__ artifacts to keep'
         type: number
         required: false
         default: 3
       scan_docker_image_keep:
-        description: 'Number of __gh_security_toolkit__docker_image__ artifacts to keep'
+        description: 'Number of __gh_security_toolkit__docker_image_for_scan__ artifacts to keep'
         type: number
         required: false
         default: 3
@@ -75,7 +75,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ARTIFACT_NAME="__gh_security_toolkit__filesystem__"
+          ARTIFACT_NAME="__gh_security_toolkit__filesystem_for_scan__"
           KEEP=${{ inputs.scan_filesystem_keep || 3 }}
           REPO="${{ github.repository }}"
 
@@ -125,7 +125,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          ARTIFACT_NAME="__gh_security_toolkit__docker_image__"
+          ARTIFACT_NAME="__gh_security_toolkit__docker_image_for_scan__"
           KEEP=${{ inputs.scan_docker_image_keep || 3 }}
           REPO="${{ github.repository }}"
 
