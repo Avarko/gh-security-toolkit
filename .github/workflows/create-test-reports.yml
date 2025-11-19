@@ -1,0 +1,123 @@
+name: Create Test Reports
+on:
+  workflow_call:
+    inputs:
+      jacoco-report-path:
+        description: "Path to JaCoCo HTML report directory (e.g., target/site/jacoco)"
+        type: string
+        required: false
+        default: ""
+      surefire-report-path:
+        description: "Path to Surefire HTML report directory (e.g., target/site/surefire-report)"
+        type: string
+        required: false
+        default: ""
+      artifact-name:
+        description: "Name for the test reports artifact"
+        type: string
+        required: false
+        default: "test-reports"
+      retention-days:
+        description: "How many days to retain the artifact"
+        type: number
+        required: false
+        default: 30
+      custom-index-html:
+        description: "Optional path to custom index.html"
+        type: string
+        required: false
+        default: ""
+      # Test execution options
+      test-command:
+        description: "Command to run tests (e.g., 'mvn test')"
+        type: string
+        required: false
+        default: ""
+      build-command:
+        description: "Command to build before tests (e.g., 'mvn clean package')"
+        type: string
+        required: false
+        default: ""
+      setup-java:
+        description: "Setup Java environment"
+        type: boolean
+        required: false
+        default: false
+      java-version:
+        description: "Java version to setup"
+        type: string
+        required: false
+        default: "17"
+      java-distribution:
+        description: "Java distribution to use"
+        type: string
+        required: false
+        default: "temurin"
+
+    outputs:
+      artifact-name:
+        description: "Name of the uploaded artifact"
+        value: ${{ jobs.create-test-reports.outputs.artifact-name }}
+      has-jacoco:
+        description: "Whether JaCoCo report was included"
+        value: ${{ jobs.create-test-reports.outputs.has-jacoco }}
+      has-surefire:
+        description: "Whether Surefire report was included"
+        value: ${{ jobs.create-test-reports.outputs.has-surefire }}
+
+jobs:
+  create-test-reports:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      artifact-name: ${{ steps.upload.outputs.artifact-name }}
+      has-jacoco: ${{ steps.upload.outputs.has-jacoco }}
+      has-surefire: ${{ steps.upload.outputs.has-surefire }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        if: inputs.setup-java
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ inputs.java-distribution }}
+          java-version: ${{ inputs.java-version }}
+          cache: 'maven'
+
+      - name: Run build command
+        if: inputs.build-command != ''
+        shell: bash
+        run: |
+          echo "🔨 Running build command..."
+          ${{ inputs.build-command }}
+
+      - name: Run test command
+        if: inputs.test-command != ''
+        shell: bash
+        run: |
+          echo "🧪 Running tests..."
+          ${{ inputs.test-command }}
+        continue-on-error: true
+
+      - name: Upload test reports
+        id: upload
+        uses: ./actions/artifacts/test-reports/upload
+        with:
+          jacoco-report-path: ${{ inputs.jacoco-report-path }}
+          surefire-report-path: ${{ inputs.surefire-report-path }}
+          artifact-name: ${{ inputs.artifact-name }}
+          retention-days: ${{ inputs.retention-days }}
+          custom-index-html: ${{ inputs.custom-index-html }}
+
+      - name: Workflow summary
+        shell: bash
+        run: |
+          echo "## ✅ Test Reports Workflow Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Test reports have been collected and uploaded as artifact: \`${{ inputs.artifact-name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "To deploy these reports to GitHub Pages, use the \`deploy-test-reports.yml\` workflow." >> $GITHUB_STEP_SUMMARY

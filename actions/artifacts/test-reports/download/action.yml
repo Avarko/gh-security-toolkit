@@ -1,0 +1,86 @@
+name: Download test reports
+description: |
+  Downloads test reports artifact from GitHub Actions.
+  Used for deploying test reports to GitHub Pages or other hosting.
+
+inputs:
+  artifact-name:
+    description: "Name of the artifact to download"
+    required: false
+    default: "test-reports"
+  download-path:
+    description: "Path where to extract the artifact contents"
+    required: false
+    default: "./test-reports"
+  github-token:
+    description: "GitHub token for authentication (defaults to GITHUB_TOKEN)"
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  download-path:
+    description: "Path where reports were downloaded"
+    value: ${{ inputs.download-path }}
+  artifact-found:
+    description: "Whether the artifact was found and downloaded"
+    value: ${{ steps.download.outputs.found }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download artifact
+      id: download
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.download-path }}
+        github-token: ${{ inputs.github-token }}
+      continue-on-error: true
+
+    - name: Check download status
+      shell: bash
+      run: |
+        if [ -d "${{ inputs.download-path }}" ] && [ "$(ls -A ${{ inputs.download-path }})" ]; then
+          echo "✅ Test reports downloaded successfully"
+          echo "   Location: ${{ inputs.download-path }}"
+          echo "found=true" >> $GITHUB_OUTPUT
+
+          # List contents for verification
+          echo ""
+          echo "📁 Downloaded contents:"
+          ls -lh "${{ inputs.download-path }}"
+
+          # Check for expected directories
+          if [ -d "${{ inputs.download-path }}/coverage" ]; then
+            echo "   ✅ Coverage reports found"
+          fi
+          if [ -d "${{ inputs.download-path }}/tests" ]; then
+            echo "   ✅ Test reports found"
+          fi
+        else
+          echo "❌ ERROR: Test reports artifact not found or empty"
+          echo "   Artifact name: ${{ inputs.artifact-name }}"
+          echo "found=false" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+
+    - name: Summary
+      if: steps.download.outputs.found == 'true'
+      shell: bash
+      run: |
+        echo "## 📥 Test Reports Downloaded" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Artifact Name:** \`${{ inputs.artifact-name }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "**Download Path:** \`${{ inputs.download-path }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        # Check what was downloaded
+        if [ -d "${{ inputs.download-path }}/coverage" ]; then
+          echo "- ✅ Coverage reports available" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ -d "${{ inputs.download-path }}/tests" ]; then
+          echo "- ✅ Test reports available" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ -f "${{ inputs.download-path }}/index.html" ]; then
+          echo "- ✅ Landing page available" >> $GITHUB_STEP_SUMMARY
+        fi

@@ -1,0 +1,112 @@
+name: Deploy Test Reports to GitHub Pages
+on:
+  workflow_call:
+    inputs:
+      test-reports-artifact:
+        description: "Name of the test reports artifact to deploy"
+        type: string
+        required: false
+        default: "test-reports"
+      pages-path:
+        description: "Subdirectory in Pages where to deploy (e.g., 'tests' for /tests/)"
+        type: string
+        required: false
+        default: "tests"
+      dashboard-artifact:
+        description: "Optional: Name of dashboard artifact to merge with test reports"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "pages-test-reports"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download test reports artifact
+        uses: ./actions/artifacts/test-reports/download
+        with:
+          artifact-name: ${{ inputs.test-reports-artifact }}
+          download-path: ./downloaded-reports
+
+      - name: Create Pages directory structure
+        shell: bash
+        run: |
+          echo "📁 Creating GitHub Pages structure..."
+          mkdir -p pages-root
+          mkdir -p "pages-root/${{ inputs.pages-path }}"
+
+      - name: Download dashboard (if specified)
+        if: inputs.dashboard-artifact != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.dashboard-artifact }}
+          path: ./pages-root
+        continue-on-error: true
+
+      - name: Copy test reports to Pages path
+        shell: bash
+        run: |
+          echo "📋 Copying test reports to /${{ inputs.pages-path }}..."
+          cp -r ./downloaded-reports/* "pages-root/${{ inputs.pages-path }}/"
+
+          echo ""
+          echo "✅ Test reports structure:"
+          ls -lhR "pages-root/${{ inputs.pages-path }}/" | head -20
+
+      - name: Create root redirect (if no dashboard)
+        if: inputs.dashboard-artifact == ''
+        shell: bash
+        run: |
+          cat > pages-root/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <meta http-equiv="refresh" content="0; url=./${{ inputs.pages-path }}/">
+              <title>Redirecting to Test Reports</title>
+          </head>
+          <body>
+              <p>Redirecting to <a href="./${{ inputs.pages-path }}/">test reports</a>...</p>
+          </body>
+          </html>
+          EOF
+          echo "✅ Created redirect from root to /${{ inputs.pages-path }}/"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./pages-root
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Summary
+        shell: bash
+        run: |
+          echo "## 🚀 Test Reports Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Pages URL:** ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Reports Path:** /${{ inputs.pages-path }}/" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Available Reports:" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 Coverage: ${{ steps.deployment.outputs.page_url }}${{ inputs.pages-path }}/coverage/" >> $GITHUB_STEP_SUMMARY
+          echo "- 🧪 Tests: ${{ steps.deployment.outputs.page_url }}${{ inputs.pages-path }}/tests/" >> $GITHUB_STEP_SUMMARY
