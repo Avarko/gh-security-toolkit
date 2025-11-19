@@ -105,6 +105,11 @@ jobs:
       branch: ${{ github.ref_name }}
       repository: ${{ github.repository }}
       commit_sha: ${{ github.sha }}
+
+      # Tenant configuration (REQUIRED for github-pages publishing)
+      dashboard_org_slug: myorg      # Organization slug for /data/<org>/<app>/<repo>
+      dashboard_app_slug: myapp      # Application slug
+      dashboard_repo_slug: myrepo    # Repository slug
     permissions:
       contents: write       # Required for creating releases and tags
       id-token: write       # Required for OIDC authentication (e.g., GitHub Pages)
@@ -274,6 +279,57 @@ docs/
 **Privacy:**
 - ✅ Enforces Private Pages (GitHub Enterprise Cloud required)
 - ❌ Deployment fails if Pages is configured as public
+
+---
+
+## Data structure
+
+All scan data is organized under `/data/<org>/<app>/<repo>/` regardless of deployment mode (single-tenant or multi-tenant). This consistent structure simplifies code and deployment.
+
+### Directory layout
+
+```
+docs/                           # GitHub Pages root
+├── index.html                  # Dashboard SPA entry point
+├── assets/                     # Dashboard static files (JS, CSS)
+└── data/
+    └── <org>/                  # Organization slug (e.g., "mycompany")
+        └── <app>/              # Application slug (e.g., "myapp")
+            └── <repo>/         # Repository slug (e.g., "backend")
+                ├── hist/
+                │   └── scan-history.json    # All scans for this repo
+                └── runs/
+                    └── <channel>/           # e.g., "nightly", "main"
+                        └── <timestamp>/     # e.g., "2025-01-15T12:00:00Z"
+                            ├── scan-metadata.json
+                            ├── trivy-fs.json
+                            ├── trivy-image.json
+                            └── semgrep.json
+```
+
+### Tenant configuration
+
+**Single-tenant deployment**: One repository, fixed tenant slugs
+```yaml
+dashboard_org_slug: mycompany
+dashboard_app_slug: myapp
+dashboard_repo_slug: backend
+```
+
+**Multi-tenant deployment**: Multiple repositories, variable tenant slugs
+```yaml
+# Repo 1
+dashboard_org_slug: company-a
+dashboard_app_slug: frontend-app
+dashboard_repo_slug: web
+
+# Repo 2
+dashboard_org_slug: company-b
+dashboard_app_slug: backend-api
+dashboard_repo_slug: services
+```
+
+Both deployments produce the same `/data/<org>/<app>/<repo>` structure. The only difference is whether the slugs are constant (single-tenant) or vary (multi-tenant).
 
 ---
 
