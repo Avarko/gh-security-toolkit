@@ -17,6 +17,8 @@ import {
 import HomeIcon from "@mui/icons-material/Home";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import { severityToHexColor } from "./severity";
+import { ReportFooter } from "../../../components/layout/ReportFooter";
+import { getDataRoot } from "../../../lib/dataPath";
 
 import type {
     ScanRunMetadata,
@@ -250,6 +252,18 @@ export function ScanRunDetailPage({
                     </Paper>
                 )}
             </Box>
+
+            {/* Footer with metadata */}
+            <ReportFooter
+                scanMetadata={metadata}
+                footerMeta={metadata?.footer}
+                channel={channel}
+                dataBasePath={(() => {
+                    const { orgSlug, appSlug, repoSlug } = useParams();
+                    const dataRoot = getDataRoot({ orgSlug, appSlug, repoSlug });
+                    return `${dataRoot}/runs/${channel}/${metadata?.timestamp}`;
+                })()}
+            />
         </Box>
     );
 }
