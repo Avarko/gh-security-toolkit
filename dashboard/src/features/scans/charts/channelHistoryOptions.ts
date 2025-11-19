@@ -10,10 +10,15 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
 
-    // Format timestamp as 'DD/MM/YYYY, HH:mm:ss'
+    // Format timestamp as 'DD/MM/YYYY, HH:mm:ss' for tooltip
     function formatDateTime(ts: string) {
         const d = new Date(ts);
         return d.toLocaleDateString() + ", " + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+    // Format date only for x-axis
+    function formatDate(ts: string) {
+        const d = new Date(ts);
+        return d.toLocaleDateString();
     }
 
     // Helper: is scan missing all stats?
@@ -42,8 +47,8 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
         isMissingStats(s) ? null : s.semgrepResults?.totalWarnings || 0
     );
 
-    // X-axis labels: show date and time
-    const xLabels = sortedScans.map((s) => formatDateTime(s.timestamp));
+    // X-axis labels: show only date
+    const xLabels = sortedScans.map((s) => formatDate(s.timestamp));
 
     // Optionally: mark incomplete scans with an exclamation mark
     const markPoints = sortedScans
@@ -102,7 +107,11 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             boundaryGap: false,
             data: xLabels,
             axisLine: { lineStyle: { color: "#444" } },
-            axisLabel: { color: "#aaa" },
+            axisLabel: {
+                color: "#aaa",
+                fontSize: 11,
+                formatter: function (value: string) { return value; },
+            },
         },
         yAxis: {
             type: "value",
