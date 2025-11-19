@@ -87,19 +87,19 @@ on:
         default: 'single-tenant'
 
       dashboard_org_slug:
-        description: 'Dashboard organization slug for GitHub Pages /data/<org>/<app>/<repo>'
+        description: 'Dashboard organization slug for GitHub Pages /data/<org>/<app>/<repo> (REQUIRED for github-pages publishing)'
         type: string
         required: false
         default: ''
 
       dashboard_app_slug:
-        description: 'Dashboard application slug for GitHub Pages /data/<org>/<app>/<repo>'
+        description: 'Dashboard application slug for GitHub Pages /data/<org>/<app>/<repo> (REQUIRED for github-pages publishing)'
         type: string
         required: false
         default: ''
 
       dashboard_repo_slug:
-        description: 'Dashboard repository slug for GitHub Pages /data/<org>/<app>/<repo>'
+        description: 'Dashboard repository slug for GitHub Pages /data/<org>/<app>/<repo> (REQUIRED for github-pages publishing)'
         type: string
         required: false
         default: ''
@@ -264,6 +264,24 @@ jobs:
           github_token: ${{ secrets.GH_TOKEN || github.token }}
 
       # === PUBLISH TO GITHUB PAGES ===
+      - name: Validate tenant slugs for GitHub Pages
+        if: contains(inputs.publish_to, 'github-pages')
+        run: |
+          if [ -z "${{ inputs.dashboard_org_slug }}" ] || \
+             [ -z "${{ inputs.dashboard_app_slug }}" ] || \
+             [ -z "${{ inputs.dashboard_repo_slug }}" ]; then
+            echo "❌ ERROR: GitHub Pages publishing requires all tenant slugs"
+            echo ""
+            echo "Missing values:"
+            echo "  - dashboard_org_slug: '${{ inputs.dashboard_org_slug }}'"
+            echo "  - dashboard_app_slug: '${{ inputs.dashboard_app_slug }}'"
+            echo "  - dashboard_repo_slug: '${{ inputs.dashboard_repo_slug }}'"
+            echo ""
+            echo "All three slugs are required to generate the /data/<org>/<app>/<repo> structure."
+            exit 1
+          fi
+          echo "✅ Tenant slugs validated: ${{ inputs.dashboard_org_slug }}/${{ inputs.dashboard_app_slug }}/${{ inputs.dashboard_repo_slug }}"
+
       - name: Publish to GitHub Pages
         if: contains(inputs.publish_to, 'github-pages')
         id: pages
