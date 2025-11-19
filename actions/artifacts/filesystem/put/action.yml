@@ -1,6 +1,9 @@
 name: "Upload filesystem for security scan"
 description: "Uploads filesystem artifacts for security scanning. Artifact name is managed internally."
 inputs:
+  artifact_name_part:
+    description: "Short artifact name part (e.g., 'filesystem'). Will be prefixed with '__gh_security_toolkit__' and suffixed with '__'"
+    required: true
   path:
     description: "Path(s) to upload. Supports glob patterns and multiple paths (one per line or comma-separated)"
     required: true
@@ -16,10 +19,19 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Build artifact name
+      shell: bash
+      run: echo "ARTIFACT_NAME=__gh_security_toolkit__${{ inputs.artifact_name_part }}__" >> $GITHUB_ENV
+
+    - name: Validate artifact name
+      uses: ../../../validation/artifact-name
+      with:
+        artifact_name: ${{ env.ARTIFACT_NAME }}
+
     - name: Upload filesystem artifact
       uses: actions/upload-artifact@v5
       with:
-        name: __gh_security_toolkit__filesystem__
+        name: ${{ env.ARTIFACT_NAME }}
         path: ${{ inputs.path }}
         retention-days: ${{ inputs.retention-days }}
         compression-level: ${{ inputs.compression-level }}
@@ -28,4 +40,4 @@ runs:
 outputs:
   artifact-name:
     description: "The artifact name used (for reference only, pass this to security-scan.yml)"
-    value: "__gh_security_toolkit__filesystem__"
+    value: ${{ env.ARTIFACT_NAME }}

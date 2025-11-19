@@ -1,0 +1,32 @@
+name: "Download filesystem artifact"
+description: "Downloads filesystem artifact from GitHub Actions. Artifact name is managed internally."
+inputs:
+  artifact_name_part:
+    description: "Short artifact name part (e.g., 'filesystem'). Will be prefixed with '__gh_security_toolkit__' and suffixed with '__'"
+    required: true
+  target_path:
+    description: "Path where to download the artifact contents"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Build artifact name
+      shell: bash
+      run: echo "ARTIFACT_NAME=__gh_security_toolkit__${{ inputs.artifact_name_part }}__" >> $GITHUB_ENV
+
+    - name: Validate artifact name
+      uses: ../../../validation/artifact-name
+      with:
+        artifact_name: ${{ env.ARTIFACT_NAME }}
+
+    - name: Download artifact
+      uses: actions/download-artifact@v6
+      with:
+        name: ${{ env.ARTIFACT_NAME }}
+        path: ${{ inputs.target_path }}
+
+outputs:
+  artifact-name:
+    description: "The artifact name used (for reference only)"
+    value: ${{ env.ARTIFACT_NAME }}
