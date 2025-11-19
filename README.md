@@ -69,8 +69,9 @@ jobs:
       - uses: actions/checkout@v4
 
       # Upload your working dir's filesystem for scanning
-      - uses: Avarko/gh-security-toolkit/actions/uploader/filesystem@main
+      - uses: Avarko/gh-security-toolkit/actions/artifacts/filesystem/put@main
         with:
+          artifact_name_part: filesystem  # short name, will be prefixed/suffixed internally
           path: |     # or simply use . as path
             src/
             .github/
@@ -80,8 +81,9 @@ jobs:
       - name: Build image
         # build your Docker image as you wish
 
-      - uses: Avarko/gh-security-toolkit/actions/uploader/docker-image@main
+      - uses: Avarko/gh-security-toolkit/actions/artifacts/docker-image/put@main
         with:
+          artifact_name_part: docker_image  # short name, will be prefixed/suffixed internally
           image-name: myapp:latest   # refer to your built image tag
 ```
 
