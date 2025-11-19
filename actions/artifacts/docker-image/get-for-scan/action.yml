@@ -1,0 +1,13 @@
+name: "Get Docker Image Artifact (for scan)"
+description: "Downloads a Docker image artifact for scanning (hardcoded name)"
+inputs:
+  out-path:
+    description: "Output path for Docker image tar file"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - uses: Avarko/gh-security-toolkit/actions/artifacts/docker-image/get@reactui
+      with:
+        out-path: ${{ inputs.out-path }}
+        artifact-name-part: "docker_image_for_scan"

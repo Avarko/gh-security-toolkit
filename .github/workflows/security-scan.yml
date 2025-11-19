@@ -16,19 +16,6 @@ on:
         required: false
         default: 'MEDIUM,HIGH,CRITICAL'
 
-      # === ARTIFACT NAMES ===
-      filesystem_artifact_name:
-        description: 'Filesystem artifact name part (short name, e.g., "filesystem_for_scan")'
-        type: string
-        required: false
-        default: 'filesystem_for_scan'
-
-      docker_image_artifact_name:
-        description: 'Docker image artifact name part (short name, e.g., "docker_image_for_scan")'
-        type: string
-        required: false
-        default: 'docker_image_for_scan'
-
       # === RESULT RETENTION ===
       retention_days:
         description: 'Days to retain scan results'
@@ -207,18 +194,16 @@ jobs:
       - name: Download filesystem artifact
         id: download_fs
         continue-on-error: true
-        uses: Avarko/gh-security-toolkit/actions/artifacts/filesystem/get@reactui
+        uses: Avarko/gh-security-toolkit/actions/artifacts/filesystem/get-for-scan@reactui
         with:
-          artifact_name_part: ${{ inputs.filesystem_artifact_name }}
-          target_path: ${{ steps.setup.outputs.work_dir }}/filesystem
+          out-path: ${{ steps.setup.outputs.work_dir }}/filesystem
 
       - name: Download docker image artifact
         id: download_image
         continue-on-error: true
-        uses: Avarko/gh-security-toolkit/actions/artifacts/docker-image/get@reactui
+        uses: Avarko/gh-security-toolkit/actions/artifacts/docker-image/get-for-scan@reactui
         with:
-          artifact_name_part: ${{ inputs.docker_image_artifact_name }}
-          target_path: ${{ steps.setup.outputs.work_dir }}/image
+          out-path: ${{ steps.setup.outputs.work_dir }}/image
 
       - name: Find Docker image tar
         if: ${{ steps.download_image.outcome == 'success' }}

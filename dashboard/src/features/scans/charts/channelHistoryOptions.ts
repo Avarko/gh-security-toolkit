@@ -10,6 +10,59 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
 
+    // Format timestamp as 'DD/MM/YYYY, HH:mm:ss'
+    function formatDateTime(ts: string) {
+        const d = new Date(ts);
+        return d.toLocaleDateString() + ", " + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    // Helper: is scan missing all stats?
+    function isMissingStats(s: ScanMetadata) {
+        return !s.trivyFsResults && !s.trivyImageResults && !s.semgrepResults;
+    }
+
+
+    // For each series, use null for missing stats
+    const criticalData = sortedScans.map((s) =>
+        isMissingStats(s)
+            ? null
+            : (s.trivyFsResults?.totalVulnerabilities?.CRITICAL || 0) +
+            (s.trivyImageResults?.totalVulnerabilities?.CRITICAL || 0)
+    );
+    const highData = sortedScans.map((s) =>
+        isMissingStats(s)
+            ? null
+            : (s.trivyFsResults?.totalVulnerabilities?.HIGH || 0) +
+            (s.trivyImageResults?.totalVulnerabilities?.HIGH || 0)
+    );
+    const errorsData = sortedScans.map((s) =>
+        isMissingStats(s) ? null : s.semgrepResults?.totalErrors || 0
+    );
+    const warningsData = sortedScans.map((s) =>
+        isMissingStats(s) ? null : s.semgrepResults?.totalWarnings || 0
+    );
+
+    // X-axis labels: show date and time
+    const xLabels = sortedScans.map((s) => formatDateTime(s.timestamp));
+
+    // Optionally: mark incomplete scans with an exclamation mark
+    const markPoints = sortedScans
+        .map((s, i) =>
+            isMissingStats(s)
+                ? {
+                    name: "incomplete",
+                    value: "!",
+                    xAxis: i,
+                    yAxis: 0,
+                    symbol: "circle",
+                    symbolSize: 18,
+                    itemStyle: { color: "#888" },
+                    label: { show: true, formatter: "!", color: "#fff" },
+                }
+                : null
+        )
+        .filter(Boolean);
+
     return {
         backgroundColor: "transparent",
         animation: false,
@@ -18,6 +71,19 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             backgroundColor: "#1e1e1e",
             borderColor: "#333",
             textStyle: { color: "#fff" },
+            axisPointer: { type: "line" },
+            formatter: function (params: any[]) {
+                // params is an array of series data for this x
+                const idx = params[0]?.dataIndex ?? 0;
+                const scan = sortedScans[idx];
+                let s = scan ? `<b>${formatDateTime(scan.timestamp)}</b><br/>` : '';
+                for (const p of params) {
+                    s += `<span style='color:${p.color}'>●</span> ${p.seriesName} `;
+                    s += (p.data == null || p.data === undefined) ? '-' : p.data;
+                    s += '<br/>';
+                }
+                return s;
+            },
         },
         legend: {
             data: ["Critical", "High", "Errors", "Warnings"],
@@ -34,9 +100,7 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
         xAxis: {
             type: "category",
             boundaryGap: false,
-            data: sortedScans.map((s) =>
-                new Date(s.timestamp).toLocaleDateString()
-            ),
+            data: xLabels,
             axisLine: { lineStyle: { color: "#444" } },
             axisLabel: { color: "#aaa" },
         },
@@ -50,23 +114,16 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             {
                 name: "Critical",
                 type: "line",
-                data: sortedScans.map(
-                    (s) =>
-                        (s.trivyFsResults?.totalVulnerabilities?.CRITICAL || 0) +
-                        (s.trivyImageResults?.totalVulnerabilities?.CRITICAL || 0)
-                ),
+                data: criticalData,
                 smooth: true,
                 lineStyle: { color: "#f44336", width: 2 },
                 itemStyle: { color: "#f44336" },
+                markPoint: { data: markPoints },
             },
             {
                 name: "High",
                 type: "line",
-                data: sortedScans.map(
-                    (s) =>
-                        (s.trivyFsResults?.totalVulnerabilities?.HIGH || 0) +
-                        (s.trivyImageResults?.totalVulnerabilities?.HIGH || 0)
-                ),
+                data: highData,
                 smooth: true,
                 lineStyle: { color: "#ff9800", width: 2 },
                 itemStyle: { color: "#ff9800" },
@@ -74,7 +131,7 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             {
                 name: "Errors",
                 type: "line",
-                data: sortedScans.map((s) => s.semgrepResults?.totalErrors || 0),
+                data: errorsData,
                 smooth: true,
                 lineStyle: { color: "#e91e63", width: 2 },
                 itemStyle: { color: "#e91e63" },
@@ -82,7 +139,7 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             {
                 name: "Warnings",
                 type: "line",
-                data: sortedScans.map((s) => s.semgrepResults?.totalWarnings || 0),
+                data: warningsData,
                 smooth: true,
                 lineStyle: { color: "#ffc107", width: 2 },
                 itemStyle: { color: "#ffc107" },

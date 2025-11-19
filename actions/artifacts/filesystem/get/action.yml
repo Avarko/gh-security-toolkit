@@ -1,10 +1,10 @@
 name: "Download filesystem artifact"
 description: "Downloads filesystem artifact from GitHub Actions. Artifact name is managed internally."
 inputs:
-  artifact_name_part:
-    description: "Short artifact name part (e.g., 'filesystem'). Will be prefixed with '__gh_security_toolkit__' and suffixed with '__'"
+  artifact-name-part:
+    description: "Short artifact name part (e.g., 'filesystem-for-scan'). Will be prefixed with '__gh_security_toolkit__' and suffixed with '__'"
     required: true
-  target_path:
+  out-path:
     description: "Path where to download the artifact contents"
     required: true
 
@@ -13,7 +13,7 @@ runs:
   steps:
     - name: Build artifact name
       shell: bash
-      run: echo "ARTIFACT_NAME=__gh_security_toolkit__${{ inputs.artifact_name_part }}__" >> $GITHUB_ENV
+      run: echo "ARTIFACT_NAME=__gh_security_toolkit__${{ inputs.artifact-name-part }}__" >> $GITHUB_ENV
 
     - name: Validate artifact name
       uses: Avarko/gh-security-toolkit/actions/validation/artifact-name@reactui
@@ -24,7 +24,7 @@ runs:
       uses: actions/download-artifact@v6
       with:
         name: ${{ env.ARTIFACT_NAME }}
-        path: ${{ inputs.target_path }}
+        path: ${{ inputs.out-path }}
 
 outputs:
   artifact-name:

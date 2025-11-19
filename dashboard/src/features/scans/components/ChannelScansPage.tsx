@@ -154,23 +154,22 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                             </TableHead>
                             <TableBody>
                                 {sorted.map((scan) => {
-                                    const fsCrit =
-                                        scan.trivyFsResults?.totalVulnerabilities?.CRITICAL || 0;
-                                    const fsHigh =
-                                        scan.trivyFsResults?.totalVulnerabilities?.HIGH || 0;
-                                    const imgCrit =
-                                        scan.trivyImageResults?.totalVulnerabilities?.CRITICAL ||
-                                        0;
-                                    const imgHigh =
-                                        scan.trivyImageResults?.totalVulnerabilities?.HIGH || 0;
-                                    const semErr = scan.semgrepResults?.totalErrors || 0;
-                                    const semWarn = scan.semgrepResults?.totalWarnings || 0;
-
+                                    const hasStats = !!(scan.trivyFsResults || scan.trivyImageResults || scan.semgrepResults);
+                                    const fsCrit = scan.trivyFsResults?.totalVulnerabilities?.CRITICAL;
+                                    const fsHigh = scan.trivyFsResults?.totalVulnerabilities?.HIGH;
+                                    const imgCrit = scan.trivyImageResults?.totalVulnerabilities?.CRITICAL;
+                                    const imgHigh = scan.trivyImageResults?.totalVulnerabilities?.HIGH;
+                                    const semErr = scan.semgrepResults?.totalErrors;
+                                    const semWarn = scan.semgrepResults?.totalWarnings;
 
                                     const detailPath = `${securityScansBasePath}/channel/${channel}/run/${scan.timestamp}`;
 
                                     return (
-                                        <TableRow key={scan.timestamp} hover>
+                                        <TableRow
+                                            key={scan.timestamp}
+                                            hover
+                                            sx={!hasStats ? { backgroundColor: '#444', opacity: 0.7 } : {}}
+                                        >
                                             <TableCell>
                                                 <MuiLink
                                                     component={RouterLink}
@@ -196,46 +195,46 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                                                 </Typography>
                                             </TableCell>
                                             <TableCell align="right">
-                                                <Chip
-                                                    label={fsCrit}
-                                                    color={severityToChipColor("CRITICAL", fsCrit)}
-                                                    size="small"
-                                                />
+                                                {hasStats && fsCrit !== undefined ? (
+                                                    <Chip label={fsCrit} color={severityToChipColor("CRITICAL", fsCrit)} size="small" />
+                                                ) : (
+                                                    <Chip label="-" size="small" sx={{ bgcolor: '#666', color: '#fff', opacity: 0.7 }} />
+                                                )}
                                             </TableCell>
                                             <TableCell align="right">
-                                                <Chip
-                                                    label={fsHigh}
-                                                    color={severityToChipColor("HIGH", fsHigh)}
-                                                    size="small"
-                                                />
+                                                {hasStats && fsHigh !== undefined ? (
+                                                    <Chip label={fsHigh} color={severityToChipColor("HIGH", fsHigh)} size="small" />
+                                                ) : (
+                                                    <Chip label="-" size="small" sx={{ bgcolor: '#666', color: '#fff', opacity: 0.7 }} />
+                                                )}
                                             </TableCell>
                                             <TableCell align="right">
-                                                <Chip
-                                                    label={imgCrit}
-                                                    color={severityToChipColor("CRITICAL", imgCrit)}
-                                                    size="small"
-                                                />
+                                                {hasStats && imgCrit !== undefined ? (
+                                                    <Chip label={imgCrit} color={severityToChipColor("CRITICAL", imgCrit)} size="small" />
+                                                ) : (
+                                                    <Chip label="-" size="small" sx={{ bgcolor: '#666', color: '#fff', opacity: 0.7 }} />
+                                                )}
                                             </TableCell>
                                             <TableCell align="right">
-                                                <Chip
-                                                    label={imgHigh}
-                                                    color={severityToChipColor("HIGH", imgHigh)}
-                                                    size="small"
-                                                />
+                                                {hasStats && imgHigh !== undefined ? (
+                                                    <Chip label={imgHigh} color={severityToChipColor("HIGH", imgHigh)} size="small" />
+                                                ) : (
+                                                    <Chip label="-" size="small" sx={{ bgcolor: '#666', color: '#fff', opacity: 0.7 }} />
+                                                )}
                                             </TableCell>
                                             <TableCell align="right">
-                                                <Chip
-                                                    label={semErr}
-                                                    color={severityToChipColor("ERROR", semErr)}
-                                                    size="small"
-                                                />
+                                                {hasStats && semErr !== undefined ? (
+                                                    <Chip label={semErr} color={severityToChipColor("ERROR", semErr)} size="small" />
+                                                ) : (
+                                                    <Chip label="-" size="small" sx={{ bgcolor: '#666', color: '#fff', opacity: 0.7 }} />
+                                                )}
                                             </TableCell>
                                             <TableCell align="right">
-                                                <Chip
-                                                    label={semWarn}
-                                                    color={severityToChipColor("WARNING", semWarn)}
-                                                    size="small"
-                                                />
+                                                {hasStats && semWarn !== undefined ? (
+                                                    <Chip label={semWarn} color={severityToChipColor("WARNING", semWarn)} size="small" />
+                                                ) : (
+                                                    <Chip label="-" size="small" sx={{ bgcolor: '#666', color: '#fff', opacity: 0.7 }} />
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 <MuiLink

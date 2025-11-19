@@ -1,7 +1,7 @@
 name: "Upload Docker image for security scan"
 description: "Saves and uploads Docker image as tar file for security scanning. Artifact name is managed internally."
 inputs:
-  artifact_name_part:
+  artifact-name-part:
     description: "Short artifact name part (e.g., 'docker_image_for_scan'). Will be prefixed with '__gh_security_toolkit__' and suffixed with '__'"
     required: true
   image-name:
@@ -21,7 +21,7 @@ runs:
   steps:
     - name: Build artifact name
       shell: bash
-      run: echo "ARTIFACT_NAME=__gh_security_toolkit__${{ inputs.artifact_name_part }}__" >> $GITHUB_ENV
+      run: echo "ARTIFACT_NAME=__gh_security_toolkit__${{ inputs.artifact-name-part }}__" >> $GITHUB_ENV
 
     - name: Validate artifact name
       uses: Avarko/gh-security-toolkit/actions/validation/artifact-name@reactui

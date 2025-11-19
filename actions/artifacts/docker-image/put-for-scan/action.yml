@@ -1,0 +1,13 @@
+name: "Put Docker Image Artifact (for scan)"
+description: "Uploads a Docker image artifact for scanning (hardcoded name)"
+inputs:
+  image-name:
+    description: "Docker image name (with tag) to save, e.g., 'myapp:latest'"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - uses: Avarko/gh-security-toolkit/actions/artifacts/docker-image/put@reactui
+      with:
+        image-name: ${{ inputs.image-name }}
+        artifact-name-part: "docker_image_for_scan"
