@@ -19,6 +19,7 @@ import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import { severityToHexColor } from "./severity";
 import { ReportFooter } from "../../../components/layout/ReportFooter";
 import { getDataRoot } from "../../../lib/dataPath";
+import { formatTimestamp } from "../../../lib/formatTimestamp";
 
 import type {
     ScanRunMetadata,
@@ -98,7 +99,7 @@ export function ScanRunDetailPage({
                     {channel}
                 </MuiLink>
                 <Typography color="text.primary">
-                    {new Date(metadata.timestamp).toLocaleString()}
+                    {formatTimestamp(metadata.timestamp)}
                 </Typography>
             </Breadcrumbs>
             {/* Perustiedot */}
@@ -117,7 +118,7 @@ export function ScanRunDetailPage({
                     >
                         <Typography variant="subtitle2">Timestamp</Typography>
                         <Typography variant="body2">
-                            {new Date(metadata.timestamp).toLocaleString()}
+                            {formatTimestamp(metadata.timestamp)}
                         </Typography>
 
                         <Typography variant="subtitle2">Repository</Typography>

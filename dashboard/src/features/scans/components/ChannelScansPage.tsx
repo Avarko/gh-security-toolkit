@@ -22,6 +22,7 @@ import HomeIcon from "@mui/icons-material/Home";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import type { ScanMetadata } from "../model/historyTypes";
 import { severityToChipColor } from "./severity";
+import { formatTimestamp, parseTimestamp } from "../../../lib/formatTimestamp";
 
 type ChannelScansPageProps = {
     channel: string;
@@ -45,10 +46,12 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
     const securityScansBasePath = baseAppPath
         ? `${baseAppPath}/security-scans`
         : "/";
-    const sorted = [...scans].sort(
-        (a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
+    const sorted = [...scans].sort((a, b) => {
+        const dateA = parseTimestamp(a.timestamp);
+        const dateB = parseTimestamp(b.timestamp);
+        if (!dateA || !dateB) return 0;
+        return dateB.getTime() - dateA.getTime();
+    });
 
     const latest = sorted[0];
 
@@ -90,7 +93,7 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                     {latest && (
                         <>
                             {" • Latest run: "}
-                            {new Date(latest.timestamp).toLocaleString()}
+                            {formatTimestamp(latest.timestamp)}
                         </>
                     )}
                 </Typography>
@@ -174,7 +177,7 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                                                     to={detailPath}
                                                     underline="hover"
                                                 >
-                                                    {new Date(scan.timestamp).toLocaleString()}
+                                                    {formatTimestamp(scan.timestamp)}
                                                 </MuiLink>
                                             </TableCell>
                                             <TableCell>
