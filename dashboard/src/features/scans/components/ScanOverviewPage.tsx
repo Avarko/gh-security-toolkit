@@ -25,6 +25,7 @@ import ReactECharts from "echarts-for-react";
 import type { ScanHistory, ScanMetadata } from "../model/historyTypes";
 import { buildChannelChartOption } from "../charts/channelHistoryOptions";
 import { severityToChipColor } from "./severity";
+import { formatTimestamp } from "../../../lib/formatTimestamp";
 
 interface ScanOverviewPageProps {
     history: ScanHistory;
@@ -154,7 +155,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                     {scans.length} total scans
                                 </Typography>
                                 <Typography variant="body2" color="text.secondary">
-                                    Latest: {scans[0]?.timestamp ? new Date(scans[0].timestamp).toLocaleString() : "N/A"}
+                                    Latest: {scans[0]?.timestamp ? formatTimestamp(scans[0].timestamp) : "N/A"}
                                 </Typography>
                                 <Link
                                     component={RouterLink}
@@ -262,7 +263,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                                                     to={`${securityScansBasePath}/channel/${channel}/run/${scan.timestamp}`}
                                                     underline="hover"
                                                 >
-                                                    {new Date(scan.timestamp).toLocaleString()}
+                                                    {formatTimestamp(scan.timestamp)}
                                                 </Link>
                                             </TableCell>
                                             <TableCell>

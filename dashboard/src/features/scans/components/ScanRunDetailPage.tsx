@@ -58,10 +58,39 @@ export function ScanRunDetailPage({
         : "/";
 
     const channelPath = `${securityScansBasePath}/channel/${channel}`;
-    const trivyVulns: TrivyVulnerability[] =
-        trivyData.Results?.flatMap((r) => r.Vulnerabilities ?? []) ?? [];
 
-    const semgrepFindings: SemgrepFinding[] = semgrepData.results ?? [];
+    // Define severity order for sorting (Critical first, then High, Medium, Low, Unknown)
+    const severityOrder: { [key: string]: number } = {
+        'CRITICAL': 0,
+        'HIGH': 1,
+        'MEDIUM': 2,
+        'LOW': 3,
+        'UNKNOWN': 4,
+    };
+
+    // Get and sort Trivy vulnerabilities by severity
+    const trivyVulns: TrivyVulnerability[] =
+        (trivyData.Results?.flatMap((r) => r.Vulnerabilities ?? []) ?? [])
+            .sort((a, b) => {
+                const severityA = severityOrder[a.Severity?.toUpperCase() ?? 'UNKNOWN'] ?? 999;
+                const severityB = severityOrder[b.Severity?.toUpperCase() ?? 'UNKNOWN'] ?? 999;
+                return severityA - severityB;
+            });
+
+    // Get and sort Semgrep findings by severity (ERROR, WARNING, INFO)
+    const semgrepSeverityOrder: { [key: string]: number } = {
+        'ERROR': 0,
+        'WARNING': 1,
+        'INFO': 2,
+    };
+
+    const semgrepFindings: SemgrepFinding[] =
+        (semgrepData.results ?? [])
+            .sort((a, b) => {
+                const severityA = semgrepSeverityOrder[a.extra?.severity?.toUpperCase() ?? 'INFO'] ?? 999;
+                const severityB = semgrepSeverityOrder[b.extra?.severity?.toUpperCase() ?? 'INFO'] ?? 999;
+                return severityA - severityB;
+            });
 
     return (
         <Box sx={{ p: 3 }}>
