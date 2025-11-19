@@ -194,14 +194,14 @@ jobs:
       - name: Download filesystem artifact
         id: download_fs
         continue-on-error: true
-        uses: Avarko/gh-security-toolkit/actions/artifacts/filesystem/get-for-scan@reactui
+        uses: Avarko/gh-security-toolkit/actions/artifacts/filesystem-for-scanning/download@reactui
         with:
           out-path: ${{ steps.setup.outputs.work_dir }}/filesystem
 
       - name: Download docker image artifact
         id: download_image
         continue-on-error: true
-        uses: Avarko/gh-security-toolkit/actions/artifacts/docker-image/get-for-scan@reactui
+        uses: Avarko/gh-security-toolkit/actions/artifacts/docker-image-for-scanning/download@reactui
         with:
           out-path: ${{ steps.setup.outputs.work_dir }}/image
 

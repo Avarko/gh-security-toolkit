@@ -1,0 +1,13 @@
+name: "Download Docker image (.tar) artifact for scanning"
+
+inputs:
+  out-path:
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/download-artifact@v6
+      with:
+        name: __gh_security_toolkit__docker_image_for_scan__
+        path: ${{ inputs.out-path }}
