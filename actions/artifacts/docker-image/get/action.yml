@@ -2,7 +2,7 @@ name: "Download Docker image artifact"
 description: "Downloads Docker image tar artifact from GitHub Actions. Artifact name is managed internally."
 inputs:
   artifact_name_part:
-    description: "Short artifact name part (e.g., 'docker_image'). Will be prefixed with '__gh_security_toolkit__' and suffixed with '__'"
+    description: "Short artifact name part (e.g., 'docker_image_for_scan'). Will be prefixed with '__gh_security_toolkit__' and suffixed with '__'"
     required: true
   target_path:
     description: "Path where to download the artifact contents"
