@@ -69,7 +69,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # Upload your working dir's filesystem for scanning
-      - uses: Avarko/gh-security-toolkit/actions/artifacts/filesystem/put@main
+      - uses: Avarko/gh-security-toolkit/actions/artifacts/filesystem/put@reactui
         with:
           artifact_name_part: filesystem  # short name, will be prefixed/suffixed internally
           path: |     # or simply use . as path
@@ -81,7 +81,7 @@ jobs:
       - name: Build image
         # build your Docker image as you wish
 
-      - uses: Avarko/gh-security-toolkit/actions/artifacts/docker-image/put@main
+      - uses: Avarko/gh-security-toolkit/actions/artifacts/docker-image/put@reactui
         with:
           artifact_name_part: docker_image  # short name, will be prefixed/suffixed internally
           image-name: myapp:latest   # refer to your built image tag
@@ -98,7 +98,7 @@ on:
 
 jobs:
   scan:
-    uses: Avarko/gh-security-toolkit/.github/workflows/security-scan.yml@main
+    uses: Avarko/gh-security-toolkit/.github/workflows/security-scan.yml@reactui
     with:
       channel: nightly-master   # choose any meaningful name for scans done by this job
       publish_to: github-pages  # or "github-release" or "github-release,github-pages"
@@ -428,7 +428,7 @@ on:
 
 jobs:
   cleanup:
-    uses: Avarko/gh-security-toolkit/.github/workflows/clean-artifacts.yml@main
+    uses: Avarko/gh-security-toolkit/.github/workflows/clean-artifacts.yml@reactui
     with:
       scan_filesystem_keep: 3   # Keep 3 newest filesystem artifacts
       scan_docker_image_keep: 3 # Keep 3 newest Docker image artifacts
