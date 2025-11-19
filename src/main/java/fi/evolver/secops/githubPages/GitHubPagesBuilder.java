@@ -151,18 +151,24 @@ public class GitHubPagesBuilder {
     }
 
     private static void writeMetadataJson(Path targetDir, ScanMetadata metadata) throws IOException {
-        var json = new java.util.HashMap<String, String>();
+        // Build nested structure to match TypeScript schema:
+        // { timestamp: string, metadata: { branch, commit, repository } }
+        var metadataInner = new java.util.HashMap<String, String>();
         if (metadata != null) {
             if (metadata.branch != null) {
-                json.put("branch", metadata.branch);
+                metadataInner.put("branch", metadata.branch);
             }
             if (metadata.commit != null) {
-                json.put("commit", metadata.commit);
+                metadataInner.put("commit", metadata.commit);
             }
             if (metadata.repository != null) {
-                json.put("repository", metadata.repository);
+                metadataInner.put("repository", metadata.repository);
             }
         }
+
+        var json = new java.util.HashMap<String, Object>();
+        json.put("timestamp", metadata != null ? metadata.timestamp : "");
+        json.put("metadata", metadataInner);
 
         Path metaPath = targetDir.resolve("scan-metadata.json");
         Files.writeString(metaPath, GSON.toJson(json), StandardCharsets.UTF_8);
