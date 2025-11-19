@@ -166,38 +166,9 @@ public class GitHubPagesBuilder {
             }
         }
 
-        var footerMap = new java.util.HashMap<String, String>();
-        if (metadata != null && metadata.footer != null) {
-            ScanMetadata.FooterMetadata footer = metadata.footer;
-            if (footer.app_docs_url != null && !footer.app_docs_url.isEmpty()) {
-                footerMap.put("app_docs_url", footer.app_docs_url);
-            }
-            if (footer.app_issues_url != null && !footer.app_issues_url.isEmpty()) {
-                footerMap.put("app_issues_url", footer.app_issues_url);
-            }
-            if (footer.ci_job_name != null && !footer.ci_job_name.isEmpty()) {
-                footerMap.put("ci_job_name", footer.ci_job_name);
-            }
-            if (footer.ci_job_url != null && !footer.ci_job_url.isEmpty()) {
-                footerMap.put("ci_job_url", footer.ci_job_url);
-            }
-            if (footer.trivy_version != null && !footer.trivy_version.isEmpty()) {
-                footerMap.put("trivy_version", footer.trivy_version);
-            }
-            if (footer.semgrep_version != null && !footer.semgrep_version.isEmpty()) {
-                footerMap.put("semgrep_version", footer.semgrep_version);
-            }
-            if (footer.toolkit_version != null && !footer.toolkit_version.isEmpty()) {
-                footerMap.put("toolkit_version", footer.toolkit_version);
-            }
-        }
-
         var json = new java.util.HashMap<String, Object>();
         json.put("timestamp", metadata != null ? metadata.timestamp : "");
         json.put("metadata", metadataInner);
-        if (!footerMap.isEmpty()) {
-            json.put("footer", footerMap);
-        }
 
         Path metaPath = targetDir.resolve("scan-metadata.json");
         Files.writeString(metaPath, GSON.toJson(json), StandardCharsets.UTF_8);
@@ -302,3 +273,5 @@ public class GitHubPagesBuilder {
         System.out.println("   ✅ Dashboard merged successfully");
     }
 }
+
+

@@ -118,7 +118,6 @@ jobs:
           retention_days: ${{ inputs.retention_days }}
           ci_job_name: ${{ github.workflow }}
           ci_job_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          toolkit_version: 'dashboard-only'
           dashboard_mode: ${{ inputs.dashboard_mode }}
           dashboard_org_slug: ${{ inputs.dashboard_org_slug }}
           dashboard_app_slug: ${{ inputs.dashboard_app_slug }}

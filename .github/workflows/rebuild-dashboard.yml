@@ -74,7 +74,6 @@ jobs:
           retention_days: 30
           ci_job_name: ${{ github.workflow }}
           ci_job_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          toolkit_version: 'test-rebuild'
 
       - name: Summary
         run: |

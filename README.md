@@ -268,7 +268,7 @@ docs/
 - 📈 Channel timeline graphs with toggleable severities (powered by persistent scan-history JSON v2)
 - 🔗 Direct CVE links to OSV, NVD, CVE.org
 - 📄 Raw JSON data downloads
-- 📌 Sticky footer with metadata (CI job, Git info, tool versions)
+- 📌 Sticky footer with metadata (CI job, Git info)
 - 🔍 Scan history navigation
 
 **Privacy:**
@@ -400,17 +400,6 @@ channel: nightly-production
 
 # develop branch
 channel: nightly-production  # Same artifact!
-```
-
-### Footer metadata
-
-Pass additional context to HTML reports:
-
-```yaml
-with:
-  app_docs_url: https://docs.example.com
-  app_issues_url: https://github.com/org/repo/issues
-  toolkit_version: v1.2.3
 ```
 
 ### Artifact cleanup workflow
