@@ -78,6 +78,11 @@ inputs:
     required: false
     default: "90"
 
+  # GitHub token for API access
+  github_token:
+    description: "GitHub token for artifact operations (use github.token)"
+    required: true
+
   # Dashboard / tenant configuration
   dashboard_mode:
     description: 'Dashboard mode, e.g. "single-tenant" or "multi-tenant"'
