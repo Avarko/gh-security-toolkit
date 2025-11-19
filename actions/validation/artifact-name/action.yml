@@ -1,0 +1,30 @@
+name: "Validate artifact name"
+description: "Validates that an artifact name meets GitHub's requirements (max 100 chars, alphanumeric/dash/underscore only)"
+inputs:
+  artifact_name:
+    description: "The full artifact name to validate"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate artifact name
+      shell: bash
+      run: |
+        ARTIFACT_NAME="${{ inputs.artifact_name }}"
+
+        # Check length (max 100 characters)
+        if [ ${#ARTIFACT_NAME} -gt 100 ]; then
+          echo "ERROR: Artifact name too long (${#ARTIFACT_NAME} characters, max 100)"
+          echo "Artifact name: $ARTIFACT_NAME"
+          exit 1
+        fi
+
+        # Check valid characters (only alphanumeric, dash, underscore)
+        if ! echo "$ARTIFACT_NAME" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+          echo "ERROR: Artifact name contains invalid characters (only [a-zA-Z0-9_-] allowed)"
+          echo "Artifact name: $ARTIFACT_NAME"
+          exit 1
+        fi
+
+        echo "Artifact name validation passed: $ARTIFACT_NAME (${#ARTIFACT_NAME} characters)"

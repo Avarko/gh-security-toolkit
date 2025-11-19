@@ -16,6 +16,19 @@ on:
         required: false
         default: 'MEDIUM,HIGH,CRITICAL'
 
+      # === ARTIFACT NAMES ===
+      filesystem_artifact_name:
+        description: 'Filesystem artifact name part (short name, e.g., "filesystem")'
+        type: string
+        required: false
+        default: 'filesystem'
+
+      docker_image_artifact_name:
+        description: 'Docker image artifact name part (short name, e.g., "docker_image")'
+        type: string
+        required: false
+        default: 'docker_image'
+
       # === RESULT RETENTION ===
       retention_days:
         description: 'Days to retain scan results'
@@ -190,22 +203,30 @@ jobs:
 
           echo "✅ Channel name is valid: '$CHANNEL'"
 
+      # === CHECKOUT (needed for local actions) ===
+      - name: Checkout toolkit
+        uses: actions/checkout@v4
+        with:
+          repository: Avarko/gh-security-toolkit
+          ref: main
+          path: .gh-security-toolkit
+
       # === DOWNLOAD ARTIFACTS ===
       - name: Download filesystem artifact
         id: download_fs
         continue-on-error: true
-        uses: actions/download-artifact@v6
+        uses: ./.gh-security-toolkit/actions/artifacts/filesystem/get
         with:
-          name: __gh_security_toolkit__filesystem__
-          path: ${{ steps.setup.outputs.work_dir }}/filesystem
+          artifact_name_part: ${{ inputs.filesystem_artifact_name }}
+          target_path: ${{ steps.setup.outputs.work_dir }}/filesystem
 
       - name: Download docker image artifact
         id: download_image
         continue-on-error: true
-        uses: actions/download-artifact@v6
+        uses: ./.gh-security-toolkit/actions/artifacts/docker-image/get
         with:
-          name: __gh_security_toolkit__docker_image__
-          path: ${{ steps.setup.outputs.work_dir }}/image
+          artifact_name_part: ${{ inputs.docker_image_artifact_name }}
+          target_path: ${{ steps.setup.outputs.work_dir }}/image
 
       - name: Find Docker image tar
         if: ${{ steps.download_image.outcome == 'success' }}
