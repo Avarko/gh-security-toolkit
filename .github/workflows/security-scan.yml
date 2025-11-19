@@ -230,7 +230,7 @@ jobs:
       # === RUN TRIVY SCANS ===
       - name: Run Trivy scans
         id: trivy
-        uses: Avarko/gh-security-toolkit/actions/scanner/trivy@reactui
+        uses: Avarko/gh-security-toolkit/actions/scanner/trivy@main
         with:
           filesystem_path: ${{ steps.download_fs.outcome == 'success' && format('{0}/filesystem', steps.setup.outputs.work_dir) || '' }}
           docker_image_tar: ${{ steps.download_image.outcome == 'success' && steps.find_tar.outputs.tar_path || '' }}
