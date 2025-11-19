@@ -1,29 +1,40 @@
 // src/lib/dataPath.ts
 import { MissingTenantParamsError } from "../errors/MissingTenantParamsError";
+import type { TenantRegistry } from "./tenantRegistry";
+import { findTenantByGitHub, getTenantDataPath } from "./tenantRegistry";
 
 type DataPathParams = {
-    orgSlug?: string;
-    appSlug?: string;
-    repoSlug?: string;
+    githubOrg: string;
+    githubRepo: string;
+    registry: TenantRegistry;
 };
 
 /**
- * Generates the data path: /data/<org>/<app>/<repo>
+ * Generates the data path: /data/<tenant-uuid>/
  *
- * All three tenant slugs (org, app, repo) are required for both single-tenant
- * and multi-tenant deployments. This ensures consistent path structure.
+ * GUID-based tenant system:
+ * - GitHub org/repo identifies the tenant (case-insensitive)
+ * - TenantRegistry maps org/repo to a UUID
+ * - Data is stored at /data/<uuid>/ for security (prevents tenant forgery)
  *
- * - Single-tenant: Fixed values (e.g., vr/fcciam/app-fc-ciam-backend)
- * - Multi-tenant: Variable per organization/app/repo
+ * @throws {MissingTenantParamsError} if org/repo not found in registry
  */
 export function getDataRoot(params: DataPathParams): string {
-    const { orgSlug, appSlug, repoSlug } = params;
+    const { githubOrg, githubRepo, registry } = params;
 
-    if (!orgSlug || !appSlug || !repoSlug) {
+    if (!githubOrg || !githubRepo) {
         throw new MissingTenantParamsError(
-            `All tenant slugs are required: orgSlug=${orgSlug}, appSlug=${appSlug}, repoSlug=${repoSlug}`
+            `GitHub org and repo are required: org=${githubOrg}, repo=${githubRepo}`
         );
     }
 
-    return `/data/${orgSlug}/${appSlug}/${repoSlug}`;
+    const tenant = findTenantByGitHub(registry, githubOrg, githubRepo);
+
+    if (!tenant) {
+        throw new MissingTenantParamsError(
+            `Tenant not found in registry: ${githubOrg}/${githubRepo}`
+        );
+    }
+
+    return getTenantDataPath(tenant.id);
 }

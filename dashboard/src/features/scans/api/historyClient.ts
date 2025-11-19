@@ -10,6 +10,7 @@ import {
 } from "../model/historyTypes";
 import { getDataRoot } from "../../../lib/dataPath";
 import { MissingTenantParamsError } from "../../../errors/MissingTenantParamsError";
+import type { TenantRegistry } from "../../../lib/tenantRegistry";
 
 /**
  * Result type for scan history loading.
@@ -18,19 +19,22 @@ import { MissingTenantParamsError } from "../../../errors/MissingTenantParamsErr
 export type ScanHistoryLoadResult = ValidationResult<ScanHistory>;
 
 export type HistoryContext = {
-    orgSlug?: string;
-    appSlug?: string;
-    repoSlug?: string;
+    githubOrg: string;
+    githubRepo: string;
+    registry: TenantRegistry;
 };
 
 /**
  * Fetches and validates scan history data from the server,
- * scoped to a specific tenant (org/app[/repo]).
+ * scoped to a specific tenant (identified by GitHub org/repo).
  *
- * Security principle:
- * - getDataRoot throws MissingTenantParamsError if org/app is missing.
- * - This error is NOT encapsulated as a validation error but allowed to propagate,
- *   so that the router's error boundary can handle it as a configuration error.
+ * Security principle (GUID-based tenant system):
+ * - getDataRoot maps GitHub org/repo to a UUID via the tenant registry
+ * - Data is stored at /data/<uuid>/ to prevent tenant forgery
+ * - Throws MissingTenantParamsError if org/repo not found in registry
+ *
+ * This error is NOT encapsulated as a validation error but allowed to propagate,
+ * so that the router's error boundary can handle it as a configuration error.
  *
  * Other errors (network, HTTP status, JSON parse, Zod) are returned
  * as a ScanHistoryLoadResult object (success: false).

@@ -23,17 +23,29 @@ import {
 import { ScanRunDetailPage } from "../../../../features/scans/components/ScanRunDetailPage";
 import { getDataRoot } from "../../../../lib/dataPath";
 import { MissingTenantParamsError } from "../../../../errors/MissingTenantParamsError";
+import { loadTenantRegistry } from "../../../../lib/tenantRegistry";
 
 type LoaderData = {
     channel: string;
     metadata: ScanRunMetadata;
     trivyData: TrivyScan;
     semgrepData: SemgrepScan;
+    dataBasePath: string;
 };
 
 export async function loader(args: LoaderFunctionArgs): Promise<LoaderData> {
     const { params } = args;
-    const { orgSlug, appSlug, repoSlug, channel, timestamp } = params;
+    const { orgSlug, repoSlug, channel, timestamp } = params;
+
+    // Load tenant registry
+    const registry = await loadTenantRegistry();
+
+    // In the GUID-based system, orgSlug is the GitHub org and repoSlug is the GitHub repo
+    if (!orgSlug || !repoSlug) {
+        throw new MissingTenantParamsError(
+            `GitHub org and repo are required in URL: /org/<org>/app/<app>/repo/<repo>`
+        );
+    }
 
     try {
         if (!channel || !timestamp) {
@@ -42,7 +54,11 @@ export async function loader(args: LoaderFunctionArgs): Promise<LoaderData> {
             );
         }
 
-        const dataRoot = getDataRoot({ orgSlug, appSlug, repoSlug });
+        const dataRoot = getDataRoot({
+            githubOrg: orgSlug,
+            githubRepo: repoSlug,
+            registry,
+        });
         const baseUrl = `${dataRoot}/runs/${channel}/${timestamp}`;
 
         // Helper to safely parse JSON or throw a user-friendly error
@@ -75,7 +91,13 @@ export async function loader(args: LoaderFunctionArgs): Promise<LoaderData> {
         const trivyData = trivyScanSchema.parse(trivyJson);
         const semgrepData = semgrepScanSchema.parse(semgrepJson);
 
-        return { channel, metadata, trivyData, semgrepData };
+        return {
+            channel,
+            metadata,
+            trivyData,
+            semgrepData,
+            dataBasePath: baseUrl,
+        };
     } catch (error) {
         console.error("Unexpected error during loader:", error);
 
@@ -93,7 +115,7 @@ export async function loader(args: LoaderFunctionArgs): Promise<LoaderData> {
 }
 
 export default function ChannelScanRunDetailRoute() {
-    const { channel, metadata, trivyData, semgrepData } =
+    const { channel, metadata, trivyData, semgrepData, dataBasePath } =
         useLoaderData() as LoaderData;
 
     return (
@@ -102,6 +124,7 @@ export default function ChannelScanRunDetailRoute() {
             metadata={metadata}
             trivyData={trivyData}
             semgrepData={semgrepData}
+            dataBasePath={dataBasePath}
         />
     );
 }

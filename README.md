@@ -106,10 +106,9 @@ jobs:
       repository: ${{ github.repository }}
       commit_sha: ${{ github.sha }}
 
-      # Tenant configuration (REQUIRED for github-pages publishing)
-      dashboard_org_slug: myorg      # Organization slug for /data/<org>/<app>/<repo>
-      dashboard_app_slug: myapp      # Application slug
-      dashboard_repo_slug: myrepo    # Repository slug
+      # Optional: Display metadata for dashboard
+      dashboard_display_name: "My Application"
+      dashboard_org_display_name: "My Organization"
     permissions:
       contents: write       # Required for creating releases and tags
       id-token: write       # Required for OIDC authentication (e.g., GitHub Pages)
@@ -284,7 +283,7 @@ docs/
 
 ## Data structure
 
-All scan data is organized under `/data/<org>/<app>/<repo>/` regardless of deployment mode (single-tenant or multi-tenant). This consistent structure simplifies code and deployment.
+All scan data is organized using a **GUID-based tenant system** for maximum security. Each tenant (identified by their GitHub org/repo) is mapped to a UUID, and data is stored at `/data/<uuid>/`. This prevents tenant forgery and path traversal attacks.
 
 ### Directory layout
 
@@ -292,44 +291,64 @@ All scan data is organized under `/data/<org>/<app>/<repo>/` regardless of deplo
 docs/                           # GitHub Pages root
 ├── index.html                  # Dashboard SPA entry point
 ├── assets/                     # Dashboard static files (JS, CSS)
+├── config/
+│   └── tenant-registry.json    # Maps GitHub org/repo to UUIDs + display metadata
 └── data/
-    └── <org>/                  # Organization slug (e.g., "mycompany")
-        └── <app>/              # Application slug (e.g., "myapp")
-            └── <repo>/         # Repository slug (e.g., "backend")
-                ├── hist/
-                │   └── scan-history.json    # All scans for this repo
-                └── runs/
-                    └── <channel>/           # e.g., "nightly", "main"
-                        └── <timestamp>/     # e.g., "2025-01-15T12:00:00Z"
-                            ├── scan-metadata.json
-                            ├── trivy-fs.json
-                            ├── trivy-image.json
-                            └── semgrep.json
+    └── <tenant-uuid>/          # UUID (e.g., "a7f3c2e1-4b9d-4a3e-8f2b-1c5d9e6f7a8b")
+        ├── hist/
+        │   └── scan-history.json    # All scans for this tenant
+        └── runs/
+            └── <channel>/           # e.g., "nightly", "main"
+                └── <timestamp>/     # e.g., "2025-01-15T12:00:00Z"
+                    ├── scan-metadata.json
+                    ├── trivy-fs.json
+                    ├── trivy-image.json
+                    └── semgrep.json
 ```
 
-### Tenant configuration
+### Security model (GUID-based tenant system)
 
-**Single-tenant deployment**: One repository, fixed tenant slugs
+**Tenant identification**: Determined by trusted GitHub Actions context variables
+- `GITHUB_REPOSITORY_OWNER` - GitHub organization or user (provided by GitHub, not client)
+- `GITHUB_REPOSITORY` - Repository name (provided by GitHub, not client)
+
+**Tenant registry**: Maps GitHub org/repo pairs to UUIDs in `/config/tenant-registry.json`
+```json
+{
+  "tenants": [
+    {
+      "id": "a7f3c2e1-4b9d-4a3e-8f2b-1c5d9e6f7a8b",
+      "github_org": "avarko",
+      "github_repo": "app-fc-ciam-backend",
+      "created_at": "2025-01-15T10:00:00Z",
+      "display_name": "VR CIAM Backend",
+      "org_display_name": "VR Group"
+    }
+  ]
+}
+```
+
+**Security benefits**:
+- ✅ Tenant identity is determined by GitHub (trusted source), not client-provided data
+- ✅ UUIDs prevent tenant guessing (2^122 possible values)
+- ✅ Path traversal impossible (`../`, `./`, etc. cannot reach other tenants)
+- ✅ Case-insensitive GitHub org/repo names are normalized (lowercase) before lookup
+- ✅ Data paths are immutable even if GitHub repo is renamed
+
+**Dashboard URLs**: Frontend uses friendly URLs that map to UUIDs internally
+- URL format: `/org/<github-org>/app/<app>/repo/<github-repo>/security-scans`
+- Backend resolves GitHub org/repo → UUID → `/data/<uuid>/`
+
+### Optional display metadata
+
+You can optionally provide display names for better UX:
+
 ```yaml
-dashboard_org_slug: mycompany
-dashboard_app_slug: myapp
-dashboard_repo_slug: backend
+dashboard_display_name: "VR CIAM Backend"
+dashboard_org_display_name: "VR Group"
 ```
 
-**Multi-tenant deployment**: Multiple repositories, variable tenant slugs
-```yaml
-# Repo 1
-dashboard_org_slug: company-a
-dashboard_app_slug: frontend-app
-dashboard_repo_slug: web
-
-# Repo 2
-dashboard_org_slug: company-b
-dashboard_app_slug: backend-api
-dashboard_repo_slug: services
-```
-
-Both deployments produce the same `/data/<org>/<app>/<repo>` structure. The only difference is whether the slugs are constant (single-tenant) or vary (multi-tenant).
+These are stored in the tenant registry but **not used for data paths** (only UUIDs are used for paths).
 
 ---
 

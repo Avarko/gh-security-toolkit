@@ -35,24 +35,21 @@ import java.util.List;
  * Responsibilities:
  * 1. Load scan results (Trivy, Semgrep, etc.)
  * 2. Transform and normalize data
- * 3. Write structured JSON to
- * data/<org>/<app>/<repo>/runs/<channel>/<timestamp>/
- * 4. Maintain
- * data/<org>/<app>/<repo>/hist/scan-history.json
+ * 3. Write structured JSON to data/<tenant-uuid>/runs/<channel>/<timestamp>/
+ * 4. Maintain data/<tenant-uuid>/hist/scan-history.json
  *
- * Tenant resolution:
- * - If org/app/repo CLI-arguments are given, they are used:
- * <pages_root>/data/<org>/<app>/<repo>
- * - Otherwise, defaults.json (single-tenant mode) is read if available.
- * - If neither is available, the legacy path is used:
- * <pages_root>/data
+ * Tenant resolution (GUID-based security model):
+ * - GitHub org/repo is read from environment variables (GITHUB_REPOSITORY_OWNER, GITHUB_REPOSITORY)
+ * - TenantRegistry maps GitHub org/repo to a UUID
+ * - Data is stored at /data/<uuid>/ to prevent tenant forgery or path traversal
+ * - Display metadata (optional) can be provided via CLI arguments
  *
  * UI rendering is done in a separate React dashboard.
  *
  * Usage:
  * GitHubPagesBuilder <output_dir> <pages_root> <scan_timestamp> <channel>
  * [metadata_json] [dashboard_dir]
- * [org_slug] [app_slug] [repo_slug]
+ * [display_name] [org_display_name]
  */
 public class GitHubPagesBuilder {
 
@@ -62,7 +59,7 @@ public class GitHubPagesBuilder {
         if (args.length < 4) {
             System.err.println(
                     "Usage: GitHubPagesBuilder <output_dir> <pages_root> <scan_timestamp> <channel> "
-                            + "[metadata_json] [dashboard_dir] [org_slug] [app_slug] [repo_slug]");
+                            + "[metadata_json] [dashboard_dir] [display_name] [org_display_name]");
             System.exit(1);
         }
 
@@ -73,18 +70,53 @@ public class GitHubPagesBuilder {
         String metadataJson = args.length > 4 && !args[4].isEmpty() ? args[4] : null;
         String dashboardDir = args.length > 5 && !args[5].isEmpty() ? args[5] : null;
 
-        String orgSlug = args.length > 6 && !args[6].isEmpty() ? args[6] : null;
-        String appSlug = args.length > 7 && !args[7].isEmpty() ? args[7] : null;
-        String repoSlug = args.length > 8 && !args[8].isEmpty() ? args[8] : null;
+        // Optional display metadata (not used for data paths)
+        String displayName = args.length > 6 && !args[6].isEmpty() ? args[6] : null;
+        String orgDisplayName = args.length > 7 && !args[7].isEmpty() ? args[7] : null;
 
         System.out.println("📦 Processing scan data for: " + timestamp);
         System.out.println("   Channel: " + channel);
 
         Path pagesPath = Path.of(pagesRoot);
 
-        // Tenant configuration (CLI slugs > defaults.json > legacy /data)
-        TenantConfig tenantConfig = TenantConfig.loadOrDefault(pagesPath);
-        Path dataRoot = tenantConfig.resolveDataRoot(pagesPath, orgSlug, appSlug, repoSlug);
+        // Read trusted GitHub org/repo from environment variables
+        String githubOrg = System.getenv("GITHUB_REPOSITORY_OWNER");
+        String githubRepo = System.getenv("GITHUB_REPOSITORY");
+
+        // GITHUB_REPOSITORY is in format "owner/repo", extract just the repo name
+        if (githubRepo != null && githubRepo.contains("/")) {
+            githubRepo = githubRepo.substring(githubRepo.lastIndexOf("/") + 1);
+        }
+
+        if (githubOrg == null || githubOrg.isEmpty()) {
+            throw new IllegalArgumentException(
+                "❌ ERROR: GITHUB_REPOSITORY_OWNER environment variable is required.\n" +
+                "   This value is trusted and provided by GitHub Actions.\n" +
+                "   If running locally for testing, set: export GITHUB_REPOSITORY_OWNER=<org>"
+            );
+        }
+
+        if (githubRepo == null || githubRepo.isEmpty()) {
+            throw new IllegalArgumentException(
+                "❌ ERROR: GITHUB_REPOSITORY environment variable is required.\n" +
+                "   This value is trusted and provided by GitHub Actions.\n" +
+                "   Expected format: owner/repo\n" +
+                "   If running locally for testing, set: export GITHUB_REPOSITORY=<owner>/<repo>"
+            );
+        }
+
+        System.out.println("🔐 Tenant identity (from GitHub Actions context):");
+        System.out.println("   GitHub org: " + githubOrg);
+        System.out.println("   GitHub repo: " + githubRepo);
+
+        // Resolve or create tenant UUID using TenantRegistry
+        TenantRegistry registry = new TenantRegistry(pagesPath);
+        String tenantId = registry.resolveTenantId(githubOrg, githubRepo, displayName, orgDisplayName);
+
+        // Data root is now /data/<uuid>/
+        Path dataRoot = pagesPath.resolve("data").resolve(tenantId);
+        Files.createDirectories(dataRoot);
+        System.out.println("📁 Tenant data root: /data/" + tenantId + "/");
 
         // Merge dashboard build artifacts first
         if (dashboardDir != null) {

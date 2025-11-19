@@ -53,24 +53,45 @@ inputs:
     description: "GitHub token for artifact operations (use github.token)"
     required: true
 
-  # Dashboard / tenant configuration
-  dashboard_mode:
-    description: 'Dashboard mode, e.g. "single-tenant" or "multi-tenant"'
-    required: false
-    default: "single-tenant"
-
-  dashboard_org_slug:
-    description: "Organization slug used in /data/<org>/<app>/<repo>"
+  # Additional metadata for scan context
+  app_docs_url:
+    description: "URL to application documentation"
     required: false
     default: ""
 
-  dashboard_app_slug:
-    description: "Application slug used in /data/<org>/<app>/<repo>"
+  app_issues_url:
+    description: "URL to application issue tracker"
     required: false
     default: ""
 
-  dashboard_repo_slug:
-    description: "Repository slug used in /data/<org>/<app>/<repo>"
+  ci_job_name:
+    description: "CI job name"
+    required: false
+    default: ""
+
+  ci_job_url:
+    description: "CI job URL"
+    required: false
+    default: ""
+
+  trivy_version:
+    description: "Trivy version used for scanning"
+    required: false
+    default: ""
+
+  semgrep_version:
+    description: "Semgrep version used for scanning"
+    required: false
+    default: ""
+
+  # Dashboard / tenant configuration (optional display metadata)
+  dashboard_display_name:
+    description: "Optional display name for this tenant (e.g., 'VR CIAM Backend')"
+    required: false
+    default: ""
+
+  dashboard_org_display_name:
+    description: "Optional organization display name (e.g., 'VR Group')"
     required: false
     default: ""
 
@@ -141,55 +162,26 @@ runs:
           echo "   Proceeding with deployment, but please verify Pages configuration."
         fi
 
-    - name: Validate dashboard tenant configuration
-      if: ${{ inputs.dashboard_mode != '' }}
+    - name: Validate GitHub context variables
       shell: bash
       run: |
         set -euo pipefail
 
-        if [ -z "${{ inputs.dashboard_org_slug }}" ] || \
-           [ -z "${{ inputs.dashboard_app_slug }}" ] || \
-           [ -z "${{ inputs.dashboard_repo_slug }}" ]; then
-          echo "❌ dashboard_mode='${{ inputs.dashboard_mode }}' but one or more of"
-          echo "   dashboard_org_slug / dashboard_app_slug / dashboard_repo_slug is empty."
-          echo "   These are required to build tenant-aware /data/<org>/<app>/<repo> structure."
+        if [ -z "${{ github.repository_owner }}" ]; then
+          echo "❌ ERROR: github.repository_owner is empty"
+          echo "   This should be automatically provided by GitHub Actions."
           exit 1
         fi
 
-        echo "✅ Dashboard tenant configuration is valid:"
-        echo "   org=${{ inputs.dashboard_org_slug }}, app=${{ inputs.dashboard_app_slug }}, repo=${{ inputs.dashboard_repo_slug }}"
-
-    - name: Compute tenant data root
-      id: tenant_root
-      shell: bash
-      run: |
-        set -euo pipefail
-
-        DATA_ROOT="data"
-
-        # 1) Primarily use action inputs in single-tenant mode
-        if [ "${{ inputs.dashboard_mode }}" = "single-tenant" ] && \
-           [ -n "${{ inputs.dashboard_org_slug }}" ] && \
-           [ -n "${{ inputs.dashboard_app_slug }}" ] && \
-           [ -n "${{ inputs.dashboard_repo_slug }}" ]; then
-          DATA_ROOT="data/${{ inputs.dashboard_org_slug }}/${{ inputs.dashboard_app_slug }}/${{ inputs.dashboard_repo_slug }}"
-        else
-          # 2) Fallback: read defaults.json if it exists
-          if [ -f "${{ inputs.pages_root }}/data/defaults.json" ]; then
-            MODE=$(jq -r '.mode // empty' "${{ inputs.pages_root }}/data/defaults.json")
-            if [ "$MODE" = "single-tenant" ]; then
-              ORG=$(jq -r '.defaultOrg // empty' "${{ inputs.pages_root }}/data/defaults.json")
-              APP=$(jq -r '.defaultApp // empty' "${{ inputs.pages_root }}/data/defaults.json")
-              REPO=$(jq -r '.defaultRepo // empty' "${{ inputs.pages_root }}/data/defaults.json")
-              if [ -n "$ORG" ] && [ -n "$APP" ] && [ -n "$REPO" ]; then
-                DATA_ROOT="data/$ORG/$APP/$REPO"
-              fi
-            fi
-          fi
+        if [ -z "${{ github.repository }}" ]; then
+          echo "❌ ERROR: github.repository is empty"
+          echo "   This should be automatically provided by GitHub Actions."
+          exit 1
         fi
 
-        echo "Tenant DATA_ROOT=$DATA_ROOT"
-        echo "data_root=$DATA_ROOT" >> "$GITHUB_OUTPUT"
+        echo "✅ GitHub context is valid:"
+        echo "   Owner: ${{ github.repository_owner }}"
+        echo "   Repository: ${{ github.repository }}"
 
 
     - name: Setup JBang
@@ -270,7 +262,6 @@ runs:
         set -euo pipefail
 
         PAGES_ROOT="${{ inputs.pages_root }}"
-        DATA_ROOT="${{ steps.tenant_root.outputs.data_root }}"
         HISTORY_ARCHIVE="/tmp/scan-history-artifact/scan-history.tar.gz"
 
         if [ -f "$HISTORY_ARCHIVE" ]; then
@@ -278,71 +269,18 @@ runs:
           mkdir -p "$PAGES_ROOT"
           tar -xzf "$HISTORY_ARCHIVE" -C "$PAGES_ROOT" 2>/dev/null || echo "⚠️  Archive extraction had warnings (may be legacy format)"
 
-          mkdir -p "$PAGES_ROOT/$DATA_ROOT/runs" "$PAGES_ROOT/$DATA_ROOT/hist" "$PAGES_ROOT/$DATA_ROOT/channels"
-
-          # Count existing scans within this tenant
-          if [ -d "$PAGES_ROOT/$DATA_ROOT/runs" ]; then
-            TOTAL_SCANS=$(find "$PAGES_ROOT/$DATA_ROOT/runs" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
-            CHANNELS=$(find "$PAGES_ROOT/$DATA_ROOT/runs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-            echo "   ✅ Restored $TOTAL_SCANS runs across $CHANNELS channels for this tenant"
-          fi
-          if [ -f "$PAGES_ROOT/$DATA_ROOT/hist/scan-history.json" ]; then
-            echo "   ✅ Restored persistent scan history JSON (v2) for this tenant"
+          # Count existing scans (tenant UUID will be resolved by Java code)
+          if [ -d "$PAGES_ROOT/data" ]; then
+            TOTAL_SCANS=$(find "$PAGES_ROOT/data" -path "*/runs/*/*" -type d 2>/dev/null | wc -l)
+            TENANTS=$(find "$PAGES_ROOT/data" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+            echo "   ✅ Restored $TOTAL_SCANS runs across $TENANTS tenant(s)"
           fi
         else
-          echo "ℹ️  No existing scan data found - starting fresh for this tenant"
-          mkdir -p "$PAGES_ROOT/$DATA_ROOT/runs/${{ inputs.channel }}"
-          mkdir -p "$PAGES_ROOT/$DATA_ROOT/hist"
-          mkdir -p "$PAGES_ROOT/$DATA_ROOT/channels"
+          echo "ℹ️  No existing scan data found - starting fresh"
+          mkdir -p "$PAGES_ROOT/data"
         fi
 
 
-    - name: Apply retention policy
-      if: ${{ inputs.retention_keep != '0' }}
-      shell: bash
-      run: |
-        set -euo pipefail
-
-        CHANNEL="${{ inputs.channel }}"
-        KEEP="${{ inputs.retention_keep }}"
-        PAGES_ROOT="${{ inputs.pages_root }}"
-        DATA_ROOT="${{ steps.tenant_root.outputs.data_root }}"
-        CHANNEL_PATH="$PAGES_ROOT/$DATA_ROOT/runs/$CHANNEL"
-        NEW_SCAN="${{ inputs.metadata_timestamp }}"
-
-        echo "🧹 Applying retention policy for tenant:"
-        echo "   data_root=$DATA_ROOT, channel=$CHANNEL (keep=$KEEP)"
-
-        if [ ! -d "$CHANNEL_PATH" ]; then
-          echo "   ⏭️  No existing runs for this channel - retention not needed"
-          exit 0
-        fi
-
-        mapfile -t scans < <(find "$CHANNEL_PATH" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -r)
-
-        scans=("$NEW_SCAN" "${scans[@]}")
-        mapfile -t scans < <(printf '%s\n' "${scans[@]}" | sort -u -r)
-
-        total=${#scans[@]}
-        echo "   Total runs (including new): $total"
-        echo "   Retention limit: $KEEP"
-
-        if [ "$total" -le "$KEEP" ]; then
-          echo "   ✅ No cleanup needed (total=$total, keep=$KEEP)"
-          exit 0
-        fi
-
-        deleted=0
-        for ((i=KEEP; i<total; i++)); do
-          scan="${scans[$i]}"
-          if [ "$scan" != "$NEW_SCAN" ] && [ -d "$CHANNEL_PATH/$scan" ]; then
-            echo "   🗑️  Deleting old run: $scan"
-            rm -rf "$CHANNEL_PATH/$scan"
-            deleted=$((deleted + 1))
-          fi
-        done
-
-        echo "   ✅ Deleted $deleted old runs, keeping $KEEP newest"
 
 
     - name: Build Dashboard
@@ -358,6 +296,9 @@ runs:
 
     - name: Build GitHub Pages
       shell: bash
+      env:
+        GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
         set -euo pipefail
 
@@ -370,9 +311,8 @@ runs:
           "${{ inputs.channel }}" \
           "${{ steps.metadata.outputs.meta_json }}" \
           "/tmp/dashboard-build" \
-          "${{ inputs.dashboard_org_slug }}" \
-          "${{ inputs.dashboard_app_slug }}" \
-          "${{ inputs.dashboard_repo_slug }}"
+          "${{ inputs.dashboard_display_name }}" \
+          "${{ inputs.dashboard_org_display_name }}"
 
     - name: Archive scan history
       shell: bash
@@ -380,37 +320,22 @@ runs:
         set -euo pipefail
 
         PAGES_ROOT="${{ inputs.pages_root }}"
-        DATA_ROOT="${{ steps.tenant_root.outputs.data_root }}"
         ARCHIVE_DIR="/tmp/scan-history-output"
 
-        echo "📦 Archiving scan data for tenant root '$DATA_ROOT' ..."
+        echo "📦 Archiving scan data..."
 
         mkdir -p "$ARCHIVE_DIR"
 
-        ITEMS=()
-        if [ -d "$PAGES_ROOT/$DATA_ROOT/runs" ]; then
-          ITEMS+=("$DATA_ROOT/runs")
-        fi
-        if [ -d "$PAGES_ROOT/$DATA_ROOT/channels" ]; then
-          ITEMS+=("$DATA_ROOT/channels")
-        fi
-        if [ -f "$PAGES_ROOT/$DATA_ROOT/hist/scan-history.json" ]; then
-          ITEMS+=("$DATA_ROOT/hist")
-        fi
-
-        if [ ${#ITEMS[@]} -eq 0 ]; then
-          echo "   ⚠️  Nothing to archive yet for this tenant"
+        # Archive entire /data directory (contains all tenant UUIDs)
+        if [ -d "$PAGES_ROOT/data" ]; then
+          tar -czf "$ARCHIVE_DIR/scan-history.tar.gz" -C "$PAGES_ROOT" data
+          SIZE=$(du -h "$ARCHIVE_DIR/scan-history.tar.gz" | cut -f1)
+          RUN_COUNT=$(find "$PAGES_ROOT/data" -path "*/runs/*/*" -type d 2>/dev/null | wc -l)
+          TENANTS=$(find "$PAGES_ROOT/data" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+          echo "   ✅ Archived $RUN_COUNT runs across $TENANTS tenant(s) ($SIZE)"
+        else
+          echo "   ⚠️  No data directory found"
           tar -czf "$ARCHIVE_DIR/scan-history.tar.gz" -T /dev/null
-        else
-          tar -czf "$ARCHIVE_DIR/scan-history.tar.gz" -C "$PAGES_ROOT" "${ITEMS[@]}"
-        fi
-
-        SIZE=$(du -h "$ARCHIVE_DIR/scan-history.tar.gz" | cut -f1)
-        if [ -d "$PAGES_ROOT/$DATA_ROOT/runs" ]; then
-          RUN_COUNT=$(find "$PAGES_ROOT/$DATA_ROOT/runs" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
-          echo "   ✅ Archived $RUN_COUNT runs ($SIZE) with persistent history (v2) for this tenant"
-        else
-          echo "   ✅ Archived persistent history ($SIZE) for this tenant"
         fi
 
 
@@ -464,27 +389,6 @@ runs:
 
         echo "   ✅ Deleted $DELETED old artifact(s)"
 
-    - name: Write dashboard defaults.json
-      if: ${{ inputs.dashboard_mode != '' }}
-      shell: bash
-      run: |
-        set -euo pipefail
-
-        PAGES_ROOT="${{ inputs.pages_root }}"
-        DATA_DIR="$PAGES_ROOT/data"
-        mkdir -p "$DATA_DIR"
-
-        cat > "$DATA_DIR/defaults.json" << EOF
-        {
-          "mode": "${{ inputs.dashboard_mode }}",
-          "defaultOrg": "${{ inputs.dashboard_org_slug }}",
-          "defaultApp": "${{ inputs.dashboard_app_slug }}",
-          "defaultRepo": "${{ inputs.dashboard_repo_slug }}"
-        }
-        EOF
-
-        echo "✅ Wrote $DATA_DIR/defaults.json:"
-        cat "$DATA_DIR/defaults.json"
 
 
     - name: Setup Pages

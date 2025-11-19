@@ -16,19 +16,30 @@ import {
 import { ScanOverviewPage } from "../../../../features/scans/components/ScanOverviewPage";
 import { ValidationErrorDisplay } from "../../../../features/scans/components/ValidationErrorDisplay";
 import { MissingTenantParamsError } from "../../../../errors/MissingTenantParamsError";
+import { loadTenantRegistry } from "../../../../lib/tenantRegistry";
 
 type LoaderData = {
     result: ScanHistoryLoadResult;
 };
 
 export async function loader(args: LoaderFunctionArgs): Promise<LoaderData> {
-    const { orgSlug, appSlug, repoSlug } = args.params;
+    const { orgSlug, repoSlug } = args.params;
+
+    // Load tenant registry
+    const registry = await loadTenantRegistry();
+
+    // In the GUID-based system, orgSlug is the GitHub org and repoSlug is the GitHub repo
+    if (!orgSlug || !repoSlug) {
+        throw new MissingTenantParamsError(
+            `GitHub org and repo are required in URL: /org/<org>/app/<app>/repo/<repo>`
+        );
+    }
 
     try {
         const result = await fetchScanHistory({
-            orgSlug,
-            appSlug,
-            repoSlug,
+            githubOrg: orgSlug,
+            githubRepo: repoSlug,
+            registry,
         });
 
         if (!result.success) {
