@@ -18,13 +18,13 @@ on:
 
       # === ARTIFACT NAMES ===
       filesystem_artifact_name:
-        description: 'Filesystem artifact name part (short name, e.g., "filesystem")'
+        description: 'Filesystem artifact name part (short name, e.g., "filesystem_for_scan")'
         type: string
         required: false
         default: 'filesystem_for_scan'
 
       docker_image_artifact_name:
-        description: 'Docker image artifact name part (short name, e.g., "docker_image")'
+        description: 'Docker image artifact name part (short name, e.g., "docker_image_for_scan")'
         type: string
         required: false
         default: 'docker_image_for_scan'
@@ -230,7 +230,7 @@ jobs:
       # === RUN TRIVY SCANS ===
       - name: Run Trivy scans
         id: trivy
-        uses: Avarko/gh-security-toolkit/actions/scanner/trivy@main
+        uses: Avarko/gh-security-toolkit/actions/scanner/trivy@reactui
         with:
           filesystem_path: ${{ steps.download_fs.outcome == 'success' && format('{0}/filesystem', steps.setup.outputs.work_dir) || '' }}
           docker_image_tar: ${{ steps.download_image.outcome == 'success' && steps.find_tar.outputs.tar_path || '' }}
@@ -319,8 +319,8 @@ jobs:
           app_issues_url: ${{ inputs.app_issues_url }}
           ci_job_name: ${{ github.workflow }}
           ci_job_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          trivy_version: ${{ steps.trivy.outputs.version }}
-          semgrep_version: ${{ steps.semgrep.outputs.version }}
+          trivy_version: ${{ steps.trivy.outputs.trivy_version }}
+          semgrep_version: ${{ steps.semgrep.outputs.semgrep_version }}
           toolkit_version: ${{ inputs.toolkit_version }}
           dashboard_mode: ${{ inputs.dashboard_mode }}
           dashboard_org_slug: ${{ inputs.dashboard_org_slug }}

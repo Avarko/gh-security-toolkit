@@ -2,7 +2,7 @@ name: "Upload Docker image for security scan"
 description: "Saves and uploads Docker image as tar file for security scanning. Artifact name is managed internally."
 inputs:
   artifact_name_part:
-    description: "Short artifact name part (e.g., 'docker_image'). Will be prefixed with '__gh_security_toolkit__' and suffixed with '__'"
+    description: "Short artifact name part (e.g., 'docker_image_for_scan'). Will be prefixed with '__gh_security_toolkit__' and suffixed with '__'"
     required: true
   image-name:
     description: "Docker image name (with tag) to save, e.g., 'myapp:latest'"
