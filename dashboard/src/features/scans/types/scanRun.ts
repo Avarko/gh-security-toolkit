@@ -11,20 +11,9 @@ const scanRunMetadataInnerSchema = z.object({
     repository: z.string().optional().default(""),
 });
 
-const footerMetadataSchema = z.object({
-    ci_job_name: z.string().optional(),
-    ci_job_url: z.string().optional(),
-    trivy_version: z.string().optional(),
-    semgrep_version: z.string().optional(),
-    toolkit_version: z.string().optional(),
-    app_docs_url: z.string().optional(),
-    app_issues_url: z.string().optional(),
-}).optional();
-
 export const scanRunMetadataSchema = z.object({
     timestamp: z.string(),
-    metadata: scanRunMetadataInnerSchema,
-    footer: footerMetadataSchema,
+    metadata: scanRunMetadataInnerSchema
 });
 
 export type ScanRunMetadata = z.infer<typeof scanRunMetadataSchema>;

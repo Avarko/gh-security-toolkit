@@ -31,36 +31,6 @@ inputs:
     required: false
     default: ""
 
-  # Footer metadata
-  app_docs_url:
-    description: "URL to application documentation"
-    required: false
-    default: ""
-  app_issues_url:
-    description: "URL to application issue tracker"
-    required: false
-    default: ""
-  ci_job_name:
-    description: "CI job name (e.g., 'security-scan')"
-    required: false
-    default: ""
-  ci_job_url:
-    description: "URL to CI job run"
-    required: false
-    default: ""
-  trivy_version:
-    description: "Trivy version"
-    required: false
-    default: ""
-  semgrep_version:
-    description: "Semgrep version"
-    required: false
-    default: ""
-  toolkit_version:
-    description: "gh-security-toolkit version"
-    required: false
-    default: ""
-
   # Pages configuration
   channel:
     description: "Channel name for organizing scans (e.g., 'nightly-master', 'pr-123')"
@@ -244,23 +214,13 @@ runs:
           --arg ci_job_url "${{ inputs.ci_job_url }}" \
           --arg trivy_version "${{ inputs.trivy_version }}" \
           --arg semgrep_version "${{ inputs.semgrep_version }}" \
-          --arg toolkit_version "${{ inputs.toolkit_version }}" \
           '{
             timestamp: $ts,
             branch: $branch,
             repository: $repo,
             commit_sha: $sha,
             image_name: $image,
-            scan_run_id: $scan_id,
-            footer: {
-              app_docs_url: $app_docs_url,
-              app_issues_url: $app_issues_url,
-              ci_job_name: $ci_job_name,
-              ci_job_url: $ci_job_url,
-              trivy_version: $trivy_version,
-              semgrep_version: $semgrep_version,
-              toolkit_version: $toolkit_version
-            }
+            scan_run_id: $scan_id
           }' > "$META_FILE"
         echo "meta_json=$META_FILE" >> "$GITHUB_OUTPUT"
 
