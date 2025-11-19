@@ -6,7 +6,7 @@ Builds the React+Remix security dashboard SPA from `dashboard/` directory.
 
 ```yaml
 - name: Build Dashboard
-  uses: ./.github/workflows/actions/dashboard
+  uses: Avarko/gh-security-toolkit/actions/builder/dashboard@main
   with:
     node-version: '24'  # Optional, defaults to 24
 ```

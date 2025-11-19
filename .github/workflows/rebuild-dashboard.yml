@@ -59,8 +59,9 @@ jobs:
 
       - name: Publish to GitHub Pages
         id: pages
-        uses: ./actions/publisher/github-pages
+        uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@reactui
         with:
+          github_token: ${{ github.token }}
           outdir: ${{ steps.setup.outputs.output_dir }}
           metadata_timestamp: ${{ steps.ts.outputs.ts }}
           metadata_branch: ${{ github.ref_name }}
