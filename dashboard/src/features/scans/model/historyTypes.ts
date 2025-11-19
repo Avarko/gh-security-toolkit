@@ -40,8 +40,11 @@ const semgrepResultsSchema = z.object({
     totalInfos: vulnerabilityCountSchema,
 }).strict().optional().catch(undefined);
 
-// ISO 8601 timestamp validation
-// Supports both standard ISO (2025-10-28T02:00:00Z) and custom format (2025-10-28-020000Z)
+// Timestamp validation
+// Supports multiple formats:
+// - ISO 8601: 2025-10-28T02:00:00Z
+// - Compact UTC: 20251028-020000 (YYYYMMDD-HHMMSS)
+// - Legacy: 2025-10-28-020000Z
 const timestampSchema = z.string()
     .max(MAX_STRING_LENGTH)
     .refine(
@@ -50,9 +53,14 @@ const timestampSchema = z.string()
             if (!isNaN(Date.parse(val))) {
                 return true;
             }
-            // Try custom format: YYYY-MM-DD-HHMMSSZ
-            const customFormat = /^\d{4}-\d{2}-\d{2}-\d{6}Z$/;
-            return customFormat.test(val);
+            // Try compact UTC format: YYYYMMDD-HHMMSS
+            const compactFormat = /^\d{8}-\d{6}$/;
+            if (compactFormat.test(val)) {
+                return true;
+            }
+            // Try legacy format: YYYY-MM-DD-HHMMSSZ
+            const legacyFormat = /^\d{4}-\d{2}-\d{2}-\d{6}Z$/;
+            return legacyFormat.test(val);
         },
         { message: "Invalid timestamp format" }
     );
