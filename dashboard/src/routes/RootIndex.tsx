@@ -2,48 +2,33 @@
 import type { LoaderFunctionArgs } from "react-router-dom";
 import { redirect, useLoaderData } from "react-router-dom";
 import { Box, Typography } from "@mui/material";
-
-type DefaultsConfig = {
-    mode?: "single-tenant" | "multi-tenant";
-    defaultOrg?: string;
-    defaultApp?: string;
-    defaultRepo?: string;
-};
+import { loadTenantRegistry } from "../lib/tenantRegistry";
 
 type LoaderData =
-    | { mode: "multi-tenant" }  // If no defaults.json → pretty 404
-    | { mode: "single-tenant" }; // never reaches component because of redirect
+    | { mode: "multi-tenant" }  // Multiple or no tenants → show 404
+    | { mode: "single-tenant" }; // Never reaches component because of redirect
 
 export async function loader(_args: LoaderFunctionArgs): Promise<Response | LoaderData> {
     try {
-        const res = await fetch("/data/defaults.json", {
-            // If you want, you can disable caching:
-            // cache: "no-store",
-        });
+        // Load tenant registry
+        const registry = await loadTenantRegistry();
 
-        if (!res.ok) {
-            // No defaults.json → multi-tenant
-            return { mode: "multi-tenant" };
+        // Single-tenant mode: exactly one tenant → redirect
+        if (registry.tenants.length === 1) {
+            const tenant = registry.tenants[0];
+
+            if (tenant) {
+                // Construct URL using GitHub org/repo (simplified routing without /app/)
+                const target = `/org/${tenant.github_org}/repo/${tenant.github_repo}/security-scans`;
+
+                return redirect(target);
+            }
         }
 
-        const json = (await res.json()) as DefaultsConfig;
-
-        if (!json.defaultOrg || !json.defaultApp) {
-            console.error("Invalid defaults.json, falling back to multi-tenant mode");
-            return { mode: "multi-tenant" };
-        }
-
-        const { defaultOrg, defaultApp, defaultRepo } = json;
-
-        const base = defaultRepo
-            ? `/org/${defaultOrg}/app/${defaultApp}/repo/${defaultRepo}`
-            : `/org/${defaultOrg}/app/${defaultApp}`;
-
-        const target = `${base}/security-scans`;
-
-        return redirect(target);
+        // Multi-tenant mode or no tenants → show 404
+        return { mode: "multi-tenant" };
     } catch (error) {
-        console.error("Error loading defaults.json, falling back to multi-tenant mode:", error);
+        console.error("Error loading tenant registry:", error);
         return { mode: "multi-tenant" };
     }
 }
@@ -69,7 +54,7 @@ export default function RootIndex() {
                 <Typography variant="body2" sx={{ mt: 1 }}>
                     Open a direct organization-specific address, for example:
                     <br />
-                    <code>/org/&lt;orgSlug&gt;/app/&lt;appSlug&gt;</code>
+                    <code>/org/&lt;github-org&gt;/repo/&lt;github-repo&gt;</code>
                 </Typography>
             </Box>
         );

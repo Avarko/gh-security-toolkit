@@ -31,7 +31,7 @@ export async function loader(args: LoaderFunctionArgs): Promise<LoaderData> {
     // In the GUID-based system, orgSlug is the GitHub org and repoSlug is the GitHub repo
     if (!orgSlug || !repoSlug) {
         throw new MissingTenantParamsError(
-            `GitHub org and repo are required in URL: /org/<org>/app/<app>/repo/<repo>`
+            `GitHub org and repo are required in URL: /org/<org>/repo/<repo>`
         );
     }
 
