@@ -3,21 +3,26 @@
  */
 
 import type { ScanMetadata } from "../model/historyTypes";
+import { parseTimestamp } from "../../../lib/formatTimestamp";
 
 export function buildChannelChartOption(scans: ScanMetadata[]) {
-    const sortedScans = [...scans].sort(
-        (a, b) =>
-            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-    );
+    const sortedScans = [...scans].sort((a, b) => {
+        const dateA = parseTimestamp(a.timestamp);
+        const dateB = parseTimestamp(b.timestamp);
+        if (!dateA || !dateB) return 0;
+        return dateA.getTime() - dateB.getTime();
+    });
 
     // Format timestamp as 'DD/MM/YYYY, HH:mm:ss' for tooltip
     function formatDateTime(ts: string) {
-        const d = new Date(ts);
+        const d = parseTimestamp(ts);
+        if (!d) return "Invalid Date";
         return d.toLocaleDateString() + ", " + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
     // Format date only for x-axis
     function formatDate(ts: string) {
-        const d = new Date(ts);
+        const d = parseTimestamp(ts);
+        if (!d) return "Invalid Date";
         return d.toLocaleDateString();
     }
 
