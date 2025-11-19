@@ -43,21 +43,18 @@ const NAV_ITEMS: NavItem[] = [
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
     const location = useLocation();
-    const { orgSlug, appSlug, repoSlug } = useParams<{
+    const { orgSlug, repoSlug } = useParams<{
         orgSlug?: string;
-        appSlug?: string;
         repoSlug?: string;
     }>();
 
-    const baseAppPath =
-        orgSlug && appSlug
-            ? repoSlug
-                ? `/org/${orgSlug}/app/${appSlug}/repo/${repoSlug}`
-                : `/org/${orgSlug}/app/${appSlug}`
+    const basePath =
+        orgSlug && repoSlug
+            ? `/org/${orgSlug}/repo/${repoSlug}`
             : null;
 
-    const securityScansPath = baseAppPath
-        ? `${baseAppPath}/security-scans`
+    const securityScansPath = basePath
+        ? `${basePath}/security-scans`
         : "/"; // fallback
     return (
         <Box sx={{ display: "flex" }}>
@@ -72,8 +69,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             >
                 <Toolbar>
                     <Typography variant="h6" noWrap component="div">
-                        {orgSlug && appSlug
-                            ? `${orgSlug} / ${appSlug} – Security Dashboard`
+                        {orgSlug && repoSlug
+                            ? `${orgSlug} / ${repoSlug} – Security Dashboard`
                             : "Security Scan Dashboard"}
                     </Typography>
                 </Toolbar>

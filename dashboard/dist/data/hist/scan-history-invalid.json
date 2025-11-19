@@ -1,0 +1,27 @@
+{
+    "version": "1.0",
+    "scans": [
+        {
+            "timestamp": "not-a-valid-timestamp",
+            "channel": "test@invalid!",
+            "branch": "main",
+            "commit": "abc123",
+            "trivyFsResults": {
+                "totalVulnerabilities": {
+                    "CRITICAL": "not-a-number"
+                }
+            }
+        },
+        {
+            "timestamp": "2024-01-15-120000Z",
+            "channel": "prod",
+            "branch": "../../etc/passwd",
+            "commit": "1234567890123456789012345678901234567890",
+            "semgrepResults": {
+                "totalErrors": -5,
+                "totalWarnings": 99999999999999999999,
+                "totalInfos": "invalid"
+            }
+        }
+    ]
+}

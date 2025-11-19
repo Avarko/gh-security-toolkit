@@ -4,8 +4,8 @@ export class MissingTenantParamsError extends Error {
     constructor(message?: string) {
         super(
             message ??
-            "Required tenant parameters (orgSlug and appSlug) are missing. " +
-            "Multi-tenant data access must always be scoped to an organization and application."
+            "Required tenant parameters (orgSlug and repoSlug) are missing. " +
+            "Multi-tenant data access must always be scoped to an organization and repository."
         );
         this.name = "MissingTenantParamsError";
     }

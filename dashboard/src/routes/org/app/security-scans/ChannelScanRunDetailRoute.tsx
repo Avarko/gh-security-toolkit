@@ -4,9 +4,8 @@
  * Scan run detail route.
  * Loads a single scan run (metadata + Trivy + Semgrep) and displays it.
  *
- * Route path (either org-app- or repo-scoped):
- * /org/:orgSlug/app/:appSlug/security-scans/channel/:channel/run/:timestamp
- * /org/:orgSlug/app/:appSlug/repo/:repoSlug/security-scans/channel/:channel/run/:timestamp
+ * Route path:
+ * /org/:orgSlug/repo/:repoSlug/security-scans/channel/:channel/run/:timestamp
  */
 
 import type { LoaderFunctionArgs } from "react-router-dom";
@@ -43,7 +42,7 @@ export async function loader(args: LoaderFunctionArgs): Promise<LoaderData> {
     // In the GUID-based system, orgSlug is the GitHub org and repoSlug is the GitHub repo
     if (!orgSlug || !repoSlug) {
         throw new MissingTenantParamsError(
-            `GitHub org and repo are required in URL: /org/<org>/app/<app>/repo/<repo>`
+            `GitHub org and repo are required in URL: /org/<org>/repo/<repo>`
         );
     }
 

@@ -4,9 +4,8 @@
  * Channel-specific route.
  * Loads all scans for a single channel and displays them in ChannelScansPage.
  *
- * Route path (either org-app- or repo-scoped):
- * /org/:orgSlug/app/:appSlug/security-scans/channel/:channel
- * /org/:orgSlug/app/:appSlug/repo/:repoSlug/security-scans/channel/:channel
+ * Route path:
+ * /org/:orgSlug/repo/:repoSlug/security-scans/channel/:channel
  */
 
 import type { LoaderFunctionArgs } from "react-router-dom";
@@ -33,7 +32,7 @@ export async function loader(args: LoaderFunctionArgs): Promise<LoaderData> {
     // In the GUID-based system, orgSlug is the GitHub org and repoSlug is the GitHub repo
     if (!orgSlug || !repoSlug) {
         throw new MissingTenantParamsError(
-            `GitHub org and repo are required in URL: /org/<org>/app/<app>/repo/<repo>`
+            `GitHub org and repo are required in URL: /org/<org>/repo/<repo>`
         );
     }
 

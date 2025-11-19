@@ -8,9 +8,6 @@ import RootIndex, {
     loader as rootIndexLoader,
 } from "./routes/RootIndex";
 
-import { OrgLayout } from "./layouts/OrgLayout";
-import AppOverviewPage from "./routes/org/app/AppOverviewPage";
-import OrgOverviewPage from "./routes/org/OrgOverviewPage";
 import SecurityScansIndexRoute, {
     loader as securityScansIndexLoader,
 } from "./routes/org/app/security-scans/SecurityScansIndexRoute";
@@ -42,35 +39,30 @@ export const router = createBrowserRouter([
                 path: "org/:orgSlug",
                 children: [
                     {
-                        path: "app/:appSlug",
+                        path: "repo/:repoSlug",
                         children: [
                             {
-                                path: "repo/:repoSlug",
+                                path: "security-scans",
                                 children: [
                                     {
-                                        path: "security-scans",
-                                        children: [
-                                            {
-                                                index: true,
-                                                element: <SecurityScansIndexRoute />,
-                                                loader: securityScansIndexLoader,
-                                            },
-                                            {
-                                                path: "channel/:channel",
-                                                element: <ChannelScansRoute />,
-                                                loader: channelScansLoader,
-                                            },
-                                            {
-                                                path: "channel/:channel/run/:timestamp",
-                                                element: <ChannelScanRunDetailRoute />,
-                                                loader: channelScanRunDetailLoader,
-                                                errorElement: <ScanRunDetailErrorPage />,
-                                            },
-                                        ],
+                                        index: true,
+                                        element: <SecurityScansIndexRoute />,
+                                        loader: securityScansIndexLoader,
                                     },
-                                    // TODO add later test-reports, cloud-findings etc.
+                                    {
+                                        path: "channel/:channel",
+                                        element: <ChannelScansRoute />,
+                                        loader: channelScansLoader,
+                                    },
+                                    {
+                                        path: "channel/:channel/run/:timestamp",
+                                        element: <ChannelScanRunDetailRoute />,
+                                        loader: channelScanRunDetailLoader,
+                                        errorElement: <ScanRunDetailErrorPage />,
+                                    },
                                 ],
                             },
+                            // TODO add later test-reports, cloud-findings etc.
                         ],
                     },
                 ],

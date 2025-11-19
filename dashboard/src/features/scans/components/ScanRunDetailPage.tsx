@@ -43,21 +43,18 @@ export function ScanRunDetailPage({
     semgrepData,
     dataBasePath,
 }: ScanRunDetailPageProps) {
-    const { orgSlug, appSlug, repoSlug } = useParams<{
+    const { orgSlug, repoSlug } = useParams<{
         orgSlug: string;
-        appSlug: string;
-        repoSlug?: string;
+        repoSlug: string;
     }>();
 
-    const baseAppPath =
-        orgSlug && appSlug
-            ? repoSlug
-                ? `/org/${orgSlug}/app/${appSlug}/repo/${repoSlug}`
-                : `/org/${orgSlug}/app/${appSlug}`
+    const basePath =
+        orgSlug && repoSlug
+            ? `/org/${orgSlug}/repo/${repoSlug}`
             : "";
 
-    const securityScansBasePath = baseAppPath
-        ? `${baseAppPath}/security-scans`
+    const securityScansBasePath = basePath
+        ? `${basePath}/security-scans`
         : "/";
 
     const channelPath = `${securityScansBasePath}/channel/${channel}`;
