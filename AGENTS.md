@@ -144,13 +144,24 @@ Every `actions/deploy-pages@v4` call **replaces the entire site**.
 
 We use **GitHub Actions Artifacts** as a "database" to maintain state between workflow runs:
 
-#### Artifact 1: `__gh_security_toolkit__scan_history_<channel>`
+#### Artifact 1: `__gh_security_toolkit__multi-tenant-config`
+
+- **Purpose**: Maintains tenant UUID mappings (CRITICAL for GUID persistence!)
+- **Contains**: `config/tenant-registry.json`
+- **Size**: ~1 KB (tiny, config-only)
+- **Retention**: 90 days
+- **Cleanup**: Automatic - keeps only 1 newest artifact globally
+- **Scope**: Global (shared across all channels)
+- **Why needed**: Ensures same GitHub org/repo always gets the same tenant UUID
+
+#### Artifact 2: `__gh_security_toolkit__scan_history_<channel>`
 
 - **Purpose**: Carries scan data forward between workflow runs
-- **Contains**: `data/<org>/<app>/<repo>/runs/`, `hist/scan-history.json`
+- **Contains**: `data/<tenant-uuid>/runs/`, `data/<tenant-uuid>/hist/scan-history.json`
 - **Size**: ~400 KB (minimal, data-only)
 - **Retention**: 90 days
 - **Cleanup**: Automatic - deletes old artifacts after successful upload (only 1 exists per channel)
+- **Scope**: Per-channel
 - **Why needed**: GitHub Pages cannot be "downloaded" for incremental updates
 
 **Important**: `upload-artifact@v4`'s `overwrite: true` only works **within a single workflow run**, NOT across runs. Therefore, we implement explicit cleanup using GitHub API after each upload to ensure only the newest artifact exists.

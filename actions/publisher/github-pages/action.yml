@@ -216,6 +216,71 @@ runs:
           }' > "$META_FILE"
         echo "meta_json=$META_FILE" >> "$GITHUB_OUTPUT"
 
+    - name: Download multi-tenant config artifact
+      continue-on-error: true
+      id: download_config
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        set -euo pipefail
+
+        ARTIFACT_NAME="__gh_security_toolkit__multi-tenant-config"
+        REPO="${{ github.repository }}"
+        OUTPUT_DIR="/tmp/multi-tenant-config-artifact"
+
+        echo "==> Searching for artifact: $ARTIFACT_NAME"
+
+        # Find the most recent artifact with this name (sorted by created_at DESC)
+        ARTIFACT_URL=$(gh api \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "/repos/$REPO/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" \
+          --jq '.artifacts | sort_by(.created_at) | reverse | .[0].archive_download_url // empty')
+
+        if [ -z "$ARTIFACT_URL" ]; then
+          echo "==> No artifact found with name: $ARTIFACT_NAME"
+          echo "   ℹ️  This is expected on first run"
+          echo "found=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "==> Downloading artifact from: $ARTIFACT_URL"
+        mkdir -p "$OUTPUT_DIR"
+
+        # Download and extract artifact
+        gh api "$ARTIFACT_URL" > "$OUTPUT_DIR/artifact.zip"
+        cd "$OUTPUT_DIR"
+        unzip -q artifact.zip
+        rm artifact.zip
+
+        echo "==> Artifact downloaded successfully"
+        echo "found=true" >> "$GITHUB_OUTPUT"
+
+    - name: Restore multi-tenant config
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        PAGES_ROOT="${{ inputs.pages_root }}"
+        CONFIG_ARCHIVE="/tmp/multi-tenant-config-artifact/multi-tenant-config.tar.gz"
+
+        if [ -f "$CONFIG_ARCHIVE" ]; then
+          echo "📦 Restoring tenant registry from artifact..."
+          mkdir -p "$PAGES_ROOT"
+          tar -xzf "$CONFIG_ARCHIVE" -C "$PAGES_ROOT" 2>/dev/null || echo "⚠️  Archive extraction had warnings"
+
+          # Verify restoration
+          if [ -f "$PAGES_ROOT/config/tenant-registry.json" ]; then
+            TENANT_COUNT=$(jq '.tenants | length' "$PAGES_ROOT/config/tenant-registry.json")
+            echo "   ✅ Restored tenant registry with $TENANT_COUNT tenant(s)"
+            echo "   🔑 GUID persistence enabled"
+          fi
+        else
+          echo "ℹ️  No existing tenant registry found - will create new on first run"
+          mkdir -p "$PAGES_ROOT/config"
+        fi
+
     - name: Download scan history artifact
       continue-on-error: true
       id: download_history
@@ -389,6 +454,79 @@ runs:
 
         echo "   ✅ Deleted $DELETED old artifact(s)"
 
+
+    - name: Archive multi-tenant config
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        PAGES_ROOT="${{ inputs.pages_root }}"
+        ARCHIVE_DIR="/tmp/multi-tenant-config-output"
+
+        echo "📦 Archiving multi-tenant configuration..."
+
+        mkdir -p "$ARCHIVE_DIR"
+
+        # Archive tenant registry (CRITICAL for GUID persistence!)
+        if [ -f "$PAGES_ROOT/config/tenant-registry.json" ]; then
+          tar -czf "$ARCHIVE_DIR/multi-tenant-config.tar.gz" -C "$PAGES_ROOT" config/tenant-registry.json
+          SIZE=$(du -h "$ARCHIVE_DIR/multi-tenant-config.tar.gz" | cut -f1)
+          TENANT_COUNT=$(jq '.tenants | length' "$PAGES_ROOT/config/tenant-registry.json")
+          echo "   ✅ Archived tenant registry with $TENANT_COUNT tenant(s) ($SIZE)"
+        else
+          echo "   ℹ️  No tenant registry found (first run) - creating empty archive"
+          tar -czf "$ARCHIVE_DIR/multi-tenant-config.tar.gz" -T /dev/null
+        fi
+
+    - name: Upload multi-tenant config artifact
+      id: upload_config
+      uses: actions/upload-artifact@v4
+      with:
+        name: __gh_security_toolkit__multi-tenant-config
+        path: /tmp/multi-tenant-config-output/multi-tenant-config.tar.gz
+        retention-days: 90
+        overwrite: true
+
+    - name: Cleanup old multi-tenant config artifacts
+      if: ${{ steps.upload_config.outcome == 'success' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        ARTIFACT_NAME="__gh_security_toolkit__multi-tenant-config"
+        REPO="${{ github.repository }}"
+        CURRENT_ARTIFACT_ID="${{ steps.upload_config.outputs.artifact-id }}"
+
+        echo "🧹 Cleaning up old multi-tenant config artifacts"
+        echo "   Current artifact ID: $CURRENT_ARTIFACT_ID"
+
+        # List all artifacts with this name
+        ARTIFACTS=$(gh api \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2022-11-28" \
+          "/repos/$REPO/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" \
+          --jq '.artifacts[] | select(.id != '$CURRENT_ARTIFACT_ID') | .id')
+
+        if [ -z "$ARTIFACTS" ]; then
+          echo "   ✅ No old artifacts to clean up"
+          exit 0
+        fi
+
+        # Delete old artifacts
+        DELETED=0
+        for ARTIFACT_ID in $ARTIFACTS; do
+          echo "   🗑️  Deleting artifact ID: $ARTIFACT_ID"
+          gh api \
+            --method DELETE \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/$REPO/actions/artifacts/$ARTIFACT_ID" || echo "   ⚠️  Failed to delete artifact $ARTIFACT_ID (may already be deleted)"
+          DELETED=$((DELETED + 1))
+        done
+
+        echo "   ✅ Deleted $DELETED old artifact(s)"
 
 
     - name: Setup Pages
