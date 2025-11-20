@@ -31,38 +31,44 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
         return !s.trivyFsResults && !s.trivyImageResults && !s.semgrepResults;
     }
 
+    const aggregatedData: {
+        critical: number[];
+        high: number[];
+        medium: number[];
+        low: number[];
+        errors: number[];
+        warnings: number[];
+    } = {
+        critical: [],
+        high: [],
+        medium: [],
+        low: [],
+        errors: [],
+        warnings: []
+    };
 
-    // For each series, use null for missing stats
-    const criticalData = sortedScans.map((s) =>
-        isMissingStats(s)
-            ? null
-            : (s.trivyFsResults?.totalVulnerabilities?.CRITICAL || 0) +
-            (s.trivyImageResults?.totalVulnerabilities?.CRITICAL || 0)
-    );
-    const highData = sortedScans.map((s) =>
-        isMissingStats(s)
-            ? null
-            : (s.trivyFsResults?.totalVulnerabilities?.HIGH || 0) +
-            (s.trivyImageResults?.totalVulnerabilities?.HIGH || 0)
-    );
-    const mediumData = sortedScans.map((s) =>
-        isMissingStats(s)
-            ? null
-            : (s.trivyFsResults?.totalVulnerabilities?.MEDIUM || 0) +
-            (s.trivyImageResults?.totalVulnerabilities?.MEDIUM || 0)
-    );
-    const lowData = sortedScans.map((s) =>
-        isMissingStats(s)
-            ? null
-            : (s.trivyFsResults?.totalVulnerabilities?.LOW || 0) +
-            (s.trivyImageResults?.totalVulnerabilities?.LOW || 0)
-    );
-    const errorsData = sortedScans.map((s) =>
-        isMissingStats(s) ? null : s.semgrepResults?.totalErrors || 0
-    );
-    const warningsData = sortedScans.map((s) =>
-        isMissingStats(s) ? null : s.semgrepResults?.totalWarnings || 0
-    );
+    scans.forEach(scan => {
+        const { trivyFsResults, trivyImageResults, semgrepResults } = scan;
+
+        aggregatedData.critical.push(
+            (trivyFsResults?.totalVulnerabilities?.CRITICAL || 0) +
+            (trivyImageResults?.totalVulnerabilities?.CRITICAL || 0)
+        );
+        aggregatedData.high.push(
+            (trivyFsResults?.totalVulnerabilities?.HIGH || 0) +
+            (trivyImageResults?.totalVulnerabilities?.HIGH || 0)
+        );
+        aggregatedData.medium.push(
+            (trivyFsResults?.totalVulnerabilities?.MEDIUM || 0) +
+            (trivyImageResults?.totalVulnerabilities?.MEDIUM || 0)
+        );
+        aggregatedData.low.push(
+            (trivyFsResults?.totalVulnerabilities?.LOW || 0) +
+            (trivyImageResults?.totalVulnerabilities?.LOW || 0)
+        );
+        aggregatedData.errors.push(semgrepResults?.totalErrors || 0);
+        aggregatedData.warnings.push(semgrepResults?.totalWarnings || 0);
+    });
 
     // X-axis labels: show only date
     const xLabels = sortedScans.map((s) => formatDate(s.timestamp));
@@ -131,7 +137,9 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             },
         },
         yAxis: {
-            type: "value",
+            type: "log",
+            logBase: 10,
+            name: "Vulnerabilities",
             axisLine: { lineStyle: { color: "#444" } },
             axisLabel: { color: "#aaa" },
             splitLine: { lineStyle: { color: "#e5e5e5" } },
@@ -140,7 +148,7 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             {
                 name: "Critical",
                 type: "line",
-                data: criticalData,
+                data: aggregatedData.critical,
                 smooth: true,
                 lineStyle: { color: "#cf222e", width: 2 },
                 itemStyle: { color: "#cf222e" },
@@ -149,7 +157,7 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             {
                 name: "High",
                 type: "line",
-                data: highData,
+                data: aggregatedData.high,
                 smooth: true,
                 lineStyle: { color: "#FF6A00", width: 2 },
                 itemStyle: { color: "#FF6A00" },
@@ -157,7 +165,7 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             {
                 name: "Medium",
                 type: "line",
-                data: mediumData,
+                data: aggregatedData.medium,
                 smooth: true,
                 lineStyle: { color: "#FFDE5E", width: 2 },
                 itemStyle: { color: "#FFDE5E" },
@@ -165,7 +173,7 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             {
                 name: "Low",
                 type: "line",
-                data: lowData,
+                data: aggregatedData.low,
                 smooth: true,
                 lineStyle: { color: "#B7B2AA", width: 2 },
                 itemStyle: { color: "#B7B2AA" },
@@ -173,7 +181,7 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             {
                 name: "Errors",
                 type: "line",
-                data: errorsData,
+                data: aggregatedData.errors,
                 smooth: true,
                 lineStyle: { color: "#cf222e", width: 2 },
                 itemStyle: { color: "#cf222e" },
@@ -181,7 +189,7 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             {
                 name: "Warnings",
                 type: "line",
-                data: warningsData,
+                data: aggregatedData.warnings,
                 smooth: true,
                 lineStyle: { color: "#FF6A00", width: 2 },
                 itemStyle: { color: "#FF6A00" },
