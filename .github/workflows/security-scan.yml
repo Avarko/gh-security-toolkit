@@ -79,19 +79,6 @@ on:
         required: false
         default: ''
 
-      # === DASHBOARD CONFIGURATION ===
-      dashboard_display_name:
-        description: 'Optional display name for this tenant in the dashboard (e.g., "VR CIAM Backend")'
-        type: string
-        required: false
-        default: ''
-
-      dashboard_org_display_name:
-        description: 'Optional organization display name in the dashboard (e.g., "VR Group")'
-        type: string
-        required: false
-        default: ''
-
     secrets:
       SLACK_BOT_TOKEN:
         description: 'Slack OAuth token (xoxb-...) for notifications'
@@ -275,5 +262,3 @@ jobs:
           ci_job_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           trivy_version: ${{ steps.trivy.outputs.trivy_version }}
           semgrep_version: ${{ steps.semgrep.outputs.semgrep_version }}
-          dashboard_display_name: ${{ inputs.dashboard_display_name }}
-          dashboard_org_display_name: ${{ inputs.dashboard_org_display_name }}

@@ -12,23 +12,16 @@ inputs:
     description: "Path to Surefire HTML report directory (e.g., target/site/surefire-report)"
     required: false
     default: ""
-  artifact-name:
-    description: "Name of the artifact to upload"
-    required: false
-    default: "test-reports"
   retention-days:
     description: "Number of days to retain the artifact"
     required: false
-    default: "30"
+    default: "1"
   custom-index-html:
     description: "Optional path to custom index.html for landing page"
     required: false
     default: ""
 
 outputs:
-  artifact-name:
-    description: "Name of the uploaded artifact"
-    value: ${{ inputs.artifact-name }}
   has-jacoco:
     description: "Whether JaCoCo report was included"
     value: ${{ steps.check-reports.outputs.has-jacoco }}
@@ -224,7 +217,7 @@ runs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ inputs.artifact-name }}
+        name: __gh_security_toolkit__test_reports__
         path: test-reports-site
         if-no-files-found: error
         retention-days: ${{ inputs.retention-days }}
@@ -235,7 +228,7 @@ runs:
       run: |
         echo "## 📦 Test Reports Uploaded" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Artifact Name:** \`${{ inputs.artifact-name }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "**Artifact Name:** \`__gh_security_toolkit__test_reports__\`" >> $GITHUB_STEP_SUMMARY
         echo "**Retention:** ${{ inputs.retention-days }} days" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Included Reports:" >> $GITHUB_STEP_SUMMARY

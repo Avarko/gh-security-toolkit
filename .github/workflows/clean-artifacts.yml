@@ -13,6 +13,11 @@ on:
         type: number
         required: false
         default: 3
+      test_reports_keep:
+        description: 'Number of __gh_security_toolkit__test_reports__ artifacts to keep'
+        type: number
+        required: false
+        default: 3
       dashboard_build_keep:
         description: 'Number of __gh_security_toolkit__security-dashboard-build artifacts to keep'
         type: number
@@ -38,6 +43,11 @@ on:
         default: 3
       scan_docker_image_keep:
         description: 'Number of __gh_security_toolkit__docker_image_for_scan__ artifacts to keep'
+        type: number
+        required: false
+        default: 3
+      test_reports_keep:
+        description: 'Number of __gh_security_toolkit__test_reports__ artifacts to keep'
         type: number
         required: false
         default: 3
@@ -152,6 +162,56 @@ jobs:
             exit 0
           fi
 
+          DELETED=0
+          for ((i=KEEP; i<TOTAL; i++)); do
+            ARTIFACT_ID="${IDS[$i]}"
+            echo "   🗑️  Deleting artifact ID: $ARTIFACT_ID"
+            gh api \
+              --method DELETE \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/repos/$REPO/actions/artifacts/$ARTIFACT_ID" || echo "   ⚠️  Failed to delete (may already be deleted)"
+            DELETED=$((DELETED + 1))
+          done
+
+          echo "   ✅ Deleted $DELETED artifact(s), kept $KEEP newest"
+
+      - name: Clean test reports artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          ARTIFACT_NAME="__gh_security_toolkit__test_reports__"
+          KEEP=${{ inputs.test_reports_keep || 3 }}
+          REPO="${{ github.repository }}"
+
+          echo "🧹 Cleaning $ARTIFACT_NAME artifacts (keeping $KEEP newest)"
+
+          # Get all artifacts with this name, sorted by creation date (newest first)
+          ARTIFACT_IDS=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/$REPO/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" \
+            --jq '[.artifacts | sort_by(.created_at) | reverse | .[].id] | @json' | jq -r '.[]')
+
+          if [ -z "$ARTIFACT_IDS" ]; then
+            echo "   ℹ️  No artifacts found"
+            exit 0
+          fi
+
+          # Convert to array
+          mapfile -t IDS <<< "$ARTIFACT_IDS"
+          TOTAL=${#IDS[@]}
+
+          echo "   Found $TOTAL artifact(s)"
+
+          if [ $TOTAL -le $KEEP ]; then
+            echo "   ✅ No cleanup needed (total=$TOTAL, keep=$KEEP)"
+            exit 0
+          fi
+
+          # Delete old artifacts (keep only the first $KEEP)
           DELETED=0
           for ((i=KEEP; i<TOTAL; i++)); do
             ARTIFACT_ID="${IDS[$i]}"
@@ -401,6 +461,7 @@ jobs:
           echo "Retention policy applied:"
           echo "  • __gh_security_toolkit__filesystem__: keep ${{ inputs.scan_filesystem_keep || 3 }} newest"
           echo "  • __gh_security_toolkit__docker_image__: keep ${{ inputs.scan_docker_image_keep || 3 }} newest"
+          echo "  • __gh_security_toolkit__test_reports__: keep ${{ inputs.test_reports_keep || 3 }} newest"
           echo "  • __gh_security_toolkit__security-dashboard-build: keep ${{ inputs.dashboard_build_keep || 3 }} newest"
           echo "  • __gh_security_toolkit__scan_history_*: keep ${{ inputs.scan_history_keep || 3 }} newest per channel"
           echo "  • __gh_security_toolkit__multi-tenant-config: keep 1 newest (tenant registry)"
