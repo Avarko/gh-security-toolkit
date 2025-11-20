@@ -10,6 +10,7 @@ export type TenantEntry = {
     created_at: string; // ISO 8601 timestamp
     display_name?: string; // Optional display name
     org_display_name?: string; // Optional org display name
+    logo_url?: string; // Optional logo URL
 };
 
 export type TenantRegistry = {
