@@ -39,23 +39,35 @@ Publishes security scan results as static HTML pages to GitHub Pages.
 
 ## Usage
 
-### In workflow
+### Basic Example (Minimal)
 
 ```yaml
 - name: Publish to GitHub Pages
   uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@main
   with:
-    outdir: ${{ steps.setup.outputs.output_dir }}
-    metadata_timestamp: ${{ steps.ts.outputs.ts }}
-    metadata_branch: ${{ inputs.branch }}
-    metadata_repository: ${{ inputs.repository }}
-    metadata_commit_sha: ${{ inputs.commit_sha }}
-    channel: nightly-master
-    pages_root: .
-    retention_keep: 50
+    github_token: ${{ github.token }}
+    outdir: scan-output
+    channel: nightly
+    # That's it! All metadata is auto-detected from GitHub Actions environment
+```
 
-- name: Deploy to GitHub Pages
-  uses: actions/deploy-pages@v4
+### With Branding Customization
+
+```yaml
+- name: Publish to GitHub Pages
+  uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@main
+  with:
+    github_token: ${{ github.token }}
+    outdir: scan-output
+    channel: nightly
+    config_overrides: |
+      {
+        "branding": {
+          "displayName": "VR CIAM Backend",
+          "orgDisplayName": "VR Group",
+          "logoUrl": "/assets/vr-logo.png"
+        }
+      }
 ```
 
 ### Configure GitHub Pages
@@ -83,24 +95,70 @@ permissions:
 
 ## Inputs
 
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `outdir` | Directory containing scan outputs | Yes | - |
-| `metadata_timestamp` | Scan timestamp (e.g., `2025-11-07-033946Z`) | Yes | - |
-| `metadata_branch` | Git branch name | No | `""` |
-| `metadata_repository` | Repository name (owner/repo) | No | `""` |
-| `metadata_commit_sha` | Git commit SHA | No | `""` |
-| `metadata_image_name` | Docker image name | No | `""` |
-| `metadata_scan_id` | Scan run ID | No | `""` |
-| `channel` | Channel name for organizing scans | Yes | - |
-| `pages_root` | Root directory for GitHub Pages | No | `.` |
-| `retention_keep` | Keep at most N scans per channel | No | `50` |
+### Required Inputs
+
+| Input | Description | Default |
+|-------|-------------|---------|
+| `github_token` | GitHub token for artifact operations (use `${{ github.token }}`) | - |
+| `outdir` | Directory containing scan outputs and scan-metadata.json | - |
+| `channel` | Channel name for organizing scans (e.g., `nightly`, `pr-123`) | - |
+
+### Optional Inputs
+
+| Input | Description | Default |
+|-------|-------------|---------|
+| `config_overrides` | JSON string with branding and configuration overrides | `""` |
+
+### Auto-Detected Metadata
+
+The following metadata is **automatically detected** from GitHub Actions environment and no longer needs to be passed as inputs:
+
+- **timestamp** - Auto-generated using current UTC time
+- **branch** - From `GITHUB_REF_NAME`
+- **repository** - From `GITHUB_REPOSITORY`
+- **commit_sha** - From `GITHUB_SHA`
+- **scan_id** - From `GITHUB_RUN_ID`
+- **ci_job_name** - From `GITHUB_WORKFLOW`
+- **ci_job_url** - Auto-constructed from environment variables
+- **actor_name** - From `GITHUB_ACTOR`
+
+### Scanner-Specific Metadata
+
+The following metadata should be included in `scan-metadata.json` within your scan output directory (created by your scanner):
+
+```json
+{
+  "scanType": "security",
+  "scanners": {
+    "trivy": {
+      "version": "0.48.0",
+      "scanDate": "2025-11-20T12:34:56Z"
+    },
+    "semgrep": {
+      "version": "1.55.0",
+      "scanDate": "2025-11-20T12:35:12Z"
+    }
+  },
+  "target": {
+    "type": "docker-image",
+    "imageName": "ghcr.io/org/app:latest"
+  },
+  "links": {
+    "documentation": "https://docs.example.com",
+    "issues": "https://github.com/org/repo/issues"
+  }
+}
+```
 
 ## Outputs
 
 | Output | Description |
 |--------|-------------|
 | `pages_url` | URL to the GitHub Pages site |
+
+## Artifact Storage
+
+This action stores the entire GitHub Pages site data (all channels, all tenants) in a single artifact named `__gh_security_toolkit__github_pages_site_data` with a 90-day retention period. This artifact is downloaded and restored on each run to maintain scan history across deployments.
 
 ## Comparison: GitHub Pages vs GitHub Releases
 
@@ -123,20 +181,22 @@ inputs:
   publish_to: 'github-release,github-pages'  # Publish to both
 ```
 
-### Channel-specific retention
+### Multiple channels
 
 ```yaml
 - name: Publish nightly scans
   uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@main
   with:
-    channel: nightly-master
-    retention_keep: 30  # Keep last 30 nightly scans
+    github_token: ${{ github.token }}
+    outdir: scan-output
+    channel: nightly
 
 - name: Publish PR scans
   uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@main
   with:
+    github_token: ${{ github.token }}
+    outdir: scan-output
     channel: pr-${{ github.event.pull_request.number }}
-    retention_keep: 10  # Keep last 10 PR scans
 ```
 
 ## Developer Notes
@@ -144,13 +204,51 @@ inputs:
 The static HTML is generated by `scripts/github_pages_builder.java` using:
 - **JBang** for scripting
 - **Gson** for JSON parsing
-- **Plain HTML/CSS** (no build step)
+- **React + Remix** dashboard (built separately)
 
-To test locally:
+### Configuration JSON Structure
+
+The builder now accepts a single JSON configuration file instead of multiple positional parameters:
+
 ```bash
-jbang scripts/github_pages_builder.java \
-  ./scan-output \
-  . \
-  2025-11-07-033946Z \
-  test-channel
+# Create a config file
+cat > /tmp/config.json <<EOF
+{
+  "input": {
+    "outdir": "./scan-output",
+    "pagesRoot": ".",
+    "dashboardBuildDir": "/tmp/dashboard-build"
+  },
+  "metadata": {
+    "timestamp": "2025-11-20-120000Z",
+    "channel": "test",
+    "branch": "main",
+    "repository": "owner/repo",
+    "commitSha": "abc123",
+    "scanId": "123456",
+    "ciJobName": "Test",
+    "ciJobUrl": "https://github.com/owner/repo/actions/runs/123456",
+    "actorName": "username"
+  },
+  "branding": {
+    "displayName": "My App",
+    "orgDisplayName": "My Org",
+    "logoUrl": "/logo.png"
+  }
+}
+EOF
+
+# Run builder
+jbang scripts/github_pages_builder.java /tmp/config.json
 ```
+
+### Migration Notes
+
+**Old way (deprecated):** Passing 9+ positional parameters
+**New way:** Single JSON config file with auto-detected metadata
+
+This change enables:
+- Type-safe configuration
+- Easier TypeScript migration
+- Shared type definitions with dashboard
+- No more positional parameter ordering issues

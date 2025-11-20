@@ -1,102 +1,24 @@
 name: "Publisher (GitHub Pages)"
 description: "Publishes security scan results as static HTML pages to GitHub Pages"
 inputs:
-  # What to publish
+  # Essential inputs
   outdir:
-    description: "Directory containing scan outputs (JSON/MD/etc.)"
+    description: "Directory containing scan outputs and scan-metadata.json"
     required: true
 
-  # Metadata
-  metadata_timestamp:
-    description: "Timestamp of the scan"
-    required: true
-  metadata_branch:
-    description: "Branch name"
-    required: false
-    default: ""
-  metadata_repository:
-    description: "Repository name (owner/repo)"
-    required: false
-    default: ""
-  metadata_commit_sha:
-    description: "Commit SHA"
-    required: false
-    default: ""
-  metadata_image_name:
-    description: "Docker image name"
-    required: false
-    default: ""
-  metadata_scan_id:
-    description: "Scan run ID"
-    required: false
-    default: ""
-
-  # Pages configuration
   channel:
-    description: "Channel name for organizing scans (e.g., 'nightly-master', 'pr-123')"
+    description: "Channel name for organizing scans (e.g., 'nightly', 'pr-123')"
     required: true
-  pages_root:
-    description: "Root directory for GitHub Pages (use '.' for repository root)"
-    required: false
-    default: "."
-  retention_keep:
-    description: "Keep at most N full scan results per channel in /runs (0=unlimited). Note: scan-history.json retains stats for all scans regardless of this limit."
-    required: false
-    default: "10"
-  retention_days:
-    description: "Days to retain scan history artifact in GitHub (0=maximum allowed by GitHub)"
-    required: false
-    default: "90"
 
-  # GitHub token for API access
   github_token:
     description: "GitHub token for artifact operations (use github.token)"
     required: true
 
-  # Additional metadata for scan context
-  app_docs_url:
-    description: "URL to application documentation"
-    required: false
-    default: ""
-
-  app_issues_url:
-    description: "URL to application issue tracker"
-    required: false
-    default: ""
-
-  ci_job_name:
-    description: "CI job name"
-    required: false
-    default: ""
-
-  ci_job_url:
-    description: "CI job URL"
-    required: false
-    default: ""
-
-  trivy_version:
-    description: "Trivy version used for scanning"
-    required: false
-    default: ""
-
-  semgrep_version:
-    description: "Semgrep version used for scanning"
-    required: false
-    default: ""
-
-  # Dashboard / tenant configuration (optional display metadata)
-  dashboard_display_name:
-    description: "Optional display name for this tenant (e.g., 'VR CIAM Backend')"
-    required: false
-    default: ""
-
-  dashboard_org_display_name:
-    description: "Optional organization display name (e.g., 'VR Group')"
-    required: false
-    default: ""
-
-  dashboard_logo_url:
-    description: "Optional logo URL (absolute path like /assets/logo.png or external URL)"
+  # Optional customization
+  config_overrides:
+    description: |
+      Optional JSON string with tenant branding and configuration overrides.
+      Example: {"branding": {"displayName": "My App", "orgDisplayName": "My Org", "logoUrl": "/logo.png"}}
     required: false
     default: ""
 
@@ -122,34 +44,36 @@ runs:
     - name: Setup JBang
       uses: jbangdev/setup-jbang@main
 
-    - name: Create metadata JSON
-      id: metadata
+    - name: Create optional config overrides (if provided)
+      id: config_overrides
       shell: bash
       run: |
         set -euo pipefail
-        META_FILE="${{ inputs.outdir }}/scan-metadata.json"
-        jq -n \
-          --arg ts "${{ inputs.metadata_timestamp }}" \
-          --arg branch "${{ inputs.metadata_branch }}" \
-          --arg repo "${{ inputs.metadata_repository }}" \
-          --arg sha "${{ inputs.metadata_commit_sha }}" \
-          --arg image "${{ inputs.metadata_image_name }}" \
-          --arg scan_id "${{ inputs.metadata_scan_id }}" \
-          --arg app_docs_url "${{ inputs.app_docs_url }}" \
-          --arg app_issues_url "${{ inputs.app_issues_url }}" \
-          --arg ci_job_name "${{ inputs.ci_job_name }}" \
-          --arg ci_job_url "${{ inputs.ci_job_url }}" \
-          --arg trivy_version "${{ inputs.trivy_version }}" \
-          --arg semgrep_version "${{ inputs.semgrep_version }}" \
-          '{
-            timestamp: $ts,
-            branch: $branch,
-            repository: $repo,
-            commit_sha: $sha,
-            image_name: $image,
-            scan_run_id: $scan_id
-          }' > "$META_FILE"
-        echo "meta_json=$META_FILE" >> "$GITHUB_OUTPUT"
+        if [ -n "${{ inputs.config_overrides }}" ]; then
+          # Check if it's a file path or JSON string
+          if [ -f "${{ inputs.config_overrides }}" ]; then
+            echo "path=${{ inputs.config_overrides }}" >> "$GITHUB_OUTPUT"
+            echo "📄 Using config overrides from file: ${{ inputs.config_overrides }}"
+          else
+            # It's a JSON string, write to temp file
+            TEMP_FILE="/tmp/config-overrides.json"
+            echo '${{ inputs.config_overrides }}' > "$TEMP_FILE"
+            echo "path=$TEMP_FILE" >> "$GITHUB_OUTPUT"
+            echo "📝 Config overrides provided as JSON string"
+          fi
+        else
+          echo "path=" >> "$GITHUB_OUTPUT"
+          echo "ℹ️  No config overrides provided"
+        fi
+
+    - name: Create builder configuration
+      shell: bash
+      run: |
+        ${{ github.action_path }}/scripts/create-config.sh \
+          "${{ inputs.outdir }}" \
+          "${{ inputs.channel }}" \
+          "/tmp/builder-config.json" \
+          "${{ steps.config_overrides.outputs.path }}"
 
     - name: Download and restore multi-tenant config
       continue-on-error: true
@@ -160,10 +84,10 @@ runs:
       run: |
         ${{ github.action_path }}/scripts/download-and-restore-config.sh \
           "${{ github.repository }}" \
-          "${{ inputs.pages_root }}" \
+          "." \
           "$GITHUB_OUTPUT"
 
-    - name: Download and restore scan history
+    - name: Download and restore GitHub Pages site data
       continue-on-error: true
       id: download_history
       shell: bash
@@ -172,8 +96,7 @@ runs:
       run: |
         ${{ github.action_path }}/scripts/download-and-restore-history.sh \
           "${{ github.repository }}" \
-          "${{ inputs.channel }}" \
-          "${{ inputs.pages_root }}" \
+          "." \
           "$GITHUB_OUTPUT"
 
 
@@ -197,58 +120,45 @@ runs:
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
         set -euo pipefail
-
         echo "🏗️  Building GitHub Pages (incremental update)..."
 
-        # Resolve pages_root to absolute path to ensure Java can find restored config
-        PAGES_ROOT_ABS="$(cd "${{ inputs.pages_root }}" 2>/dev/null && pwd || realpath "${{ inputs.pages_root }}")"
-        echo "📂 Pages root (absolute): $PAGES_ROOT_ABS"
-
         jbang "${{ github.action_path }}/../../../scripts/github_pages_builder.java" \
-          "${{ inputs.outdir }}" \
-          "$PAGES_ROOT_ABS" \
-          "${{ inputs.metadata_timestamp }}" \
-          "${{ inputs.channel }}" \
-          "${{ steps.metadata.outputs.meta_json }}" \
-          "/tmp/dashboard-build" \
-          "${{ inputs.dashboard_display_name }}" \
-          "${{ inputs.dashboard_org_display_name }}" \
-          "${{ inputs.dashboard_logo_url }}"
+          /tmp/builder-config.json
 
-    - name: Archive scan history
+    - name: Archive GitHub Pages site data
       shell: bash
       run: |
         ${{ github.action_path }}/scripts/archive-scan-history.sh \
-          "${{ inputs.pages_root }}" \
-          "/tmp/scan-history-output"
+          "." \
+          "/tmp/github-pages-site-data-output"
 
 
-    - name: Upload scan history artifact
-      id: upload_history
+    - name: Upload GitHub Pages site data artifact
+      id: upload_site_data
       uses: actions/upload-artifact@v4
       with:
-        name: __gh_security_toolkit__scan_history_${{ inputs.channel }}
-        path: /tmp/scan-history-output/scan-history.tar.gz
-        retention-days: ${{ inputs.retention_days }}
+        name: __gh_security_toolkit__github_pages_site_data
+        path: /tmp/github-pages-site-data-output/scan-history.tar.gz
+        retention-days: 90
         overwrite: true
 
-    - name: Cleanup old scan history artifacts
-      if: ${{ steps.upload_history.outcome == 'success' }}
+    - name: Cleanup old GitHub Pages site data artifacts
+      if: ${{ steps.upload_site_data.outcome == 'success' }}
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
         ${{ github.action_path }}/scripts/cleanup-old-artifacts.sh \
           "${{ github.repository }}" \
-          "__gh_security_toolkit__scan_history_${{ inputs.channel }}" \
-          "${{ steps.upload_history.outputs.artifact-id }}"
+          "__gh_security_toolkit__github_pages_site_data" \
+          "${{ steps.upload_site_data.outputs.artifact-id }}"
 
 
     - name: Archive multi-tenant config
       shell: bash
       run: |
         ${{ github.action_path }}/scripts/archive-multi-tenant-config.sh \
-          "${{ inputs.pages_root }}" \
+          "." \
           "/tmp/multi-tenant-config-output"
 
     - name: Upload multi-tenant config artifact
@@ -278,15 +188,15 @@ runs:
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v3
       with:
-        path: ${{ inputs.pages_root }}
-        name: __gh_security_toolkit__security-dashboard-pages-${{ inputs.channel }}
+        path: .
+        name: __gh_security_toolkit__github_pages_deployment
         retention-days: 1
 
     - name: Deploy to GitHub Pages
       id: deployment
       uses: actions/deploy-pages@v4
       with:
-        artifact_name: __gh_security_toolkit__security-dashboard-pages-${{ inputs.channel }}
+        artifact_name: __gh_security_toolkit__github_pages_deployment
 
 outputs:
   pages_url:

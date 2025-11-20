@@ -154,14 +154,14 @@ We use **GitHub Actions Artifacts** as a "database" to maintain state between wo
 - **Scope**: Global (shared across all channels)
 - **Why needed**: Ensures same GitHub org/repo always gets the same tenant UUID
 
-#### Artifact 2: `__gh_security_toolkit__scan_history_<channel>`
+#### Artifact 2: `__gh_security_toolkit__github_pages_site_data`
 
-- **Purpose**: Carries scan data forward between workflow runs
+- **Purpose**: Carries scan data forward between workflow runs when GitHub Pages is used as backend
 - **Contains**: `data/<tenant-uuid>/runs/`, `data/<tenant-uuid>/hist/scan-history.json`
 - **Size**: ~400 KB (minimal, data-only)
 - **Retention**: 90 days
-- **Cleanup**: Automatic - deletes old artifacts after successful upload (only 1 exists per channel)
-- **Scope**: Per-channel
+- **Cleanup**: Automatic - deletes old artifacts after successful upload
+- **Scope**: One per whole GitHub Pages
 - **Why needed**: GitHub Pages cannot be "downloaded" for incremental updates
 
 **Important**: `upload-artifact@v4`'s `overwrite: true` only works **within a single workflow run**, NOT across runs. Therefore, we implement explicit cleanup using GitHub API after each upload to ensure only the newest artifact exists.
@@ -172,13 +172,12 @@ Run N:   Download artifact → Restore → Add new scan → Upload artifact → 
 Run N+1: Download artifact → Restore → Add new scan → Upload artifact → Cleanup old artifacts
 ```
 
-#### Artifact 2: `__gh_security_toolkit__security-dashboard-pages-<channel>`
+#### Artifact 2: `__gh_security_toolkit__github_pages_deployment`
 
 - **Purpose**: Temporary artifact for Pages deployment
 - **Contains**: Complete site (dashboard + data)
 - **Size**: ~1 MB
 - **Retention**: 1 day (only needed until deployment succeeds)
-- **Unique name**: Per channel to avoid collision bugs
 
 #### Artifact 3-5: Temporary workflow artifacts
 
@@ -342,7 +341,7 @@ When implementing S3 publisher:
 
 ### 1. Artifact Overwrite Misconception
 
-**Symptom**: Multiple `__gh_security_toolkit__scan_history_<channel>` artifacts accumulate in repository.
+**Symptom**: Multiple `__gh_security_toolkit_github_pages_site_data` artifacts accumulate in repository.
 
 **Cause**: `upload-artifact@v4`'s `overwrite: true` **only works within a single workflow run**, NOT across different runs.
 
