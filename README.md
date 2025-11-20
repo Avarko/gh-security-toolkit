@@ -507,8 +507,8 @@ jobs:
 - `__gh_security_toolkit__filesystem__` - Uploaded source code for scanning
 - `__gh_security_toolkit__docker_image__` - Uploaded Docker images
 - `__gh_security_toolkit__security-dashboard-build` - Dashboard build artifacts
-- `__gh_security_toolkit__scan_history_<channel>` - Scan history per channel
-- `__gh_security_toolkit__security-dashboard-pages-<channel>` - Pages deployment artifacts per channel
+- `__gh_security_toolkit__github_pages_site_data` - GitHub Pages full site data contents
+- `__gh_security_toolkit__github_pages_deployment` - Pages deployment artifacts
 
 ---
 

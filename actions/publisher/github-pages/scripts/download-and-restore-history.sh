@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 #
-# Downloads and restores scan history artifact for a specific channel.
+# Downloads and restores GitHub Pages site data artifact (all channels, all tenants).
 # Combines download + restore into a single operation.
 #
-# Usage: download-and-restore-history.sh <repository> <channel> <pages_root> <github_output_path>
+# Usage: download-and-restore-history.sh <repository> <pages_root> <github_output_path>
 #
 # Arguments:
 #   repository         - GitHub repository in format "owner/repo"
-#   channel            - Channel name (e.g., "manual", "nightly")
 #   pages_root         - Root directory for GitHub Pages (usually: .)
 #   github_output_path - Path to GITHUB_OUTPUT file for setting outputs
 #
@@ -19,18 +18,17 @@
 
 set -euo pipefail
 
-if [ $# -lt 4 ]; then
-    echo "Usage: $0 <repository> <channel> <pages_root> <github_output_path>"
+if [ $# -lt 3 ]; then
+    echo "Usage: $0 <repository> <pages_root> <github_output_path>"
     exit 1
 fi
 
 REPOSITORY="$1"
-CHANNEL="$2"
-PAGES_ROOT="$(cd "$3" 2>/dev/null && pwd || realpath "$3")"
-GITHUB_OUTPUT="$4"
+PAGES_ROOT="$(cd "$2" 2>/dev/null && pwd || realpath "$2")"
+GITHUB_OUTPUT="$3"
 
-ARTIFACT_NAME="__gh_security_toolkit__scan_history_$CHANNEL"
-OUTPUT_DIR="/tmp/scan-history-artifact"
+ARTIFACT_NAME="__gh_security_toolkit__github_pages_site_data"
+OUTPUT_DIR="/tmp/github-pages-site-data-artifact"
 
 echo "==> Searching for artifact: $ARTIFACT_NAME"
 
@@ -61,19 +59,19 @@ rm artifact.zip
 echo "==> Artifact downloaded successfully"
 echo "found=true" >> "$GITHUB_OUTPUT"
 
-# Restore scan history
-HISTORY_ARCHIVE="$OUTPUT_DIR/scan-history.tar.gz"
+# Restore GitHub Pages site data
+SITE_DATA_ARCHIVE="$OUTPUT_DIR/scan-history.tar.gz"
 
-if [ -f "$HISTORY_ARCHIVE" ]; then
-    echo "📦 Restoring scan data from artifact..."
+if [ -f "$SITE_DATA_ARCHIVE" ]; then
+    echo "📦 Restoring GitHub Pages site data from artifact..."
     mkdir -p "$PAGES_ROOT"
-    tar -xzf "$HISTORY_ARCHIVE" -C "$PAGES_ROOT" 2>/dev/null || echo "⚠️  Archive extraction had warnings (may be legacy format)"
+    tar -xzf "$SITE_DATA_ARCHIVE" -C "$PAGES_ROOT" 2>/dev/null || echo "⚠️  Archive extraction had warnings (may be legacy format)"
 
-    # Count existing scans (tenant UUID will be resolved by Java code)
+    # Count existing scans across all channels and tenants
     if [ -d "$PAGES_ROOT/data" ]; then
         TOTAL_SCANS=$(find "$PAGES_ROOT/data" -path "*/runs/*/*" -type d 2>/dev/null | wc -l)
         TENANTS=$(find "$PAGES_ROOT/data" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-        echo "   ✅ Restored $TOTAL_SCANS runs across $TENANTS tenant(s)"
+        echo "   ✅ Restored $TOTAL_SCANS runs across $TENANTS tenant(s) (all channels)"
     fi
 else
     echo "⚠️  Archive file not found in artifact, creating fresh data directory"

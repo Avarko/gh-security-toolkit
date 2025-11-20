@@ -8,18 +8,6 @@ on:
         type: string
         required: true
 
-      retention_keep:
-        description: "Number of deployments to keep per channel"
-        type: number
-        required: false
-        default: 10
-
-      retention_days:
-        description: "Days to retain artifacts"
-        type: number
-        required: false
-        default: 90
-
 permissions:
   contents: read
   pages: write
@@ -51,26 +39,12 @@ jobs:
           echo '{"Results":[]}' > scan-output/trivy-fs-results.json
           echo '{"results":[]}' > scan-output/semgrep-results.json
 
-      - name: Generate timestamp
-        id: ts
-        run: echo "ts=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
-
       - name: Initialize GitHub Pages structure
         uses: ./actions/publisher/github-pages
         with:
-          outdir: ./scan-output
-          metadata_timestamp: ${{ steps.ts.outputs.ts }}
-          metadata_branch: ${{ github.ref_name }}
-          metadata_repository: ${{ github.repository }}
-          metadata_commit_sha: ${{ github.sha }}
-          metadata_scan_id: ${{ github.run_id }}
-          channel: ${{ inputs.channel }}
-          pages_root: .
-          retention_keep: ${{ inputs.retention_keep }}
-          retention_days: ${{ inputs.retention_days }}
-          ci_job_name: ${{ github.workflow }}
-          ci_job_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          outdir: ./scan-output
+          channel: ${{ inputs.channel }}
 
       - name: Copy test reports to GitHub Pages
         shell: bash
@@ -100,19 +74,9 @@ jobs:
         id: deployment
         uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@reactui
         with:
-          outdir: ./scan-output
-          metadata_timestamp: ${{ steps.ts.outputs.ts }}
-          metadata_branch: ${{ github.ref_name }}
-          metadata_repository: ${{ github.repository }}
-          metadata_commit_sha: ${{ github.sha }}
-          metadata_scan_id: ${{ github.run_id }}
-          channel: ${{ inputs.channel }}
-          pages_root: .
-          retention_keep: ${{ inputs.retention_keep }}
-          retention_days: ${{ inputs.retention_days }}
-          ci_job_name: ${{ github.workflow }}
-          ci_job_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          outdir: ./scan-output
+          channel: ${{ inputs.channel }}
 
       - name: Summary
         shell: bash
