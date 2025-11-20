@@ -31,6 +31,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Data processor for security scan results.
@@ -169,6 +170,9 @@ public class GitHubPagesBuilder {
 
         // 3) Update tenant-specific scan-history.json (use compact timestamp for URLs)
         appendScanHistory(dataRoot, channel, compactTimestamp, metadata, historyStats);
+
+        // 4) Clean up orphaned tenants (tenants not in registry)
+        cleanupOrphanedTenants(pagesPath, registry);
 
         System.out.println("✅ Data processing complete!");
         System.out.println("   Run data: " + dataRunsPath);
@@ -349,6 +353,153 @@ public class GitHubPagesBuilder {
                 });
 
         System.out.println("   ✅ Dashboard merged successfully");
+    }
+
+    /**
+     * Cleans up orphaned tenant directories that are not registered in tenant-registry.json.
+     *
+     * Safety features:
+     * - Only deletes UUID-formatted directories
+     * - Skips if registry is empty, missing, or invalid
+     * - Fails if >50% of tenants would be deleted
+     * - Logs all actions before performing them
+     *
+     * @param pagesRoot Root directory of GitHub Pages (e.g., "docs")
+     * @param registry TenantRegistry containing registered tenants
+     */
+    private static void cleanupOrphanedTenants(Path pagesRoot, TenantRegistry registry) {
+        try {
+            Path dataDir = pagesRoot.resolve("data");
+
+            if (!Files.exists(dataDir) || !Files.isDirectory(dataDir)) {
+                System.out.println("ℹ️  No data directory found, skipping orphan cleanup");
+                return;
+            }
+
+            // Safety check 1: Registry must have at least one tenant
+            java.util.List<String> registeredIds = new ArrayList<>();
+            try {
+                // Use reflection to access tenants list from TenantRegistry
+                var tenantsField = registry.getClass().getDeclaredField("tenants");
+                tenantsField.setAccessible(true);
+                @SuppressWarnings("unchecked")
+                var tenantsList = (java.util.List<?>) tenantsField.get(registry);
+
+                if (tenantsList == null || tenantsList.isEmpty()) {
+                    System.out.println("⚠️  WARNING: Tenant registry is empty - skipping orphan cleanup for safety");
+                    return;
+                }
+
+                // Extract tenant IDs
+                for (Object tenantObj : tenantsList) {
+                    var idField = tenantObj.getClass().getDeclaredField("id");
+                    idField.setAccessible(true);
+                    String id = (String) idField.get(tenantObj);
+                    if (id != null && !id.isEmpty()) {
+                        registeredIds.add(id);
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("⚠️  WARNING: Failed to read tenant registry - skipping orphan cleanup for safety");
+                System.err.println("   Error: " + e.getMessage());
+                return;
+            }
+
+            // Find all UUID directories in /data/
+            Pattern uuidPattern = Pattern.compile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
+            java.util.List<String> foundIds = new ArrayList<>();
+
+            try (var stream = Files.list(dataDir)) {
+                stream.filter(Files::isDirectory)
+                      .map(Path::getFileName)
+                      .map(Path::toString)
+                      .filter(name -> uuidPattern.matcher(name).matches())
+                      .forEach(foundIds::add);
+            }
+
+            if (foundIds.isEmpty()) {
+                System.out.println("ℹ️  No tenant directories found in /data/, skipping cleanup");
+                return;
+            }
+
+            // Find orphaned tenants (exist in filesystem but not in registry)
+            java.util.List<String> orphanIds = new ArrayList<>();
+            for (String foundId : foundIds) {
+                if (!registeredIds.contains(foundId)) {
+                    orphanIds.add(foundId);
+                }
+            }
+
+            if (orphanIds.isEmpty()) {
+                System.out.println("✅ No orphaned tenants found - all " + foundIds.size() + " tenant(s) are registered");
+                return;
+            }
+
+            // Safety check 2: Don't delete if >50% would be removed
+            double deletionPercentage = (double) orphanIds.size() / foundIds.size();
+            if (deletionPercentage > 0.5) {
+                System.err.println("❌ ERROR: Refusing to delete " + orphanIds.size() + " out of " + foundIds.size()
+                        + " tenants (" + String.format("%.0f%%", deletionPercentage * 100) + ")");
+                System.err.println("   This safety check prevents accidental mass deletion.");
+                System.err.println("   Registered tenants: " + registeredIds.size());
+                System.err.println("   Found tenants: " + foundIds.size());
+                System.err.println("   Orphaned tenants: " + orphanIds.size());
+                throw new IllegalStateException("Refusing to delete >50% of tenants for safety");
+            }
+
+            // Log what will be deleted
+            System.out.println("🗑️  Found " + orphanIds.size() + " orphaned tenant(s) to clean up:");
+            for (String orphanId : orphanIds) {
+                System.out.println("   • " + orphanId);
+            }
+            System.out.println("   Registered tenants (will keep): " + registeredIds.size());
+            System.out.println("   Total tenants before cleanup: " + foundIds.size());
+
+            // Delete orphaned tenants
+            int deleted = 0;
+            for (String orphanId : orphanIds) {
+                Path orphanPath = dataDir.resolve(orphanId);
+                try {
+                    deleteRecursively(orphanPath);
+                    System.out.println("   ✅ Deleted: " + orphanId);
+                    deleted++;
+                } catch (IOException e) {
+                    System.err.println("   ⚠️  Failed to delete " + orphanId + ": " + e.getMessage());
+                }
+            }
+
+            System.out.println("✅ Cleaned up " + deleted + " orphaned tenant(s)");
+            System.out.println("   Remaining tenants: " + (foundIds.size() - deleted));
+
+        } catch (Exception e) {
+            // Don't fail the entire job if cleanup fails
+            System.err.println("⚠️  WARNING: Orphaned tenant cleanup failed: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Recursively deletes a directory and all its contents.
+     */
+    private static void deleteRecursively(Path path) throws IOException {
+        if (!Files.exists(path)) {
+            return;
+        }
+
+        if (Files.isDirectory(path)) {
+            try (var stream = Files.walk(path)) {
+                stream.sorted(Comparator.reverseOrder())
+                      .forEach(p -> {
+                          try {
+                              Files.delete(p);
+                          } catch (IOException e) {
+                              throw new RuntimeException("Failed to delete: " + p, e);
+                          }
+                      });
+            }
+        } else {
+            Files.delete(path);
+        }
     }
 }
 
