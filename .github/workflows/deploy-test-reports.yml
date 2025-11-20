@@ -65,7 +65,7 @@ jobs:
           metadata_commit_sha: ${{ github.sha }}
           metadata_scan_id: ${{ github.run_id }}
           channel: ${{ inputs.channel }}
-          pages_root: docs
+          pages_root: .
           retention_keep: ${{ inputs.retention_keep }}
           retention_days: ${{ inputs.retention_days }}
           ci_job_name: ${{ github.workflow }}
@@ -78,7 +78,7 @@ jobs:
           echo "📋 Integrating test reports into GitHub Pages structure..."
 
           # Find the tenant data directory
-          TENANT_DIR=$(find docs/data -mindepth 1 -maxdepth 1 -type d | head -1)
+          TENANT_DIR=$(find ./data -mindepth 1 -maxdepth 1 -type d | head -1)
 
           if [ -z "$TENANT_DIR" ]; then
             echo "❌ ERROR: Could not find tenant directory"
@@ -107,7 +107,7 @@ jobs:
           metadata_commit_sha: ${{ github.sha }}
           metadata_scan_id: ${{ github.run_id }}
           channel: ${{ inputs.channel }}
-          pages_root: docs
+          pages_root: .
           retention_keep: ${{ inputs.retention_keep }}
           retention_days: ${{ inputs.retention_days }}
           ci_job_name: ${{ github.workflow }}
