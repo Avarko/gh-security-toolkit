@@ -34,51 +34,111 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * Data processor for security scan results.
+ * GitHub Pages site builder for security scan results and related artifacts.
  *
  * Responsibilities:
- * 1. Load scan results (Trivy, Semgrep, etc.)
- * 2. Transform and normalize data
- * 3. Write structured JSON to data/<tenant-uuid>/runs/<channel>/<timestamp>/
- * 4. Maintain data/<tenant-uuid>/hist/scan-history.json
+ * 1. Load and process various data artifacts (security scan results, test
+ * reports, etc.)
+ * 2. Transform and normalize data into structured JSON format
+ * 3. Build complete GitHub Pages site with dashboard and data
+ * 4. Maintain data/<tenant-uuid>/runs/<channel>/<timestamp>/ structure
+ * 5. Update data/<tenant-uuid>/hist/scan-history.json with scan metadata
  *
  * Tenant resolution (GUID-based security model):
  * - GitHub org/repo is read from environment variables
  * (GITHUB_REPOSITORY_OWNER, GITHUB_REPOSITORY)
  * - TenantRegistry maps GitHub org/repo to a UUID
  * - Data is stored at /data/<uuid>/ to prevent tenant forgery or path traversal
- * - Display metadata (optional) can be provided via CLI arguments
+ * - Display metadata (optional) can be provided via CLI arguments or config
  *
  * UI rendering is done in a separate React dashboard.
  *
  * Usage:
- * GitHubPagesBuilder <output_dir> <pages_root> <scan_timestamp> <channel>
- * [metadata_json] [dashboard_dir]
+ * GitHubPagesBuilder <config_json> [metadata_json] [dashboard_dir]
  * [display_name] [org_display_name] [logo_url]
+ *
+ * Where config_json contains:
+ * {
+ * "input": {
+ * "outdir": "path/to/scan/results",
+ * "pagesRoot": "path/to/pages/root",
+ * "dashboardBuildDir": "path/to/dashboard/build"
+ * },
+ * "metadata": {
+ * "timestamp": "2025-11-20T10:30:00Z",
+ * "channel": "manual",
+ * "branch": "main",
+ * "repository": "org/repo",
+ * "commitSha": "abc123..."
+ * }
+ * }
  */
 public class GitHubPagesBuilder {
+
+    // Configuration classes for JSON parsing
+    public static class Config {
+        public Input input;
+        public Metadata metadata;
+        public Branding branding;
+    }
+
+    public static class Input {
+        public String outdir;
+        public String pagesRoot;
+        public String dashboardBuildDir;
+    }
+
+    public static class Metadata {
+        public String timestamp;
+        public String channel;
+        public String branch;
+        public String repository;
+        public String commitSha;
+        public String scanId;
+        public String ciJobName;
+        public String ciJobUrl;
+        public String actorName;
+    }
+
+    public static class Branding {
+        // Reserved for future branding configuration
+    }
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 4) {
+        if (args.length < 1) {
             System.err.println(
-                    "Usage: GitHubPagesBuilder <output_dir> <pages_root> <scan_timestamp> <channel> "
-                            + "[metadata_json] [dashboard_dir] [display_name] [org_display_name] [logo_url]");
+                    "Usage: GitHubPagesBuilder <config_json> [metadata_json] [dashboard_dir] "
+                            + "[display_name] [org_display_name] [logo_url]");
             System.exit(1);
         }
 
-        String outputDir = args[0];
-        String pagesRoot = args[1];
-        String isoTimestamp = args[2]; // Original ISO 8601 timestamp from input
-        String channel = args[3];
-        String metadataJson = args.length > 4 && !args[4].isEmpty() ? args[4] : null;
-        String dashboardDir = args.length > 5 && !args[5].isEmpty() ? args[5] : null;
+        // Read configuration from JSON file
+        String configFile = args[0];
+        Path configPath = Path.of(configFile);
+        if (!Files.exists(configPath)) {
+            throw new IllegalArgumentException("Configuration file not found: " + configFile);
+        }
+
+        String configJson = Files.readString(configPath, StandardCharsets.UTF_8);
+        var config = GSON.fromJson(configJson, Config.class);
+
+        // Extract values from config
+        String outputDir = config.input.outdir;
+        String pagesRoot = config.input.pagesRoot;
+        String dashboardBuildDir = config.input.dashboardBuildDir;
+        String isoTimestamp = config.metadata.timestamp;
+        String channel = config.metadata.channel;
+
+        // Optional additional arguments (can override config)
+        String metadataJson = args.length > 1 && !args[1].isEmpty() ? args[1] : null;
+        String dashboardDir = args.length > 2 && !args[2].isEmpty() ? args[2] : dashboardBuildDir;
 
         // Optional display metadata (not used for data paths)
-        String displayName = args.length > 6 && !args[6].isEmpty() ? args[6] : null;
-        String orgDisplayName = args.length > 7 && !args[7].isEmpty() ? args[7] : null;
-        String logoUrl = args.length > 8 && !args[8].isEmpty() ? args[8] : null;
+        String displayName = args.length > 3 && !args[3].isEmpty() ? args[3] : null;
+        String orgDisplayName = args.length > 4 && !args[4].isEmpty() ? args[4] : null;
+        String logoUrl = args.length > 5 && !args[5].isEmpty() ? args[5] : null;
 
         // Convert ISO timestamp to compact UTC format for URLs and file paths
         String compactTimestamp = toCompactTimestamp(isoTimestamp);

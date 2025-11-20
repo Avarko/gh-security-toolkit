@@ -122,16 +122,33 @@ runs:
         set -euo pipefail
         echo "🏗️  Building GitHub Pages (incremental update)..."
 
+        # Create a clean site directory
+        SITE_DIR="/tmp/github-pages-site"
+        mkdir -p "$SITE_DIR"
+
+        # Copy current data directory to site
+        if [ -d "./data" ]; then
+          cp -r ./data "$SITE_DIR/"
+        fi
+
         jbang "${{ github.action_path }}/../../../scripts/github_pages_builder.java" \
           /tmp/builder-config.json
 
-    - name: Archive GitHub Pages site data
-      shell: bash
-      run: |
+        # Archive the updated files before moving them
         ${{ github.action_path }}/scripts/archive-scan-history.sh \
           "." \
           "/tmp/github-pages-site-data-output"
+        ${{ github.action_path }}/scripts/archive-multi-tenant-config.sh \
+          "." \
+          "/tmp/multi-tenant-config-output"
 
+        # Move the built site to the site directory
+        mv ./data "$SITE_DIR/" 2>/dev/null || true
+        mv ./index.html "$SITE_DIR/" 2>/dev/null || true
+        mv ./assets "$SITE_DIR/" 2>/dev/null || true
+        mv ./favicon.ico "$SITE_DIR/" 2>/dev/null || true
+        mv ./404.html "$SITE_DIR/" 2>/dev/null || true
+        mv ./config "$SITE_DIR/" 2>/dev/null || true
 
     - name: Upload GitHub Pages site data artifact
       id: upload_site_data
@@ -153,13 +170,6 @@ runs:
           "__gh_security_toolkit__github_pages_site_data" \
           "${{ steps.upload_site_data.outputs.artifact-id }}"
 
-
-    - name: Archive multi-tenant config
-      shell: bash
-      run: |
-        ${{ github.action_path }}/scripts/archive-multi-tenant-config.sh \
-          "." \
-          "/tmp/multi-tenant-config-output"
 
     - name: Upload multi-tenant config artifact
       id: upload_config
@@ -188,7 +198,7 @@ runs:
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v3
       with:
-        path: .
+        path: /tmp/github-pages-site
         name: __gh_security_toolkit__github_pages_deployment
         retention-days: 1
 
