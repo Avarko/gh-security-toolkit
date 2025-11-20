@@ -108,85 +108,15 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        set -euo pipefail
-
-        echo "🔍 Checking GitHub Pages visibility..."
-
-        # Query GitHub Pages configuration (single API call)
-        echo "📡 DEBUG: Querying GitHub API for Pages configuration..."
-        FULL_RESPONSE=$(gh api \
-          -H "Accept: application/vnd.github+json" \
-          -H "X-GitHub-Api-Version: 2022-11-28" \
-          "/repos/${{ github.repository }}/pages" 2>&1) || FULL_RESPONSE=""
-
-        echo "📦 DEBUG: Full API response:"
-        echo "$FULL_RESPONSE"
-        echo ""
-
-        # Extract .public field from response (handle null vs false properly)
-        if [ -n "$FULL_RESPONSE" ]; then
-          IS_PUBLIC=$(echo "$FULL_RESPONSE" | jq -r 'if .public == null then "unknown" else (.public | tostring) end' 2>/dev/null) || IS_PUBLIC="unknown"
-        else
-          IS_PUBLIC="unknown"
-        fi
-
-        echo "🔎 DEBUG: Extracted .public value: '$IS_PUBLIC'"
-        echo ""
-
-        if [ "$IS_PUBLIC" = "true" ]; then
-          echo ""
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "❌ ERROR: GitHub Pages is configured as PUBLIC"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo ""
-          echo "Security scan results MUST NOT be published to a public Pages site."
-          echo ""
-          echo "To fix this:"
-          echo "  1. Go to: Settings → Pages"
-          echo "  2. Under 'Visibility', select 'Private'"
-          echo "  3. Click 'Save'"
-          echo ""
-          echo "Note: Private Pages requires GitHub Enterprise Cloud."
-          echo "      If not available, use 'publish_to: github-release' instead."
-          echo ""
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          exit 1
-        elif [ "$IS_PUBLIC" = "false" ]; then
-          echo "✅ GitHub Pages is configured as Private - proceeding with deployment"
-        elif [ "$IS_PUBLIC" = "null" ] || [ "$IS_PUBLIC" = "unknown" ]; then
-          echo "⚠️  Warning: Could not query GitHub Pages configuration."
-          echo "   Pages may not be enabled yet, or visibility setting is not available."
-          echo "   Proceeding with deployment."
-          echo ""
-          echo "   ⚠️  IMPORTANT: After first deployment, verify in Settings → Pages that:"
-          echo "      • Pages is enabled and deployed from 'gh-pages' branch"
-          echo "      • Visibility is set to 'Private' (requires GitHub Enterprise Cloud)"
-          echo "      • If Private Pages is not available, use 'publish_to: github-release' instead"
-        else
-          echo "⚠️  Warning: Unexpected visibility value: $IS_PUBLIC"
-          echo "   Proceeding with deployment, but please verify Pages configuration."
-        fi
+        ${{ github.action_path }}/scripts/check-pages-visibility.sh \
+          "${{ github.repository }}"
 
     - name: Validate GitHub context variables
       shell: bash
       run: |
-        set -euo pipefail
-
-        if [ -z "${{ github.repository_owner }}" ]; then
-          echo "❌ ERROR: github.repository_owner is empty"
-          echo "   This should be automatically provided by GitHub Actions."
-          exit 1
-        fi
-
-        if [ -z "${{ github.repository }}" ]; then
-          echo "❌ ERROR: github.repository is empty"
-          echo "   This should be automatically provided by GitHub Actions."
-          exit 1
-        fi
-
-        echo "✅ GitHub context is valid:"
-        echo "   Owner: ${{ github.repository_owner }}"
-        echo "   Repository: ${{ github.repository }}"
+        ${{ github.action_path }}/scripts/validate-github-context.sh \
+          "${{ github.repository_owner }}" \
+          "${{ github.repository }}"
 
 
     - name: Setup JBang
@@ -221,134 +151,30 @@ runs:
           }' > "$META_FILE"
         echo "meta_json=$META_FILE" >> "$GITHUB_OUTPUT"
 
-    - name: Download multi-tenant config artifact
+    - name: Download and restore multi-tenant config
       continue-on-error: true
       id: download_config
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github_token }}
       run: |
-        set -euo pipefail
+        ${{ github.action_path }}/scripts/download-and-restore-config.sh \
+          "${{ github.repository }}" \
+          "${{ inputs.pages_root }}" \
+          "$GITHUB_OUTPUT"
 
-        ARTIFACT_NAME="__gh_security_toolkit__multi-tenant-config"
-        REPO="${{ github.repository }}"
-        OUTPUT_DIR="/tmp/multi-tenant-config-artifact"
-
-        echo "==> Searching for artifact: $ARTIFACT_NAME"
-
-        # Find the most recent artifact with this name (sorted by created_at DESC)
-        ARTIFACT_URL=$(gh api \
-          -H "Accept: application/vnd.github+json" \
-          -H "X-GitHub-Api-Version: 2022-11-28" \
-          "/repos/$REPO/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" \
-          --jq '.artifacts | sort_by(.created_at) | reverse | .[0].archive_download_url // empty')
-
-        if [ -z "$ARTIFACT_URL" ]; then
-          echo "==> No artifact found with name: $ARTIFACT_NAME"
-          echo "   ℹ️  This is expected on first run"
-          echo "found=false" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
-
-        echo "==> Downloading artifact from: $ARTIFACT_URL"
-        mkdir -p "$OUTPUT_DIR"
-
-        # Download and extract artifact
-        gh api "$ARTIFACT_URL" > "$OUTPUT_DIR/artifact.zip"
-        cd "$OUTPUT_DIR"
-        unzip -q artifact.zip
-        rm artifact.zip
-
-        echo "==> Artifact downloaded successfully"
-        echo "found=true" >> "$GITHUB_OUTPUT"
-
-    - name: Restore multi-tenant config
-      shell: bash
-      run: |
-        set -euo pipefail
-
-        PAGES_ROOT="${{ inputs.pages_root }}"
-        CONFIG_ARCHIVE="/tmp/multi-tenant-config-artifact/multi-tenant-config.tar.gz"
-
-        if [ -f "$CONFIG_ARCHIVE" ]; then
-          echo "📦 Restoring tenant registry from artifact..."
-          mkdir -p "$PAGES_ROOT"
-          tar -xzf "$CONFIG_ARCHIVE" -C "$PAGES_ROOT" 2>/dev/null || echo "⚠️  Archive extraction had warnings"
-
-          # Verify restoration
-          if [ -f "$PAGES_ROOT/config/tenant-registry.json" ]; then
-            TENANT_COUNT=$(jq '.tenants | length' "$PAGES_ROOT/config/tenant-registry.json")
-            echo "   ✅ Restored tenant registry with $TENANT_COUNT tenant(s)"
-            echo "   🔑 GUID persistence enabled"
-          fi
-        else
-          echo "ℹ️  No existing tenant registry found - will create new on first run"
-          mkdir -p "$PAGES_ROOT/config"
-        fi
-
-    - name: Download scan history artifact
+    - name: Download and restore scan history
       continue-on-error: true
       id: download_history
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github_token }}
       run: |
-        set -euo pipefail
-
-        ARTIFACT_NAME="__gh_security_toolkit__scan_history_${{ inputs.channel }}"
-        REPO="${{ github.repository }}"
-        OUTPUT_DIR="/tmp/scan-history-artifact"
-
-        echo "==> Searching for artifact: $ARTIFACT_NAME"
-
-        # Find the most recent artifact with this name (sorted by created_at DESC)
-        ARTIFACT_URL=$(gh api \
-          -H "Accept: application/vnd.github+json" \
-          -H "X-GitHub-Api-Version: 2022-11-28" \
-          "/repos/$REPO/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" \
-          --jq '.artifacts | sort_by(.created_at) | reverse | .[0].archive_download_url // empty')
-
-        if [ -z "$ARTIFACT_URL" ]; then
-          echo "==> No artifact found with name: $ARTIFACT_NAME"
-          echo "found=false" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
-
-        echo "==> Downloading artifact from: $ARTIFACT_URL"
-        mkdir -p "$OUTPUT_DIR"
-
-        # Download and extract artifact
-        gh api "$ARTIFACT_URL" > "$OUTPUT_DIR/artifact.zip"
-        cd "$OUTPUT_DIR"
-        unzip -q artifact.zip
-        rm artifact.zip
-
-        echo "==> Artifact downloaded successfully"
-        echo "found=true" >> "$GITHUB_OUTPUT"
-
-    - name: Restore scan history
-      shell: bash
-      run: |
-        set -euo pipefail
-
-        PAGES_ROOT="${{ inputs.pages_root }}"
-        HISTORY_ARCHIVE="/tmp/scan-history-artifact/scan-history.tar.gz"
-
-        if [ -f "$HISTORY_ARCHIVE" ]; then
-          echo "📦 Restoring scan data from artifact..."
-          mkdir -p "$PAGES_ROOT"
-          tar -xzf "$HISTORY_ARCHIVE" -C "$PAGES_ROOT" 2>/dev/null || echo "⚠️  Archive extraction had warnings (may be legacy format)"
-
-          # Count existing scans (tenant UUID will be resolved by Java code)
-          if [ -d "$PAGES_ROOT/data" ]; then
-            TOTAL_SCANS=$(find "$PAGES_ROOT/data" -path "*/runs/*/*" -type d 2>/dev/null | wc -l)
-            TENANTS=$(find "$PAGES_ROOT/data" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-            echo "   ✅ Restored $TOTAL_SCANS runs across $TENANTS tenant(s)"
-          fi
-        else
-          echo "ℹ️  No existing scan data found - starting fresh"
-          mkdir -p "$PAGES_ROOT/data"
-        fi
+        ${{ github.action_path }}/scripts/download-and-restore-history.sh \
+          "${{ github.repository }}" \
+          "${{ inputs.channel }}" \
+          "${{ inputs.pages_root }}" \
+          "$GITHUB_OUTPUT"
 
 
 
@@ -388,26 +214,9 @@ runs:
     - name: Archive scan history
       shell: bash
       run: |
-        set -euo pipefail
-
-        PAGES_ROOT="${{ inputs.pages_root }}"
-        ARCHIVE_DIR="/tmp/scan-history-output"
-
-        echo "📦 Archiving scan data..."
-
-        mkdir -p "$ARCHIVE_DIR"
-
-        # Archive entire /data directory (contains all tenant UUIDs)
-        if [ -d "$PAGES_ROOT/data" ]; then
-          tar -czf "$ARCHIVE_DIR/scan-history.tar.gz" -C "$PAGES_ROOT" data
-          SIZE=$(du -h "$ARCHIVE_DIR/scan-history.tar.gz" | cut -f1)
-          RUN_COUNT=$(find "$PAGES_ROOT/data" -path "*/runs/*/*" -type d 2>/dev/null | wc -l)
-          TENANTS=$(find "$PAGES_ROOT/data" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-          echo "   ✅ Archived $RUN_COUNT runs across $TENANTS tenant(s) ($SIZE)"
-        else
-          echo "   ⚠️  No data directory found"
-          tar -czf "$ARCHIVE_DIR/scan-history.tar.gz" -T /dev/null
-        fi
+        ${{ github.action_path }}/scripts/archive-scan-history.sh \
+          "${{ inputs.pages_root }}" \
+          "/tmp/scan-history-output"
 
 
     - name: Upload scan history artifact
@@ -425,64 +234,18 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        set -euo pipefail
-
-        ARTIFACT_NAME="__gh_security_toolkit__scan_history_${{ inputs.channel }}"
-        REPO="${{ github.repository }}"
-        CURRENT_ARTIFACT_ID="${{ steps.upload_history.outputs.artifact-id }}"
-
-        echo "🧹 Cleaning up old scan history artifacts for channel: ${{ inputs.channel }}"
-        echo "   Current artifact ID: $CURRENT_ARTIFACT_ID"
-
-        # List all artifacts with this name
-        ARTIFACTS=$(gh api \
-          -H "Accept: application/vnd.github+json" \
-          -H "X-GitHub-Api-Version: 2022-11-28" \
-          "/repos/$REPO/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" \
-          --jq '.artifacts[] | select(.id != '$CURRENT_ARTIFACT_ID') | .id')
-
-        if [ -z "$ARTIFACTS" ]; then
-          echo "   ✅ No old artifacts to clean up"
-          exit 0
-        fi
-
-        # Delete old artifacts
-        DELETED=0
-        for ARTIFACT_ID in $ARTIFACTS; do
-          echo "   🗑️  Deleting artifact ID: $ARTIFACT_ID"
-          gh api \
-            --method DELETE \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "/repos/$REPO/actions/artifacts/$ARTIFACT_ID" || echo "   ⚠️  Failed to delete artifact $ARTIFACT_ID (may already be deleted)"
-          DELETED=$((DELETED + 1))
-        done
-
-        echo "   ✅ Deleted $DELETED old artifact(s)"
+        ${{ github.action_path }}/scripts/cleanup-old-artifacts.sh \
+          "${{ github.repository }}" \
+          "__gh_security_toolkit__scan_history_${{ inputs.channel }}" \
+          "${{ steps.upload_history.outputs.artifact-id }}"
 
 
     - name: Archive multi-tenant config
       shell: bash
       run: |
-        set -euo pipefail
-
-        PAGES_ROOT="${{ inputs.pages_root }}"
-        ARCHIVE_DIR="/tmp/multi-tenant-config-output"
-
-        echo "📦 Archiving multi-tenant configuration..."
-
-        mkdir -p "$ARCHIVE_DIR"
-
-        # Archive tenant registry (CRITICAL for GUID persistence!)
-        if [ -f "$PAGES_ROOT/config/tenant-registry.json" ]; then
-          tar -czf "$ARCHIVE_DIR/multi-tenant-config.tar.gz" -C "$PAGES_ROOT" config/tenant-registry.json
-          SIZE=$(du -h "$ARCHIVE_DIR/multi-tenant-config.tar.gz" | cut -f1)
-          TENANT_COUNT=$(jq '.tenants | length' "$PAGES_ROOT/config/tenant-registry.json")
-          echo "   ✅ Archived tenant registry with $TENANT_COUNT tenant(s) ($SIZE)"
-        else
-          echo "   ℹ️  No tenant registry found (first run) - creating empty archive"
-          tar -czf "$ARCHIVE_DIR/multi-tenant-config.tar.gz" -T /dev/null
-        fi
+        ${{ github.action_path }}/scripts/archive-multi-tenant-config.sh \
+          "${{ inputs.pages_root }}" \
+          "/tmp/multi-tenant-config-output"
 
     - name: Upload multi-tenant config artifact
       id: upload_config
@@ -499,40 +262,10 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        set -euo pipefail
-
-        ARTIFACT_NAME="__gh_security_toolkit__multi-tenant-config"
-        REPO="${{ github.repository }}"
-        CURRENT_ARTIFACT_ID="${{ steps.upload_config.outputs.artifact-id }}"
-
-        echo "🧹 Cleaning up old multi-tenant config artifacts"
-        echo "   Current artifact ID: $CURRENT_ARTIFACT_ID"
-
-        # List all artifacts with this name
-        ARTIFACTS=$(gh api \
-          -H "Accept: application/vnd.github+json" \
-          -H "X-GitHub-Api-Version: 2022-11-28" \
-          "/repos/$REPO/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" \
-          --jq '.artifacts[] | select(.id != '$CURRENT_ARTIFACT_ID') | .id')
-
-        if [ -z "$ARTIFACTS" ]; then
-          echo "   ✅ No old artifacts to clean up"
-          exit 0
-        fi
-
-        # Delete old artifacts
-        DELETED=0
-        for ARTIFACT_ID in $ARTIFACTS; do
-          echo "   🗑️  Deleting artifact ID: $ARTIFACT_ID"
-          gh api \
-            --method DELETE \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "/repos/$REPO/actions/artifacts/$ARTIFACT_ID" || echo "   ⚠️  Failed to delete artifact $ARTIFACT_ID (may already be deleted)"
-          DELETED=$((DELETED + 1))
-        done
-
-        echo "   ✅ Deleted $DELETED old artifact(s)"
+        ${{ github.action_path }}/scripts/cleanup-old-artifacts.sh \
+          "${{ github.repository }}" \
+          "__gh_security_toolkit__multi-tenant-config" \
+          "${{ steps.upload_config.outputs.artifact-id }}"
 
 
     - name: Setup Pages
