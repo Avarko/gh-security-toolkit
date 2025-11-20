@@ -43,7 +43,8 @@ import java.util.regex.Pattern;
  * 4. Maintain data/<tenant-uuid>/hist/scan-history.json
  *
  * Tenant resolution (GUID-based security model):
- * - GitHub org/repo is read from environment variables (GITHUB_REPOSITORY_OWNER, GITHUB_REPOSITORY)
+ * - GitHub org/repo is read from environment variables
+ * (GITHUB_REPOSITORY_OWNER, GITHUB_REPOSITORY)
  * - TenantRegistry maps GitHub org/repo to a UUID
  * - Data is stored at /data/<uuid>/ to prevent tenant forgery or path traversal
  * - Display metadata (optional) can be provided via CLI arguments
@@ -69,7 +70,7 @@ public class GitHubPagesBuilder {
 
         String outputDir = args[0];
         String pagesRoot = args[1];
-        String isoTimestamp = args[2];  // Original ISO 8601 timestamp from input
+        String isoTimestamp = args[2]; // Original ISO 8601 timestamp from input
         String channel = args[3];
         String metadataJson = args.length > 4 && !args[4].isEmpty() ? args[4] : null;
         String dashboardDir = args.length > 5 && !args[5].isEmpty() ? args[5] : null;
@@ -99,19 +100,17 @@ public class GitHubPagesBuilder {
 
         if (githubOrg == null || githubOrg.isEmpty()) {
             throw new IllegalArgumentException(
-                "❌ ERROR: GITHUB_REPOSITORY_OWNER environment variable is required.\n" +
-                "   This value is trusted and provided by GitHub Actions.\n" +
-                "   If running locally for testing, set: export GITHUB_REPOSITORY_OWNER=<org>"
-            );
+                    "❌ ERROR: GITHUB_REPOSITORY_OWNER environment variable is required.\n" +
+                            "   This value is trusted and provided by GitHub Actions.\n" +
+                            "   If running locally for testing, set: export GITHUB_REPOSITORY_OWNER=<org>");
         }
 
         if (githubRepo == null || githubRepo.isEmpty()) {
             throw new IllegalArgumentException(
-                "❌ ERROR: GITHUB_REPOSITORY environment variable is required.\n" +
-                "   This value is trusted and provided by GitHub Actions.\n" +
-                "   Expected format: owner/repo\n" +
-                "   If running locally for testing, set: export GITHUB_REPOSITORY=<owner>/<repo>"
-            );
+                    "❌ ERROR: GITHUB_REPOSITORY environment variable is required.\n" +
+                            "   This value is trusted and provided by GitHub Actions.\n" +
+                            "   Expected format: owner/repo\n" +
+                            "   If running locally for testing, set: export GITHUB_REPOSITORY=<owner>/<repo>");
         }
 
         System.out.println("🔐 Tenant identity (from GitHub Actions context):");
@@ -198,7 +197,8 @@ public class GitHubPagesBuilder {
 
     private static void writeMetadataJson(Path targetDir, ScanMetadata metadata) throws IOException {
         // Build nested structure to match TypeScript schema:
-        // { timestamp: string, metadata: { branch, commit, repository }, footer: { ... } }
+        // { timestamp: string, metadata: { branch, commit, repository }, footer: { ...
+        // } }
         var metadataInner = new java.util.HashMap<String, String>();
         if (metadata != null) {
             if (metadata.branch != null && !metadata.branch.isEmpty()) {
@@ -314,14 +314,15 @@ public class GitHubPagesBuilder {
 
             // Format as compact UTC timestamp: YYYYMMDD-HHMMSS
             DateTimeFormatter formatter = DateTimeFormatter
-                .ofPattern("yyyyMMdd-HHmmss")
-                .withZone(ZoneOffset.UTC);
+                    .ofPattern("yyyyMMdd-HHmmss")
+                    .withZone(ZoneOffset.UTC);
 
             return formatter.format(instant);
         } catch (Exception e) {
             // If parsing fails, fall back to sanitized original timestamp
             // (remove colons and keep only alphanumeric + hyphens)
-            System.err.println("⚠️  Warning: Failed to parse timestamp '" + isoTimestamp + "', using sanitized version");
+            System.err
+                    .println("⚠️  Warning: Failed to parse timestamp '" + isoTimestamp + "', using sanitized version");
             return isoTimestamp.replaceAll("[^0-9A-Za-z-]", "");
         }
     }
@@ -356,16 +357,16 @@ public class GitHubPagesBuilder {
     }
 
     /**
-     * Cleans up orphaned tenant directories that are not registered in tenant-registry.json.
+     * Cleans up orphaned tenant directories that are not registered in
+     * tenant-registry.json.
      *
      * Safety features:
      * - Only deletes UUID-formatted directories
      * - Skips if registry is empty, missing, or invalid
-     * - Fails if >50% of tenants would be deleted
      * - Logs all actions before performing them
      *
      * @param pagesRoot Root directory of GitHub Pages (e.g., "docs")
-     * @param registry TenantRegistry containing registered tenants
+     * @param registry  TenantRegistry containing registered tenants
      */
     private static void cleanupOrphanedTenants(Path pagesRoot, TenantRegistry registry) {
         try {
@@ -411,10 +412,10 @@ public class GitHubPagesBuilder {
 
             try (var stream = Files.list(dataDir)) {
                 stream.filter(Files::isDirectory)
-                      .map(Path::getFileName)
-                      .map(Path::toString)
-                      .filter(name -> uuidPattern.matcher(name).matches())
-                      .forEach(foundIds::add);
+                        .map(Path::getFileName)
+                        .map(Path::toString)
+                        .filter(name -> uuidPattern.matcher(name).matches())
+                        .forEach(foundIds::add);
             }
 
             if (foundIds.isEmpty()) {
@@ -431,20 +432,9 @@ public class GitHubPagesBuilder {
             }
 
             if (orphanIds.isEmpty()) {
-                System.out.println("✅ No orphaned tenants found - all " + foundIds.size() + " tenant(s) are registered");
+                System.out
+                        .println("✅ No orphaned tenants found - all " + foundIds.size() + " tenant(s) are registered");
                 return;
-            }
-
-            // Safety check 2: Don't delete if >50% would be removed
-            double deletionPercentage = (double) orphanIds.size() / foundIds.size();
-            if (deletionPercentage > 0.5) {
-                System.err.println("❌ ERROR: Refusing to delete " + orphanIds.size() + " out of " + foundIds.size()
-                        + " tenants (" + String.format("%.0f%%", deletionPercentage * 100) + ")");
-                System.err.println("   This safety check prevents accidental mass deletion.");
-                System.err.println("   Registered tenants: " + registeredIds.size());
-                System.err.println("   Found tenants: " + foundIds.size());
-                System.err.println("   Orphaned tenants: " + orphanIds.size());
-                throw new IllegalStateException("Refusing to delete >50% of tenants for safety");
             }
 
             // Log what will be deleted
@@ -489,18 +479,16 @@ public class GitHubPagesBuilder {
         if (Files.isDirectory(path)) {
             try (var stream = Files.walk(path)) {
                 stream.sorted(Comparator.reverseOrder())
-                      .forEach(p -> {
-                          try {
-                              Files.delete(p);
-                          } catch (IOException e) {
-                              throw new RuntimeException("Failed to delete: " + p, e);
-                          }
-                      });
+                        .forEach(p -> {
+                            try {
+                                Files.delete(p);
+                            } catch (IOException e) {
+                                throw new RuntimeException("Failed to delete: " + p, e);
+                            }
+                        });
             }
         } else {
             Files.delete(path);
         }
     }
 }
-
-
