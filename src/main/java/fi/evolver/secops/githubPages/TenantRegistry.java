@@ -64,9 +64,10 @@ public class TenantRegistry {
      * @param githubRepo GitHub repository name (from GITHUB_REPOSITORY)
      * @param displayName Optional display name for the tenant
      * @param orgDisplayName Optional organization display name
+     * @param logoUrl Optional logo URL
      * @return UUID for the tenant's data directory
      */
-    public String resolveTenantId(String githubOrg, String githubRepo, String displayName, String orgDisplayName) throws IOException {
+    public String resolveTenantId(String githubOrg, String githubRepo, String displayName, String orgDisplayName, String logoUrl) throws IOException {
         // Normalize and validate inputs
         String normalizedOrg = normalizeGitHubName(githubOrg);
         String normalizedRepo = normalizeGitHubName(githubRepo);
@@ -79,7 +80,7 @@ public class TenantRegistry {
             if (tenant.githubOrg.equals(normalizedOrg) && tenant.githubRepo.equals(normalizedRepo)) {
                 System.out.println("✅ Found existing tenant: " + normalizedOrg + "/" + normalizedRepo + " → " + tenant.id);
 
-                // Update display names if provided
+                // Update display metadata if provided (but don't remove existing values)
                 boolean updated = false;
                 if (displayName != null && !displayName.equals(tenant.displayName)) {
                     tenant.displayName = displayName;
@@ -89,10 +90,14 @@ public class TenantRegistry {
                     tenant.orgDisplayName = orgDisplayName;
                     updated = true;
                 }
+                if (logoUrl != null && !logoUrl.equals(tenant.logoUrl)) {
+                    tenant.logoUrl = logoUrl;
+                    updated = true;
+                }
 
                 if (updated) {
                     saveRegistry();
-                    System.out.println("📝 Updated tenant display names");
+                    System.out.println("📝 Updated tenant display metadata");
                 }
 
                 return tenant.id;
@@ -106,8 +111,9 @@ public class TenantRegistry {
             normalizedOrg,
             normalizedRepo,
             Instant.now().toString(),
-            displayName != null ? displayName : (normalizedOrg + "/" + normalizedRepo),
-            orgDisplayName != null ? orgDisplayName : normalizedOrg
+            displayName,
+            orgDisplayName,
+            logoUrl
         );
 
         tenants.add(newTenant);
@@ -183,7 +189,8 @@ public class TenantRegistry {
                 tenantObj.get("github_repo").getAsString(),
                 tenantObj.get("created_at").getAsString(),
                 tenantObj.has("display_name") ? tenantObj.get("display_name").getAsString() : null,
-                tenantObj.has("org_display_name") ? tenantObj.get("org_display_name").getAsString() : null
+                tenantObj.has("org_display_name") ? tenantObj.get("org_display_name").getAsString() : null,
+                tenantObj.has("logo_url") ? tenantObj.get("logo_url").getAsString() : null
             );
             tenants.add(entry);
         }
@@ -204,12 +211,18 @@ public class TenantRegistry {
             tenantObj.addProperty("github_org", tenant.githubOrg);
             tenantObj.addProperty("github_repo", tenant.githubRepo);
             tenantObj.addProperty("created_at", tenant.createdAt);
-            if (tenant.displayName != null) {
+
+            // Only include display metadata if provided
+            if (tenant.displayName != null && !tenant.displayName.isEmpty()) {
                 tenantObj.addProperty("display_name", tenant.displayName);
             }
-            if (tenant.orgDisplayName != null) {
+            if (tenant.orgDisplayName != null && !tenant.orgDisplayName.isEmpty()) {
                 tenantObj.addProperty("org_display_name", tenant.orgDisplayName);
             }
+            if (tenant.logoUrl != null && !tenant.logoUrl.isEmpty()) {
+                tenantObj.addProperty("logo_url", tenant.logoUrl);
+            }
+
             tenantsArray.add(tenantObj);
         }
 
@@ -229,15 +242,17 @@ public class TenantRegistry {
         final String createdAt;
         String displayName;
         String orgDisplayName;
+        String logoUrl;
 
         TenantEntry(String id, String githubOrg, String githubRepo, String createdAt,
-                   String displayName, String orgDisplayName) {
+                   String displayName, String orgDisplayName, String logoUrl) {
             this.id = id;
             this.githubOrg = githubOrg;
             this.githubRepo = githubRepo;
             this.createdAt = createdAt;
             this.displayName = displayName;
             this.orgDisplayName = orgDisplayName;
+            this.logoUrl = logoUrl;
         }
     }
 }

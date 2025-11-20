@@ -33,20 +33,24 @@ on:
         required: false
         default: 'single-tenant'
 
-      dashboard_org_slug:
-        description: 'Dashboard organization slug for GitHub Pages /data/<org>/<app>/<repo>'
+      # Tenant configuration
+      dashboard_org_display_name:
+        description: 'Organization display name (e.g., "VR FleetCare")'
         type: string
-        required: true
+        required: false
+        default: ''
 
-      dashboard_app_slug:
-        description: 'Dashboard application slug for GitHub Pages /data/<org>/<app>/<repo>'
+      dashboard_repo_display_name:
+        description: 'Repository display name (e.g., "FC CIAM Backend")'
         type: string
-        required: true
+        required: false
+        default: ''
 
-      dashboard_repo_slug:
-        description: 'Dashboard repository slug for GitHub Pages /data/<org>/<app>/<repo>'
+      dashboard_logo_url:
+        description: 'Organization logo URL (absolute path like /assets/logo.png or external URL)'
         type: string
-        required: true
+        required: false
+        default: ''
 
 jobs:
   publish-dashboard:
@@ -118,8 +122,8 @@ jobs:
           retention_days: ${{ inputs.retention_days }}
           ci_job_name: ${{ github.workflow }}
           ci_job_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          dashboard_mode: ${{ inputs.dashboard_mode }}
-          dashboard_org_slug: ${{ inputs.dashboard_org_slug }}
-          dashboard_app_slug: ${{ inputs.dashboard_app_slug }}
-          dashboard_repo_slug: ${{ inputs.dashboard_repo_slug }}
+          dashboard_display_name: ${{ inputs.dashboard_repo_display_name }}
+          dashboard_org_display_name: ${{ inputs.dashboard_org_display_name }}
+          dashboard_logo_url: ${{ inputs.dashboard_logo_url }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
