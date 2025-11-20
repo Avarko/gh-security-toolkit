@@ -6,32 +6,6 @@ inputs:
     description: "Directory containing scan outputs (JSON/MD/etc.). Use a unique, namespaced dir."
     required: true
 
-  # Metadata (optional)
-  metadata_timestamp:
-    description: "Timestamp of the scan"
-    required: false
-    default: ""
-  metadata_branch:
-    description: "Branch name"
-    required: false
-    default: ""
-  metadata_repository:
-    description: "Repository name (owner/repo)"
-    required: false
-    default: ""
-  metadata_commit_sha:
-    description: "Commit SHA"
-    required: false
-    default: ""
-  metadata_image_name:
-    description: "Docker image name"
-    required: false
-    default: ""
-  metadata_scan_id:
-    description: "Scan run ID"
-    required: false
-    default: ""
-
   # Release naming
   release_name:
     description: "Human-friendly release name (e.g. Security scan 2025-11-04-021500)"
@@ -83,29 +57,6 @@ runs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 1
-
-    - name: Create metadata JSON
-      id: metadata
-      shell: bash
-      run: |
-        set -euo pipefail
-        META_FILE="${{ inputs.outdir }}/scan-metadata.json"
-        jq -n \
-          --arg ts "${{ inputs.metadata_timestamp }}" \
-          --arg branch "${{ inputs.metadata_branch }}" \
-          --arg repo "${{ inputs.metadata_repository }}" \
-          --arg sha "${{ inputs.metadata_commit_sha }}" \
-          --arg image "${{ inputs.metadata_image_name }}" \
-          --arg scan_id "${{ inputs.metadata_scan_id }}" \
-          '{
-            timestamp: $ts,
-            branch: $branch,
-            repository: $repo,
-            commit_sha: $sha,
-            image_name: $image,
-            scan_run_id: $scan_id
-          }' > "$META_FILE"
-        echo "meta_json=$META_FILE" >> "$GITHUB_OUTPUT"
 
     - name: Validate inputs
       shell: bash

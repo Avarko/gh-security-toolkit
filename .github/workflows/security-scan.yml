@@ -28,43 +28,13 @@ on:
         description: 'Where to publish results: "github-release", "github-pages", or "github-release,github-pages" for both'
         type: string
         required: false
-        default: 'github-release'
+        default: 'github-pages'
 
       # === METADATA FOR REPORTING ===
       channel:
         description: 'Channel name for release grouping (tag-friendly, e.g., "master", "dev", "prod"). Used in tags and release retention.'
         type: string
         required: true
-
-      branch:
-        description: 'Git branch name (for reports/notifications, can contain slashes)'
-        type: string
-        required: false
-        default: ''
-
-      repository:
-        description: 'Repository name (owner/repo, for reports)'
-        type: string
-        required: false
-        default: ''
-
-      commit_sha:
-        description: 'Git commit SHA (for reports)'
-        type: string
-        required: false
-        default: ''
-
-      image_name:
-        description: 'Docker image name (for reports)'
-        type: string
-        required: false
-        default: ''
-
-      dependabot_gh_token:
-        description: 'GitHub Personal Access Token (PAT) with security_events scope for Dependabot API. Optional - if not provided, Dependabot scan is skipped.'
-        type: string
-        required: false
-        default: ''
 
     secrets:
       SLACK_BOT_TOKEN:
@@ -176,16 +146,6 @@ jobs:
           semgrep_output_dir: ${{ steps.setup.outputs.output_dir }}
           semgrep_configs: "p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets"
 
-      # === FETCH DEPENDABOT ALERTS ===
-      - name: Fetch Dependabot alerts
-        id: dependabot
-        if: ${{ inputs.dependabot_gh_token != '' }}
-        uses: Avarko/gh-security-toolkit/actions/scanner/dependabot@reactui
-        with:
-          repository: ${{ inputs.repository }}
-          github_token: ${{ inputs.dependabot_gh_token }}
-          dependabot_output_dir: ${{ steps.setup.outputs.output_dir }}
-
       # === SUMMARIZE RESULTS ===
       - name: Summarizer
         id: sum
@@ -208,12 +168,6 @@ jobs:
         uses: Avarko/gh-security-toolkit/actions/publisher/github-release@reactui
         with:
           outdir: ${{ steps.setup.outputs.output_dir }}
-          metadata_timestamp: ${{ steps.ts.outputs.ts }}
-          metadata_branch: ${{ inputs.branch }}
-          metadata_repository: ${{ inputs.repository }}
-          metadata_commit_sha: ${{ inputs.commit_sha }}
-          metadata_image_name: ${{ inputs.image_name }}
-          metadata_scan_id: ${{ github.run_id }}
           release_name: "Security scan ${{ inputs.channel }} ${{ steps.ts.outputs.ts }}"
           tag_name: "security-scan-${{ inputs.channel }}-${{ steps.ts.outputs.ts }}"
           body_file: ${{ steps.sum.outputs.release_body_markdown }}
@@ -234,5 +188,3 @@ jobs:
           github_token: ${{ secrets.GH_TOKEN || github.token }}
           outdir: ${{ steps.setup.outputs.output_dir }}
           channel: ${{ inputs.channel }}
-          # Note: metadata_timestamp, branch, repository, commit_sha, scan_id are now auto-detected
-          # Note: image_name, app URLs, scanner versions should be moved to scan-metadata.json in scan output
