@@ -93,7 +93,7 @@ jobs:
 │ 4. Publish to GitHub Release (optional)                     │
 │ 5. Publish to GitHub Pages:                                 │
 │    ├─ Download _scan_history_<channel> artifact            │
-│    ├─ Restore to docs/data/<org>/<app>/<repo>/             │
+│    ├─ Restore to ./data/<org>/<app>/<repo>/             │
 │    ├─ Apply retention (delete old runs)                     │
 │    ├─ Build React dashboard                                 │
 │    ├─ Run Java: merge new scan + update scan-history.json  │

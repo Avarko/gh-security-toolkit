@@ -365,7 +365,7 @@ public class GitHubPagesBuilder {
      * - Skips if registry is empty, missing, or invalid
      * - Logs all actions before performing them
      *
-     * @param pagesRoot Root directory of GitHub Pages (e.g., "docs")
+     * @param pagesRoot Root directory of GitHub Pages (repository root)
      * @param registry  TenantRegistry containing registered tenants
      */
     private static void cleanupOrphanedTenants(Path pagesRoot, TenantRegistry registry) {

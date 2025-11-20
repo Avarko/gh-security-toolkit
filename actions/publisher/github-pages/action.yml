@@ -36,9 +36,9 @@ inputs:
     description: "Channel name for organizing scans (e.g., 'nightly-master', 'pr-123')"
     required: true
   pages_root:
-    description: "Root directory for GitHub Pages (e.g., 'docs')"
+    description: "Root directory for GitHub Pages (use '.' for repository root)"
     required: false
-    default: "docs"
+    default: "."
   retention_keep:
     description: "Keep at most N full scan results per channel in /runs (0=unlimited). Note: scan-history.json retains stats for all scans regardless of this limit."
     required: false
@@ -200,9 +200,13 @@ runs:
 
         echo "🏗️  Building GitHub Pages (incremental update)..."
 
+        # Resolve pages_root to absolute path to ensure Java can find restored config
+        PAGES_ROOT_ABS="$(cd "${{ inputs.pages_root }}" 2>/dev/null && pwd || realpath "${{ inputs.pages_root }}")"
+        echo "📂 Pages root (absolute): $PAGES_ROOT_ABS"
+
         jbang "${{ github.action_path }}/../../../scripts/github_pages_builder.java" \
           "${{ inputs.outdir }}" \
-          "${{ inputs.pages_root }}" \
+          "$PAGES_ROOT_ABS" \
           "${{ inputs.metadata_timestamp }}" \
           "${{ inputs.channel }}" \
           "${{ steps.metadata.outputs.meta_json }}" \

@@ -8,7 +8,7 @@
 # Arguments:
 #   repository         - GitHub repository in format "owner/repo"
 #   channel            - Channel name (e.g., "manual", "nightly")
-#   pages_root         - Root directory for GitHub Pages (e.g., "docs")
+#   pages_root         - Root directory for GitHub Pages (usually: .)
 #   github_output_path - Path to GITHUB_OUTPUT file for setting outputs
 #
 # Outputs (written to GITHUB_OUTPUT):
@@ -26,7 +26,7 @@ fi
 
 REPOSITORY="$1"
 CHANNEL="$2"
-PAGES_ROOT="$3"
+PAGES_ROOT="$(cd "$3" 2>/dev/null && pwd || realpath "$3")"
 GITHUB_OUTPUT="$4"
 
 ARTIFACT_NAME="__gh_security_toolkit__scan_history_$CHANNEL"

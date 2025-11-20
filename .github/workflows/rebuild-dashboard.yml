@@ -69,7 +69,7 @@ jobs:
           metadata_commit_sha: ${{ github.sha }}
           metadata_scan_id: ${{ github.run_id }}
           channel: ${{ inputs.channel }}
-          pages_root: docs
+          pages_root: .
           retention_keep: 10
           retention_days: 30
           ci_job_name: ${{ github.workflow }}

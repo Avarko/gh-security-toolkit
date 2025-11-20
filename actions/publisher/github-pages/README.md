@@ -15,9 +15,10 @@ Publishes security scan results as static HTML pages to GitHub Pages.
 ## Structure
 
 ```
-docs/                                      # GitHub Pages root
+/                                          # GitHub Pages root (repository root)
 ├── index.html                            # Main page (all channels)
-├── style.css                             # Shared CSS
+├── 404.html                              # Error page
+├── assets/                               # Static assets
 └── data/
     ├── hist/
     │   └── scan-history.json             # Versioned history (v2)
@@ -50,7 +51,7 @@ docs/                                      # GitHub Pages root
     metadata_repository: ${{ inputs.repository }}
     metadata_commit_sha: ${{ inputs.commit_sha }}
     channel: nightly-master
-    pages_root: docs
+    pages_root: .
     retention_keep: 50
 
 - name: Deploy to GitHub Pages
@@ -62,9 +63,8 @@ docs/                                      # GitHub Pages root
 **⚠️ Important**: This publisher will **refuse to deploy** if Pages is configured as public.
 
 1. Go to repository **Settings** → **Pages**
-2. **Source**: Deploy from a branch
-3. **Branch**: Select your branch (e.g., `main`) and `/docs` folder
-4. **Visibility**: Select **"Private"** (GitHub Enterprise Cloud only)
+2. **Source**: GitHub Actions (this is set automatically)
+3. **Visibility**: Select **"Private"** (GitHub Enterprise Cloud only)
    - ✅ **Private**: Only organization members can access
    - ❌ **Public**: Action will fail with error message
 
@@ -93,7 +93,7 @@ permissions:
 | `metadata_image_name` | Docker image name | No | `""` |
 | `metadata_scan_id` | Scan run ID | No | `""` |
 | `channel` | Channel name for organizing scans | Yes | - |
-| `pages_root` | Root directory for GitHub Pages | No | `docs` |
+| `pages_root` | Root directory for GitHub Pages | No | `.` |
 | `retention_keep` | Keep at most N scans per channel | No | `50` |
 
 ## Outputs
@@ -150,7 +150,7 @@ To test locally:
 ```bash
 jbang scripts/github_pages_builder.java \
   ./scan-output \
-  ./docs \
+  . \
   2025-11-07-033946Z \
   test-channel
 ```

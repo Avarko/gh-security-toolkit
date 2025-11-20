@@ -246,7 +246,7 @@ publish_to: "github-release,github-pages"  # Both
 **Channel-based organization**
 
 ```
-docs/
+./
 ├── index.html                              # All channels overview
 ├── style.css                               # Unified styles
 └── data/
@@ -288,7 +288,7 @@ All scan data is organized using a **GUID-based tenant system** for maximum secu
 ### Directory layout
 
 ```
-docs/                           # GitHub Pages root
+./                              # GitHub Pages root
 ├── index.html                  # Dashboard SPA entry point
 ├── assets/                     # Dashboard static files (JS, CSS)
 ├── config/
@@ -531,7 +531,7 @@ jbang scripts/semgrep_summarize.java \
 # GitHub Pages builder
 jbang scripts/github_pages_builder.java \
   scan-output/ \
-  docs/ \
+  ./ \
   2025-11-09-120000Z \
   my-channel
 ```

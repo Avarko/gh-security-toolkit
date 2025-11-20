@@ -85,7 +85,7 @@ on:
         required: false
 
 permissions:
-  contents: write    # Required: gh release create/delete, commit to docs/ folder
+  contents: write    # Required: gh release create/delete, commit to ./ folder
   pages: write       # Required: deploy-pages action (if publish_to contains 'github-pages')
   id-token: write    # Required: deploy-pages OIDC authentication (if publish_to contains 'github-pages')
   actions: read      # Required: dawidd6/action-download-artifact to list workflow runs
@@ -252,13 +252,13 @@ jobs:
           metadata_image_name: ${{ inputs.image_name }}
           metadata_scan_id: ${{ github.run_id }}
           channel: ${{ inputs.channel }}
-          pages_root: docs
+          pages_root: .
           retention_keep: ${{ inputs.retention_keep }}
           retention_days: ${{ inputs.retention_days }}
           github_token: ${{ secrets.GH_TOKEN || github.token }}
-          app_docs_url: ${{ inputs.app_docs_url }}
-          app_issues_url: ${{ inputs.app_issues_url }}
-          ci_job_name: ${{ github.workflow }}
-          ci_job_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          trivy_version: ${{ steps.trivy.outputs.trivy_version }}
-          semgrep_version: ${{ steps.semgrep.outputs.semgrep_version }}
+          #app_docs_url: ${{ inputs.app_docs_url }}
+          #app_issues_url: ${{ inputs.app_issues_url }}
+          #ci_job_name: ${{ github.workflow }}
+          #ci_job_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          #trivy_version: ${{ steps.trivy.outputs.trivy_version }}
+          #semgrep_version: ${{ steps.semgrep.outputs.semgrep_version }}

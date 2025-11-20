@@ -5,7 +5,7 @@
 # Usage: archive-multi-tenant-config.sh <pages_root> <output_dir>
 #
 # Arguments:
-#   pages_root - Root directory for GitHub Pages (e.g., "docs")
+#   pages_root - Root directory for GitHub Pages (usually: .)
 #   output_dir - Directory where archive will be created
 #
 # Output:
@@ -18,7 +18,7 @@ if [ $# -lt 2 ]; then
     exit 1
 fi
 
-PAGES_ROOT="$1"
+PAGES_ROOT="$(cd "$1" 2>/dev/null && pwd || realpath "$1")"
 ARCHIVE_DIR="$2"
 
 echo "📦 Archiving multi-tenant configuration..."

@@ -7,7 +7,7 @@
 #
 # Arguments:
 #   repository         - GitHub repository in format "owner/repo"
-#   pages_root         - Root directory for GitHub Pages (e.g., "docs")
+#   pages_root         - Root directory for GitHub Pages (usually: .)
 #   github_output_path - Path to GITHUB_OUTPUT file for setting outputs
 #
 # Outputs (written to GITHUB_OUTPUT):
@@ -24,7 +24,7 @@ if [ $# -lt 3 ]; then
 fi
 
 REPOSITORY="$1"
-PAGES_ROOT="$2"
+PAGES_ROOT="$(cd "$2" 2>/dev/null && pwd || realpath "$2")"
 GITHUB_OUTPUT="$3"
 
 ARTIFACT_NAME="__gh_security_toolkit__multi-tenant-config"
