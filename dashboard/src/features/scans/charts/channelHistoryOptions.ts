@@ -45,6 +45,18 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             : (s.trivyFsResults?.totalVulnerabilities?.HIGH || 0) +
             (s.trivyImageResults?.totalVulnerabilities?.HIGH || 0)
     );
+    const mediumData = sortedScans.map((s) =>
+        isMissingStats(s)
+            ? null
+            : (s.trivyFsResults?.totalVulnerabilities?.MEDIUM || 0) +
+            (s.trivyImageResults?.totalVulnerabilities?.MEDIUM || 0)
+    );
+    const lowData = sortedScans.map((s) =>
+        isMissingStats(s)
+            ? null
+            : (s.trivyFsResults?.totalVulnerabilities?.LOW || 0) +
+            (s.trivyImageResults?.totalVulnerabilities?.LOW || 0)
+    );
     const errorsData = sortedScans.map((s) =>
         isMissingStats(s) ? null : s.semgrepResults?.totalErrors || 0
     );
@@ -96,8 +108,8 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             },
         },
         legend: {
-            data: ["Critical", "High", "Errors", "Warnings"],
-            textStyle: { color: "#fff" },
+            data: ["Critical", "High", "Medium", "Low", "Errors", "Warnings"],
+            textStyle: { color: "#000000" },
             top: 10,
         },
         grid: {
@@ -141,6 +153,22 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
                 smooth: true,
                 lineStyle: { color: "#FF6A00", width: 2 },
                 itemStyle: { color: "#FF6A00" },
+            },
+            {
+                name: "Medium",
+                type: "line",
+                data: mediumData,
+                smooth: true,
+                lineStyle: { color: "#FFDE5E", width: 2 },
+                itemStyle: { color: "#FFDE5E" },
+            },
+            {
+                name: "Low",
+                type: "line",
+                data: lowData,
+                smooth: true,
+                lineStyle: { color: "#B7B2AA", width: 2 },
+                itemStyle: { color: "#B7B2AA" },
             },
             {
                 name: "Errors",
