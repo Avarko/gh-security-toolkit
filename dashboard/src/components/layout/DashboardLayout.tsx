@@ -5,6 +5,7 @@
 
 import type { ReactNode } from "react";
 import { Link as RouterLink, useLocation, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
 import {
     AppBar,
     Box,
@@ -20,6 +21,7 @@ import {
 } from "@mui/material";
 import { Security as SecurityIcon } from "@mui/icons-material";
 import { ReportFooter } from "./ReportFooter";
+import { loadTenantRegistry, findTenantByGitHub, type TenantEntry } from "../../lib/tenantRegistry";
 
 const DRAWER_WIDTH = 240;
 
@@ -48,6 +50,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         repoSlug?: string;
     }>();
 
+    const [tenant, setTenant] = useState<TenantEntry | null>(null);
+
+    useEffect(() => {
+        if (orgSlug && repoSlug) {
+            loadTenantRegistry().then((registry) => {
+                const found = findTenantByGitHub(registry, orgSlug, repoSlug);
+                setTenant(found || null);
+            });
+        }
+    }, [orgSlug, repoSlug]);
+
     const basePath =
         orgSlug && repoSlug
             ? `/org/${orgSlug}/repo/${repoSlug}`
@@ -56,6 +69,96 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     const securityScansPath = basePath
         ? `${basePath}/security-scans`
         : "/"; // fallback
+
+    // Build title with display names and GitHub links
+    const renderTitle = () => {
+        if (!orgSlug || !repoSlug) {
+            return "Security Scan Dashboard";
+        }
+
+        const orgDisplayName = tenant?.org_display_name;
+        const repoDisplayName = tenant?.display_name;
+        const logoUrl = tenant?.logo_url;
+
+        return (
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                {/* Logo if available */}
+                {logoUrl && (
+                    <img
+                        src={logoUrl}
+                        alt={orgDisplayName || orgSlug}
+                        style={{
+                            height: "32px",
+                            width: "auto",
+                            objectFit: "contain",
+                        }}
+                    />
+                )}
+
+                {/* Org display name or GitHub org */}
+                {orgDisplayName ? (
+                    <>
+                        <span>{orgDisplayName}</span>
+                        <span style={{ color: "#656d76" }}>(</span>
+                        <a
+                            href={`https://github.com/${orgSlug}`}
+                            target="_ghorg"
+                            style={{ color: "#0969da", textDecoration: "none" }}
+                            onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                            onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
+                        >
+                            {orgSlug}
+                        </a>
+                        <span style={{ color: "#656d76" }}>)</span>
+                    </>
+                ) : (
+                    <a
+                        href={`https://github.com/${orgSlug}`}
+                        target="_ghorg"
+                        style={{ color: "#0969da", textDecoration: "none" }}
+                        onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                        onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
+                    >
+                        {orgSlug}
+                    </a>
+                )}
+
+                <span style={{ color: "#656d76" }}>/</span>
+
+                {/* Repo display name or GitHub repo */}
+                {repoDisplayName ? (
+                    <>
+                        <span>{repoDisplayName}</span>
+                        <span style={{ color: "#656d76" }}>(</span>
+                        <a
+                            href={`https://github.com/${orgSlug}/${repoSlug}`}
+                            target="_ghrepo"
+                            style={{ color: "#0969da", textDecoration: "none" }}
+                            onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                            onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
+                        >
+                            {repoSlug}
+                        </a>
+                        <span style={{ color: "#656d76" }}>)</span>
+                    </>
+                ) : (
+                    <a
+                        href={`https://github.com/${orgSlug}/${repoSlug}`}
+                        target="_ghrepo"
+                        style={{ color: "#0969da", textDecoration: "none" }}
+                        onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                        onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
+                    >
+                        {repoSlug}
+                    </a>
+                )}
+
+                <span style={{ color: "#656d76" }}>–</span>
+                <span>Security Dashboard</span>
+            </Box>
+        );
+    };
+
     return (
         <Box sx={{ display: "flex" }}>
             {/* AppBar */}
@@ -79,9 +182,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                             fontWeight: 600,
                         }}
                     >
-                        {orgSlug && repoSlug
-                            ? `${orgSlug} / ${repoSlug} – Security Dashboard`
-                            : "Security Scan Dashboard"}
+                        {renderTitle()}
                     </Typography>
                 </Toolbar>
             </AppBar>
