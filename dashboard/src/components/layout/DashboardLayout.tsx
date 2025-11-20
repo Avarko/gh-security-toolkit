@@ -61,14 +61,24 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             {/* AppBar */}
             <AppBar
                 position="fixed"
+                elevation={0}
                 sx={{
                     width: `calc(100% - ${DRAWER_WIDTH}px)`,
                     ml: `${DRAWER_WIDTH}px`,
-                    bgcolor: "background.paper",
+                    bgcolor: "#ffffff",
+                    borderBottom: "1px solid #d0d7de",
                 }}
             >
                 <Toolbar>
-                    <Typography variant="h6" noWrap component="div">
+                    <Typography
+                        variant="h6"
+                        noWrap
+                        component="div"
+                        sx={{
+                            color: "text.primary",
+                            fontWeight: 600,
+                        }}
+                    >
                         {orgSlug && repoSlug
                             ? `${orgSlug} / ${repoSlug} – Security Dashboard`
                             : "Security Scan Dashboard"}
@@ -84,8 +94,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     "& .MuiDrawer-paper": {
                         width: DRAWER_WIDTH,
                         boxSizing: "border-box",
-                        bgcolor: "background.default",
-                        borderRight: "1px solid rgba(63, 81, 181, 0.12)",
+                        bgcolor: "#f6f8fa",
+                        borderRight: "1px solid #d0d7de",
                     },
                 }}
                 variant="permanent"
@@ -94,7 +104,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 <Toolbar>
                     <Typography
                         variant="h6"
-                        sx={{ fontWeight: 700, color: "primary.main" }}
+                        sx={{ fontWeight: 600, color: "text.primary" }}
                     >
                         Menu
                     </Typography>
@@ -124,8 +134,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                                     </ListItemIcon>
                                     <ListItemText
                                         primary={item.label}
-                                        primaryTypographyProps={{
-                                            fontWeight: isActive ? 600 : 500,
+                                        slotProps={{
+                                            primary: {
+                                                sx: {
+                                                    fontWeight: isActive ? 600 : 500,
+                                                },
+                                            },
                                         }}
                                     />
                                 </ListItemButton>
@@ -140,7 +154,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 component="main"
                 sx={{
                     flexGrow: 1,
-                    bgcolor: "background.default",
+                    bgcolor: "#ffffff",
                     p: 3,
                     minHeight: "100vh",
                 }}

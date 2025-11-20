@@ -3,31 +3,40 @@ import { createTheme } from "@mui/material/styles";
 
 export const theme = createTheme({
     palette: {
-        mode: "dark",
+        mode: "light",
         primary: {
-            main: "#3f51b5",
+            main: "#0969da", // GitHub blue
         },
         secondary: {
-            main: "#f50057",
+            main: "#8250df", // GitHub purple
         },
         background: {
-            default: "#0a1929",
-            paper: "#132f4c",
+            default: "#ffffff",
+            paper: "#f6f8fa", // GitHub subtle gray
         },
         error: {
-            main: "#ef5350",
+            main: "#cf222e", // GitHub red
         },
         warning: {
-            main: "#ff9800",
+            main: "#bf8700", // GitHub orange
         },
         success: {
-            main: "#66bb6a",
+            main: "#1a7f37", // GitHub green
+        },
+        text: {
+            primary: "#1f2328", // GitHub dark text
+            secondary: "#656d76", // GitHub muted text
         },
     },
     typography: {
-        fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif',
         body1: {
-            lineHeight: 1.6,
+            lineHeight: 1.5,
+            fontSize: "14px",
+        },
+        h6: {
+            fontSize: "16px",
+            fontWeight: 600,
         },
     },
     components: {
@@ -42,7 +51,7 @@ export const theme = createTheme({
                     paddingBottom: "5rem", // tila sticky-footerille
                 },
                 a: {
-                    color: "#3498db",
+                    color: "#0969da",
                     textDecoration: "none",
                 },
                 "a:hover": {
@@ -50,22 +59,34 @@ export const theme = createTheme({
                 },
             },
         },
-        // Korttien border-radius (vanhan section-kortin hengessä)
+        // GitHub-style cards
         MuiPaper: {
             styleOverrides: {
                 root: {
-                    borderRadius: 8,
+                    borderRadius: 6,
+                    border: "1px solid #d0d7de",
                 },
             },
         },
-        // Taulukoiden perusfonttikoko ja head-soluja hieman korostetaan
+        // GitHub-style tables
         MuiTableCell: {
             styleOverrides: {
                 head: {
                     fontWeight: 600,
+                    fontSize: "12px",
+                    color: "#656d76",
+                    borderBottom: "1px solid #d0d7de",
                 },
                 body: {
-                    fontSize: "0.9rem",
+                    fontSize: "14px",
+                    borderBottom: "1px solid #d0d7de",
+                },
+            },
+        },
+        MuiTable: {
+            styleOverrides: {
+                root: {
+                    borderCollapse: "separate",
                 },
             },
         },

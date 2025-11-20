@@ -62,43 +62,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
     }, [history?.scans]);
 
     return (
-        <Box sx={{ p: 3 }}>
-            {/* Hero Section */}
-            <Box
-                sx={{
-                    background: "linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)",
-                    borderRadius: 2,
-                    p: 4,
-                    mb: 3,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 3,
-                }}
-            >
-                <Box
-                    sx={{
-                        width: 48,
-                        height: 48,
-                        borderRadius: "50%",
-                        background: "rgba(255, 255, 255, 0.2)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 24,
-                    }}
-                >
-                    🔍
-                </Box>
-                <Box>
-                    <Typography variant="h3" sx={{ color: "white", fontWeight: 600, mb: 0.5 }}>
-                        Security Scan Reports
-                    </Typography>
-                    <Typography variant="h6" sx={{ color: "rgba(255, 255, 255, 0.9)" }}>
-                        Comprehensive vulnerability analysis and code quality insights
-                    </Typography>
-                </Box>
-            </Box>
-
+        <Box>
             {/* Breadcrumbs */}
             <Breadcrumbs separator={<NavigateNextIcon fontSize="small" />} sx={{ mb: 3 }}>
                 <Link
