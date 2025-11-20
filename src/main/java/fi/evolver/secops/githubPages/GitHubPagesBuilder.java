@@ -52,7 +52,7 @@ import java.util.List;
  * Usage:
  * GitHubPagesBuilder <output_dir> <pages_root> <scan_timestamp> <channel>
  * [metadata_json] [dashboard_dir]
- * [display_name] [org_display_name]
+ * [display_name] [org_display_name] [logo_url]
  */
 public class GitHubPagesBuilder {
 
@@ -62,7 +62,7 @@ public class GitHubPagesBuilder {
         if (args.length < 4) {
             System.err.println(
                     "Usage: GitHubPagesBuilder <output_dir> <pages_root> <scan_timestamp> <channel> "
-                            + "[metadata_json] [dashboard_dir] [display_name] [org_display_name]");
+                            + "[metadata_json] [dashboard_dir] [display_name] [org_display_name] [logo_url]");
             System.exit(1);
         }
 
@@ -76,6 +76,7 @@ public class GitHubPagesBuilder {
         // Optional display metadata (not used for data paths)
         String displayName = args.length > 6 && !args[6].isEmpty() ? args[6] : null;
         String orgDisplayName = args.length > 7 && !args[7].isEmpty() ? args[7] : null;
+        String logoUrl = args.length > 8 && !args[8].isEmpty() ? args[8] : null;
 
         // Convert ISO timestamp to compact UTC format for URLs and file paths
         String compactTimestamp = toCompactTimestamp(isoTimestamp);
@@ -118,7 +119,7 @@ public class GitHubPagesBuilder {
 
         // Resolve or create tenant UUID using TenantRegistry
         TenantRegistry registry = new TenantRegistry(pagesPath);
-        String tenantId = registry.resolveTenantId(githubOrg, githubRepo, displayName, orgDisplayName);
+        String tenantId = registry.resolveTenantId(githubOrg, githubRepo, displayName, orgDisplayName, logoUrl);
 
         // Data root is now /data/<uuid>/
         Path dataRoot = pagesPath.resolve("data").resolve(tenantId);

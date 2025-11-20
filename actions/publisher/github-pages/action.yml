@@ -95,6 +95,11 @@ inputs:
     required: false
     default: ""
 
+  dashboard_logo_url:
+    description: "Optional logo URL (absolute path like /assets/logo.png or external URL)"
+    required: false
+    default: ""
+
 runs:
   using: "composite"
   steps:
@@ -377,7 +382,8 @@ runs:
           "${{ steps.metadata.outputs.meta_json }}" \
           "/tmp/dashboard-build" \
           "${{ inputs.dashboard_display_name }}" \
-          "${{ inputs.dashboard_org_display_name }}"
+          "${{ inputs.dashboard_org_display_name }}" \
+          "${{ inputs.dashboard_logo_url }}"
 
     - name: Archive scan history
       shell: bash
