@@ -16,7 +16,7 @@ import {
 } from "@mui/material";
 import HomeIcon from "@mui/icons-material/Home";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
-import { severityToHexColor } from "./severity";
+import { severityToChipStyle } from "./severity";
 import { ReportFooter } from "../../../components/layout/ReportFooter";
 import { formatTimestamp } from "../../../lib/formatTimestamp";
 
@@ -206,10 +206,7 @@ export function ScanRunDetailPage({
                                                 <Chip
                                                     label={v.Severity}
                                                     size="small"
-                                                    sx={{
-                                                        bgcolor: severityToHexColor(v.Severity),
-                                                        color: "#fff",
-                                                    }}
+                                                    sx={severityToChipStyle(v.Severity)}
                                                 />
                                             </TableCell>
                                             <TableCell>{v.Title}</TableCell>
@@ -265,10 +262,7 @@ export function ScanRunDetailPage({
                                                 <Chip
                                                     label={f.extra.severity}
                                                     size="small"
-                                                    sx={{
-                                                        bgcolor: severityToHexColor(f.extra.severity),
-                                                        color: "#fff",
-                                                    }}
+                                                    sx={severityToChipStyle(f.extra.severity)}
                                                 />
                                             </TableCell>
                                             <TableCell>{f.extra.message}</TableCell>

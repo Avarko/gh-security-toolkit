@@ -15,10 +15,10 @@ export const theme = createTheme({
             paper: "#f6f8fa", // GitHub subtle gray
         },
         error: {
-            main: "#cf222e", // GitHub red
+            main: "#cf222e", // GitHub red - matches CRITICAL/ERROR severity
         },
         warning: {
-            main: "#bf8700", // GitHub orange
+            main: "#FF6A00", // Orange - matches HIGH/WARNING severity
         },
         success: {
             main: "#1a7f37", // GitHub green
@@ -87,6 +87,16 @@ export const theme = createTheme({
             styleOverrides: {
                 root: {
                     borderCollapse: "separate",
+                },
+            },
+        },
+        // Custom chip styling for severity levels
+        MuiChip: {
+            styleOverrides: {
+                // Override default chip color for LOW severity (gray with dark text)
+                colorDefault: {
+                    backgroundColor: "#B7B2AA",
+                    color: "#000000",
                 },
             },
         },
