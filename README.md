@@ -442,10 +442,10 @@ Three independent retention mechanisms:
    - Stats remain in `scan-history.json` (compact format)
 
 3. **Artifact cleanup** (optional, `.github/workflows/clean-artifacts.yml`)
-   - Scheduled workflow to cleanup old artifacts
+   - Scheduled workflow to cleanup old artifacts in the toolkit repository
    - Configurable retention per artifact type (filesystem, docker image, etc.)
-   - Recommended for client repositories to prevent artifact accumulation
-   - Can be triggered manually or scheduled (e.g., nightly)
+   - Can be called from client repositories to clean toolkit artifacts
+   - Scripts are embedded in the workflow for reliability
 
 ---
 
@@ -497,8 +497,8 @@ jobs:
       scan_filesystem_keep: 3   # Keep 3 newest filesystem artifacts
       scan_docker_image_keep: 3 # Keep 3 newest Docker image artifacts
       dashboard_build_keep: 3   # Keep 3 newest dashboard builds
-      scan_history_keep: 3      # Keep 3 newest scan history per channel
-      dashboard_pages_keep: 3   # Keep 3 newest dashboard pages per channel
+      site_history_keep: 3      # Keep 3 newest scan history artifacts
+      dashboard_deployments_keep: 3   # Keep 3 newest dashboard pages per channel
     permissions:
       actions: write  # Required to delete artifacts
 ```

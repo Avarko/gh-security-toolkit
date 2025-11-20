@@ -11,8 +11,9 @@ import fi.evolver.secops.githubPages.GitHubPagesBuilder;
 /**
  * Backward-compatible wrapper for github_pages_builder.java
  *
- * Usage: jbang github_pages_builder.java <output_dir> <pages_root>
- * <scan_timestamp> <channel> [metadata_json] [dashboard_dir]
+ * Usage: jbang github_pages_builder.java <config_json> [metadata_json]
+ * [dashboard_dir]
+ * [display_name] [org_display_name] [logo_url]
  */
 public class github_pages_builder {
     public static void main(String[] args) throws Exception {
