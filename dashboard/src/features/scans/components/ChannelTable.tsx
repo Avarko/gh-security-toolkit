@@ -21,7 +21,7 @@ import {
 import ReactECharts from "echarts-for-react";
 import type { ScanMetadata } from "../model/historyTypes";
 import { buildChannelChartOption } from "../charts/channelHistoryOptions";
-import { severityToChipColor } from "./severity";
+import { severityToChipStyle } from "./severity";
 import { formatTimestamp } from "../../../lib/formatTimestamp";
 
 export interface ChannelTableProps {
@@ -213,21 +213,15 @@ export function ChannelTable({
                                             label={
                                                 scan.trivyFsResults?.totalVulnerabilities?.CRITICAL || 0
                                             }
-                                            color={severityToChipColor(
-                                                "CRITICAL",
-                                                scan.trivyFsResults?.totalVulnerabilities?.CRITICAL || 0
-                                            )}
                                             size="small"
+                                            sx={severityToChipStyle("CRITICAL")}
                                         />
                                     </TableCell>
                                     <TableCell align="center">
                                         <Chip
                                             label={scan.trivyFsResults?.totalVulnerabilities?.HIGH || 0}
-                                            color={severityToChipColor(
-                                                "HIGH",
-                                                scan.trivyFsResults?.totalVulnerabilities?.HIGH || 0
-                                            )}
                                             size="small"
+                                            sx={severityToChipStyle("HIGH")}
                                         />
                                     </TableCell>
                                     <TableCell align="center">
@@ -235,21 +229,15 @@ export function ChannelTable({
                                             label={
                                                 scan.trivyFsResults?.totalVulnerabilities?.MEDIUM || 0
                                             }
-                                            color={severityToChipColor(
-                                                "MEDIUM",
-                                                scan.trivyFsResults?.totalVulnerabilities?.MEDIUM || 0
-                                            )}
                                             size="small"
+                                            sx={severityToChipStyle("MEDIUM")}
                                         />
                                     </TableCell>
                                     <TableCell align="center">
                                         <Chip
                                             label={scan.trivyFsResults?.totalVulnerabilities?.LOW || 0}
-                                            color={severityToChipColor(
-                                                "LOW",
-                                                scan.trivyFsResults?.totalVulnerabilities?.LOW || 0
-                                            )}
                                             size="small"
+                                            sx={severityToChipStyle("LOW")}
                                         />
                                     </TableCell>
                                     {/* Trivy Image */}
@@ -259,12 +247,8 @@ export function ChannelTable({
                                                 scan.trivyImageResults?.totalVulnerabilities
                                                     ?.CRITICAL || 0
                                             }
-                                            color={severityToChipColor(
-                                                "CRITICAL",
-                                                scan.trivyImageResults?.totalVulnerabilities
-                                                    ?.CRITICAL || 0
-                                            )}
                                             size="small"
+                                            sx={severityToChipStyle("CRITICAL")}
                                         />
                                     </TableCell>
                                     <TableCell align="center">
@@ -272,11 +256,8 @@ export function ChannelTable({
                                             label={
                                                 scan.trivyImageResults?.totalVulnerabilities?.HIGH || 0
                                             }
-                                            color={severityToChipColor(
-                                                "HIGH",
-                                                scan.trivyImageResults?.totalVulnerabilities?.HIGH || 0
-                                            )}
                                             size="small"
+                                            sx={severityToChipStyle("HIGH")}
                                         />
                                     </TableCell>
                                     <TableCell align="center">
@@ -285,12 +266,8 @@ export function ChannelTable({
                                                 scan.trivyImageResults?.totalVulnerabilities?.MEDIUM ||
                                                 0
                                             }
-                                            color={severityToChipColor(
-                                                "MEDIUM",
-                                                scan.trivyImageResults?.totalVulnerabilities?.MEDIUM ||
-                                                0
-                                            )}
                                             size="small"
+                                            sx={severityToChipStyle("MEDIUM")}
                                         />
                                     </TableCell>
                                     <TableCell align="center">
@@ -298,42 +275,30 @@ export function ChannelTable({
                                             label={
                                                 scan.trivyImageResults?.totalVulnerabilities?.LOW || 0
                                             }
-                                            color={severityToChipColor(
-                                                "LOW",
-                                                scan.trivyImageResults?.totalVulnerabilities?.LOW || 0
-                                            )}
                                             size="small"
+                                            sx={severityToChipStyle("LOW")}
                                         />
                                     </TableCell>
                                     {/* Semgrep */}
                                     <TableCell align="center">
                                         <Chip
                                             label={scan.semgrepResults?.totalErrors || 0}
-                                            color={severityToChipColor(
-                                                "ERROR",
-                                                scan.semgrepResults?.totalErrors || 0
-                                            )}
                                             size="small"
+                                            sx={severityToChipStyle("ERROR")}
                                         />
                                     </TableCell>
                                     <TableCell align="center">
                                         <Chip
                                             label={scan.semgrepResults?.totalWarnings || 0}
-                                            color={severityToChipColor(
-                                                "WARNING",
-                                                scan.semgrepResults?.totalWarnings || 0
-                                            )}
                                             size="small"
+                                            sx={severityToChipStyle("WARNING")}
                                         />
                                     </TableCell>
                                     <TableCell align="center">
                                         <Chip
                                             label={scan.semgrepResults?.totalInfos || 0}
-                                            color={severityToChipColor(
-                                                "INFO",
-                                                scan.semgrepResults?.totalInfos || 0
-                                            )}
                                             size="small"
+                                            sx={severityToChipStyle("INFO")}
                                         />
                                     </TableCell>
                                 </TableRow>

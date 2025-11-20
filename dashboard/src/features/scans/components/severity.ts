@@ -43,11 +43,40 @@ export function severityToChipColor(severity: string, count?: number): ChipColor
 export function severityToHexColor(severity: string): string {
     const severityUpper = severity.toUpperCase();
 
-    if (severityUpper === "CRITICAL" || severityUpper === "ERROR") return "#c0392b";
-    if (severityUpper === "HIGH" || severityUpper === "WARNING") return "#e67e22";
-    if (severityUpper === "MEDIUM") return "#f39c12";
-    if (severityUpper === "LOW") return "#95a5a6";
+    if (severityUpper === "CRITICAL" || severityUpper === "ERROR") return "#cf222e";
+    if (severityUpper === "HIGH" || severityUpper === "WARNING") return "#FF6A00";
+    if (severityUpper === "MEDIUM") return "#FFDE5E";
+    if (severityUpper === "LOW") return "#B7B2AA";
     if (severityUpper === "INFO") return "#3498db";
 
-    return "#95a5a6"; // default to LOW color
+    return "#B7B2AA"; // default to LOW color
+}
+
+/**
+ * Returns chip styling (background and text color) for a severity level.
+ * Used for custom-styled severity chips with specific colors and text contrast.
+ *
+ * @param severity - The severity level (CRITICAL, HIGH, MEDIUM, LOW, INFO, etc.)
+ * @returns Object with backgroundColor and color properties for sx prop
+ */
+export function severityToChipStyle(severity: string) {
+    const severityUpper = severity.toUpperCase();
+
+    if (severityUpper === "CRITICAL" || severityUpper === "ERROR") {
+        return { backgroundColor: "#cf222e", color: "#ffffff" };
+    }
+    if (severityUpper === "HIGH" || severityUpper === "WARNING") {
+        return { backgroundColor: "#FF6A00", color: "#ffffff" };
+    }
+    if (severityUpper === "MEDIUM") {
+        return { backgroundColor: "#FFDE5E", color: "#000000" };
+    }
+    if (severityUpper === "LOW") {
+        return { backgroundColor: "#B7B2AA", color: "#000000" };
+    }
+    if (severityUpper === "INFO") {
+        return { backgroundColor: "#3498db", color: "#ffffff" };
+    }
+
+    return { backgroundColor: "#B7B2AA", color: "#000000" }; // default to LOW styling
 }
