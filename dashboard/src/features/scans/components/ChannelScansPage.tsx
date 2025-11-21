@@ -67,7 +67,7 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
                     underline="hover"
                     color="inherit"
                 >
-                    Security Scans
+                    Security scans
                 </MuiLink>
                 <Typography color="text.primary">{channel}</Typography>
             </Breadcrumbs>

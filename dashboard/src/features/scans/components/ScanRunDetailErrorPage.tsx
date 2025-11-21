@@ -12,13 +12,13 @@ export default function ScanRunDetailErrorPage() {
     return (
         <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="60vh" gap={2}>
             <Typography variant="h4" color="error" gutterBottom>
-                Scan Run Not Found
+                Scan run not found
             </Typography>
             <Typography variant="body1" color="text.secondary">
                 {message}
             </Typography>
             <Button variant="contained" component={Link} to="../..">
-                Back to Channel Scans
+                Back to channel scans
             </Button>
         </Box>
     );

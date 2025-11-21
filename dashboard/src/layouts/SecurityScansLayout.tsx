@@ -11,7 +11,7 @@ export default function SecurityScansLayout() {
                 <RouterLink to={`/org/${orgSlug}/repo/${repoSlug}`}>
                     {repoSlug}
                 </RouterLink>
-                <Typography>Security Scans</Typography>
+                <Typography>Security scans</Typography>
             </Breadcrumbs>
 
             <Outlet />

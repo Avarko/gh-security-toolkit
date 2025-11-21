@@ -22,7 +22,7 @@ import TestReportsIndexRoute, {
     loader as testReportsLoader,
 } from "./routes/org/app/test-reports/TestReportsIndexRoute";
 
-const CloudFindingsPage = () => <div>TODO: Cloud Findings</div>;
+const CloudFindingsPage = () => <div>TODO: Cloud findings</div>;
 const NotFoundPage = () => <div>404 – Page not found</div>;
 
 export const router = createBrowserRouter([

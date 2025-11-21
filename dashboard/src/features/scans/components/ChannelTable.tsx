@@ -35,7 +35,7 @@ export interface ChannelTableProps {
     maxRows?: number;
     /** Whether to show the chart. Default: true */
     showChart?: boolean;
-    /** Link to view all scans for this channel. If provided, shows "View All →" link */
+    /** Link to view all scans for this channel. If provided, shows "View all →" link */
     viewAllLink?: string;
 }
 
@@ -83,7 +83,7 @@ export function ChannelTable({
                     )}
                     {viewAllLink && (
                         <Link component={RouterLink} to={viewAllLink} underline="hover">
-                            View All →
+                            View all →
                         </Link>
                     )}
                 </Box>
@@ -124,7 +124,7 @@ export function ChannelTable({
                                         borderBottom: "1px solid rgba(255,255,255,0.1)",
                                     }}
                                 >
-                                    Trivy FS Vulnerabilities
+                                    Trivy FS vulnerabilities
                                 </TableCell>
                                 <TableCell
                                     colSpan={4}
@@ -134,7 +134,7 @@ export function ChannelTable({
                                         borderBottom: "1px solid rgba(255,255,255,0.1)",
                                     }}
                                 >
-                                    Trivy Image Vulnerabilities
+                                    Trivy Image vulnerabilities
                                 </TableCell>
                                 <TableCell
                                     colSpan={3}

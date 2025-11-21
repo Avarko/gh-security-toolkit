@@ -76,7 +76,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
                     <HomeIcon fontSize="small" />
                     Home
                 </Link>
-                <Typography color="text.primary">Security Scans</Typography>
+                <Typography color="text.primary">Security scans</Typography>
             </Breadcrumbs>
 
             {/* Channel Tables */}

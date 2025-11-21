@@ -36,7 +36,7 @@ export function ValidationErrorDisplay({ error, details, severity = 'error' }: V
                 ) : undefined
             }
         >
-            <AlertTitle>Data Validation Error</AlertTitle>
+            <AlertTitle>Data validation error</AlertTitle>
             <Typography variant="body2" sx={{ mb: details ? 1 : 0 }}>
                 {error}
             </Typography>
@@ -56,7 +56,7 @@ export function ValidationErrorDisplay({ error, details, severity = 'error' }: V
                         }}
                     >
                         <Typography variant="caption" component="div" sx={{ mb: 1, fontWeight: 'bold' }}>
-                            Technical Details:
+                            Technical details:
                         </Typography>
                         <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                             {JSON.stringify(details, null, 2)}
