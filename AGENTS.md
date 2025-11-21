@@ -93,13 +93,21 @@ gh-security-toolkit/
 │   ├── builder/
 │   │   └── dashboard/          # Builds React dashboard SPA
 │   └── cleanup/                # Cleanup old releases/artifacts
-├── dashboard/                  # React + TypeScript SPA
+├── dashboard/                  # React + TypeScript SPA (Vite + React Router v7)
 │   ├── src/
-│   │   ├── features/scans/     # Scan visualization logic
-│   │   │   ├── model/historyTypes.ts  # Zod schemas for scan-history.json
-│   │   │   ├── charts/         # ECharts configurations
-│   │   │   └── api/            # Data fetching from /data/*
-│   │   └── lib/dataPath.ts     # Tenant path resolution
+│   │   ├── features/
+│   │   │   ├── scans/          # Scan visualization
+│   │   │   │   ├── model/historyTypes.ts  # Zod schemas for scan-history.json
+│   │   │   │   ├── charts/     # ECharts configurations
+│   │   │   │   └── api/        # Data fetching (uses lib/fetchAndValidate)
+│   │   │   └── testReports/    # Test report visualization
+│   │   ├── config/tenantMode.ts  # Build-time tenant configuration
+│   │   ├── lib/
+│   │   │   ├── fetchAndValidate.ts  # Generic fetch + Zod validation utility
+│   │   │   └── formatTimestamp.ts   # Timestamp formatting
+│   │   └── routes/             # React Router routes
+│   │       ├── singleTenant/   # Single-tenant route loaders
+│   │       └── multiTenant/    # Multi-tenant route loaders
 │   └── vite.config.ts
 ├── scripts/
 │   └── github_pages_builder.java  # JBang script: processes scan data
@@ -511,10 +519,11 @@ No API backend. Pure static site.
 | `src/.../DataProcessor.java` | Processes scan data and writes to data root |
 | `src/.../model/HistoryStats.java` | Java stats model |
 | `dashboard/src/config/tenantMode.ts` | Build-time tenant mode configuration |
-| `dashboard/src/router/singleTenantRouter.tsx` | Single-tenant routing |
-| `dashboard/src/router/multiTenantRouter.tsx` | Multi-tenant routing |
-| `dashboard/src/features/scans/model/historyTypes.ts` | TypeScript schemas |
-| `dashboard/src/features/scans/api/historyClient.ts` | Data fetcher (single + multi-tenant)
+| `dashboard/src/lib/fetchAndValidate.ts` | Generic fetch + Zod validation utility |
+| `dashboard/src/routes/singleTenant/` | Single-tenant route loaders |
+| `dashboard/src/routes/multiTenant/` | Multi-tenant route loaders |
+| `dashboard/src/features/scans/model/historyTypes.ts` | TypeScript Zod schemas |
+| `dashboard/src/features/scans/api/historyClient.ts` | Scan data fetcher (single + multi-tenant)
 
 ## Testing
 

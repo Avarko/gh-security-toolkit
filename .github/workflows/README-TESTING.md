@@ -1,6 +1,6 @@
 # Dashboard Testing Workflows
 
-This directory contains workflows for testing the React+Remix dashboard migration.
+This directory contains workflows for testing the React dashboard.
 
 ## Workflows
 
@@ -38,15 +38,15 @@ jobs:
 **What it does**:
 1. Checks out your client repository
 2. Downloads existing scan history artifact (if `use_existing_scans: true`)
-3. Builds React+Remix dashboard (GitHub Actions automatically downloads toolkit action)
+3. Builds React dashboard (GitHub Actions automatically downloads toolkit action)
 4. Merges dashboard with existing scan data
 5. Publishes to your GitHub Pages
 
 **Benefits**:
-- ✅ Fast (~1-2 minutes vs full scan ~5-10 minutes)
-- ✅ Uses your real existing scan data
-- ✅ Tests dashboard rendering without re-scanning
-- ✅ Perfect for UI iteration
+- Fast (~1-2 minutes vs full scan ~5-10 minutes)
+- Uses your real existing scan data
+- Tests dashboard rendering without re-scanning
+- Perfect for UI iteration
 
 ---
 
@@ -56,7 +56,7 @@ jobs:
 **Use case**: Quick testing during dashboard development.
 
 **Usage**:
-1. Go to Actions → Rebuild Dashboard (Test)
+1. Go to Actions -> Rebuild Dashboard (Test)
 2. Click "Run workflow"
 3. Enter channel name
 4. Optionally specify a timestamp
@@ -102,9 +102,9 @@ jobs:
 ### For Toolkit Development
 Use `rebuild-dashboard.yml` for quick iterations:
 
-1. Make changes to `dashboard/app/routes/*.tsx`
+1. Make changes to `dashboard/src/` components and routes
 2. Commit and push to `reactui` branch
-3. Go to Actions → Rebuild Dashboard (Test)
+3. Go to Actions -> Rebuild Dashboard (Test)
 4. Run workflow
 5. Check results
 
@@ -115,10 +115,10 @@ Use `rebuild-dashboard.yml` for quick iterations:
 | Feature | Full `security-scan.yml` | `publish-dashboard.yml` |
 |---------|-------------------------|-------------------------|
 | Duration | ~5-10 minutes | ~1-2 minutes |
-| Runs scanners | ✅ Yes (Trivy, Semgrep) | ❌ No |
-| Updates scan data | ✅ Yes | ❌ No (uses existing) |
-| Builds dashboard | ✅ Yes | ✅ Yes |
-| Publishes Pages | ✅ Yes | ✅ Yes |
+| Runs scanners | Yes (Trivy, Semgrep) | No |
+| Updates scan data | Yes | No (uses existing) |
+| Builds dashboard | Yes | Yes |
+| Publishes Pages | Yes | Yes |
 | Use case | Production scans | Dashboard testing |
 
 ---

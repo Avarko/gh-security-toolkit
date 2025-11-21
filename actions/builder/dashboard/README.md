@@ -1,6 +1,6 @@
 # Dashboard Builder Action
 
-Builds the React+Remix security dashboard SPA from `dashboard/` directory.
+Builds the React + Vite security dashboard SPA from `dashboard/` directory.
 
 ## Usage
 
@@ -19,7 +19,7 @@ Builds the React+Remix security dashboard SPA from `dashboard/` directory.
 
 1. Setup Node.js (default: v24)
 2. Install dependencies (`npm ci`)
-3. Build Remix app in SPA mode (`npm run build`)
+3. Build React app (`npm run build`)
 4. Upload `dist/` as artifact
 
 ## Integration

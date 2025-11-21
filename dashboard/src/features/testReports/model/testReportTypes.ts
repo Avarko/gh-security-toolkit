@@ -78,8 +78,3 @@ export const testReportHistorySchema = z.object({
 // TypeScript types inferred from Zod schemas
 export type TestReportEntry = z.infer<typeof testReportEntrySchema>;
 export type TestReportHistory = z.infer<typeof testReportHistorySchema>;
-
-// Validation result type for error handling
-export type ValidationResult<T> =
-    | { success: true; data: T }
-    | { success: false; error: string; details?: unknown };
