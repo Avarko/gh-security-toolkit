@@ -114,7 +114,7 @@ export function ChannelTable({
                                     Timestamp
                                 </TableCell>
                                 <TableCell rowSpan={2} sx={{ fontWeight: 600 }}>
-                                    Branch & Commit
+                                    Repository / Branch
                                 </TableCell>
                                 <TableCell
                                     colSpan={4}
@@ -196,16 +196,46 @@ export function ChannelTable({
                                         </Link>
                                     </TableCell>
                                     <TableCell>
-                                        <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                                            {scan.metadata?.branch}
-                                        </Typography>
-                                        <Typography
-                                            variant="caption"
-                                            color="text.secondary"
-                                            sx={{ fontFamily: "monospace" }}
-                                        >
-                                            {scan.metadata?.commit?.substring(0, 7)}
-                                        </Typography>
+                                        {scan.metadata?.repository && (
+                                            <Link
+                                                href={`https://github.com/${scan.metadata.repository}`}
+                                                target="_ghlink"
+                                                underline="hover"
+                                                sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}
+                                            >
+                                                {scan.metadata.repository}
+                                            </Link>
+                                        )}
+                                        <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
+                                            {scan.metadata?.branch && (
+                                                <Link
+                                                    href={scan.metadata?.repository
+                                                        ? `https://github.com/${scan.metadata.repository}/tree/${scan.metadata.branch}`
+                                                        : undefined}
+                                                    target="_ghlink"
+                                                    underline="hover"
+                                                    sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}
+                                                >
+                                                    {scan.metadata.branch}
+                                                </Link>
+                                            )}
+                                            {scan.metadata?.commit && (
+                                                <Link
+                                                    href={scan.metadata?.repository
+                                                        ? `https://github.com/${scan.metadata.repository}/commit/${scan.metadata.commit}`
+                                                        : undefined}
+                                                    target="_ghlink"
+                                                    underline="hover"
+                                                    sx={{
+                                                        fontFamily: "monospace",
+                                                        fontSize: "0.75rem",
+                                                        color: "text.secondary",
+                                                    }}
+                                                >
+                                                    {scan.metadata.commit.substring(0, 7)}
+                                                </Link>
+                                            )}
+                                        </Box>
                                     </TableCell>
                                     {/* Trivy FS */}
                                     <TableCell align="center">

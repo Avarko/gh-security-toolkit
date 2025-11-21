@@ -125,6 +125,32 @@ jobs:
           TAR_FILE=$(find "${{ steps.setup.outputs.work_dir }}/image" -name "*.tar" -type f | head -n1)
           echo "tar_path=$TAR_FILE" >> "$GITHUB_OUTPUT"
 
+      - name: Extract scan context from artifacts
+        id: scan_context
+        run: |
+          # Look for scan-context.json in downloaded artifacts
+          SCAN_CONTEXT=""
+          if [ -f "${{ steps.setup.outputs.work_dir }}/filesystem/scan-context.json" ]; then
+            SCAN_CONTEXT="${{ steps.setup.outputs.work_dir }}/filesystem/scan-context.json"
+          elif [ -f "${{ steps.setup.outputs.work_dir }}/image/scan-context.json" ]; then
+            SCAN_CONTEXT="${{ steps.setup.outputs.work_dir }}/image/scan-context.json"
+          fi
+
+          if [ -n "$SCAN_CONTEXT" ]; then
+            echo "📋 Found scan-context.json:"
+            cat "$SCAN_CONTEXT"
+            # Copy to output directory for publisher
+            cp "$SCAN_CONTEXT" "${{ steps.setup.outputs.output_dir }}/scan-context.json"
+            # Extract channel for backwards compatibility
+            CHANNEL=$(jq -r '.channel // empty' "$SCAN_CONTEXT")
+            echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "⚠️ No scan-context.json found in artifacts, using workflow input"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "channel=${{ inputs.channel }}" >> "$GITHUB_OUTPUT"
+          fi
+
       # === RUN TRIVY SCANS ===
       - name: Run Trivy scans
         id: trivy
@@ -187,4 +213,3 @@ jobs:
         with:
           github_token: ${{ secrets.GH_TOKEN || github.token }}
           outdir: ${{ steps.setup.outputs.output_dir }}
-          channel: ${{ inputs.channel }}

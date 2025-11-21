@@ -12,6 +12,9 @@ inputs:
     description: "Path to Surefire HTML report directory (e.g., target/site/surefire-report)"
     required: false
     default: ""
+  channel:
+    description: "Channel name for organizing reports (e.g., 'nightly', 'pr-123')"
+    required: true
   retention-days:
     description: "Number of days to retain the artifact"
     required: false
@@ -59,12 +62,36 @@ runs:
         echo "has-jacoco=$HAS_JACOCO" >> $GITHUB_OUTPUT
         echo "has-surefire=$HAS_SUREFIRE" >> $GITHUB_OUTPUT
 
+    - name: Create scan context metadata
+      shell: bash
+      run: |
+        # Create scan-context.json with metadata from GitHub Actions environment
+        cat > /tmp/test-reports-scan-context.json << EOF
+        {
+          "channel": "${{ inputs.channel }}",
+          "timestamp": "$(date -u +'%Y-%m-%d-%H%M%SZ')",
+          "branch": "${GITHUB_REF_NAME:-}",
+          "repository": "${GITHUB_REPOSITORY:-}",
+          "commitSha": "${GITHUB_SHA:-}",
+          "scanId": "${GITHUB_RUN_ID:-}",
+          "ciJobName": "${GITHUB_WORKFLOW:-}",
+          "ciJobUrl": "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}",
+          "actorName": "${GITHUB_ACTOR:-}"
+        }
+        EOF
+
+        echo "📋 Created scan-context.json:"
+        cat /tmp/test-reports-scan-context.json
+
     - name: Create site structure
       shell: bash
       run: |
         echo "📁 Creating site directory structure..."
         mkdir -p test-reports-site/coverage
         mkdir -p test-reports-site/tests
+
+        # Include scan-context.json in the artifact
+        cp /tmp/test-reports-scan-context.json test-reports-site/scan-context.json
 
     - name: Copy JaCoCo coverage report
       if: steps.check-reports.outputs.has-jacoco == 'true'

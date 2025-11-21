@@ -92,6 +92,6 @@ public class GitHubPagesBuilder {
                 channel,
                 timestamp,
                 compactTimestamp,
-                null);
+                config.metadata);
     }
 }

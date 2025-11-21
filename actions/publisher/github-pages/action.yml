@@ -3,11 +3,7 @@ description: "Publishes security scan results as static HTML pages to GitHub Pag
 inputs:
   # Essential inputs
   outdir:
-    description: "Directory containing scan outputs and scan-metadata.json"
-    required: true
-
-  channel:
-    description: "Channel name for organizing scans (e.g., 'nightly', 'pr-123')"
+    description: "Directory containing scan outputs and scan-context.json (with channel metadata)"
     required: true
 
   github_token:
@@ -71,7 +67,6 @@ runs:
       run: |
         ${{ github.action_path }}/scripts/create-config.sh \
           "${{ inputs.outdir }}" \
-          "${{ inputs.channel }}" \
           "/tmp/builder-config.json" \
           "${{ steps.config_overrides.outputs.path }}"
 

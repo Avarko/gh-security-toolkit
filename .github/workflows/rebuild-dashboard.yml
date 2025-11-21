@@ -32,12 +32,31 @@ jobs:
       - name: Setup JBang
         uses: jbangdev/setup-jbang@main
 
-      - name: Create minimal scan data
+      - name: Generate timestamp
+        id: ts
+        run: echo "ts=$(date -u +'%Y-%m-%d-%H%M%SZ')" >> "$GITHUB_OUTPUT"
+
+      - name: Create minimal scan data with context
         id: setup
         run: |
           # Create a minimal output directory with empty scan results
-          # This is needed because the publisher expects these files
           mkdir -p scan-output
+
+          # Create scan-context.json (required by publisher)
+          cat > scan-output/scan-context.json << EOF
+          {
+            "channel": "${{ inputs.channel }}",
+            "timestamp": "${{ steps.ts.outputs.ts }}",
+            "branch": "${GITHUB_REF_NAME:-}",
+            "repository": "${GITHUB_REPOSITORY:-}",
+            "commitSha": "${GITHUB_SHA:-}",
+            "scanId": "${GITHUB_RUN_ID:-}",
+            "ciJobName": "${GITHUB_WORKFLOW:-}",
+            "ciJobUrl": "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}",
+            "actorName": "${GITHUB_ACTOR:-}"
+          }
+          EOF
+
           echo '{"Results":[]}' > scan-output/trivy-fs-results.json
           echo '{"results":[]}' > scan-output/semgrep-results.json
 
@@ -52,7 +71,6 @@ jobs:
         with:
           github_token: ${{ github.token }}
           outdir: ${{ steps.setup.outputs.output_dir }}
-          channel: ${{ inputs.channel }}
 
       - name: Summary
         run: |
