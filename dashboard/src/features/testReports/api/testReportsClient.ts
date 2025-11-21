@@ -1,5 +1,10 @@
 /**
  * Client API for fetching test report history data.
+ *
+ * Provides separate functions for single-tenant and multi-tenant modes:
+ * - fetchTestReportsSingleTenant(): Data at /data/hist/test-report-history.json
+ * - fetchTestReportsMultiTenant(tenantId): Data at /data/<uuid>/hist/test-report-history.json
+ *
  * Includes comprehensive validation using Zod schemas.
  */
 
@@ -8,34 +13,53 @@ import {
     type TestReportHistory,
     type ValidationResult,
 } from "../model/testReportTypes";
-import { getDataRoot } from "../../../lib/dataPath";
-import { MissingTenantParamsError } from "../../../errors/MissingTenantParamsError";
-import type { TenantRegistry } from "../../../lib/tenantRegistry";
 
 /**
  * Result type for test report history loading.
  */
-export type TestReportHistoryLoadResult = ValidationResult<TestReportHistory>;
-
-export type TestReportContext = {
-    githubOrg: string;
-    githubRepo: string;
-    registry: TenantRegistry;
-};
+export type TestReportsLoadResult = ValidationResult<TestReportHistory>;
 
 /**
- * Fetches and validates test report history data from the server,
- * scoped to a specific tenant (identified by GitHub org/repo).
+ * Fetches and validates test report history for SINGLE-TENANT mode.
  *
- * @throws {MissingTenantParamsError} if org/repo not found in registry
+ * In single-tenant mode (GitHub Pages):
+ * - Data is stored directly at /data/hist/test-report-history.json
+ * - No tenant resolution needed
  */
-export async function fetchTestReportHistory(
-    ctx: TestReportContext
-): Promise<TestReportHistoryLoadResult> {
-    // This may throw MissingTenantParamsError -> let it bubble up
-    const base = getDataRoot(ctx);
-    const url = `${base}/hist/test-report-history.json`;
+export async function fetchTestReportsSingleTenant(): Promise<TestReportsLoadResult> {
+    const url = "/data/hist/test-report-history.json";
+    return fetchAndValidateTestReports(url);
+}
 
+/**
+ * Fetches and validates test report history for MULTI-TENANT mode.
+ *
+ * In multi-tenant mode (S3/CDN):
+ * - Data is stored at /data/<uuid>/hist/test-report-history.json
+ * - Tenant ID (UUID) is resolved from URL path via tenant config
+ *
+ * @param tenantId - The tenant's UUID (from multi-tenant config)
+ */
+export async function fetchTestReportsMultiTenant(
+    tenantId: string
+): Promise<TestReportsLoadResult> {
+    if (!tenantId) {
+        return {
+            success: false,
+            error: "Tenant ID is required in multi-tenant mode",
+        };
+    }
+
+    const url = `/data/${tenantId}/hist/test-report-history.json`;
+    return fetchAndValidateTestReports(url);
+}
+
+/**
+ * Internal function to fetch and validate test reports from a URL.
+ */
+async function fetchAndValidateTestReports(
+    url: string
+): Promise<TestReportsLoadResult> {
     try {
         const response = await fetch(url);
 
@@ -85,12 +109,6 @@ export async function fetchTestReportHistory(
             data: parseResult.data,
         };
     } catch (error) {
-        // Configuration error: let MissingTenantParamsError bubble up
-        if (error instanceof MissingTenantParamsError) {
-            throw error;
-        }
-
-        // Other unexpected errors are encapsulated normally
         return {
             success: false,
             error:
