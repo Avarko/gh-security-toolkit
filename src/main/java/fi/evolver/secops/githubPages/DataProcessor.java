@@ -173,9 +173,9 @@ public final class DataProcessor {
         json.put("timestamp", metadata != null ? metadata.timestamp : "");
         json.put("metadata", metadataInner);
 
-        Path metaPath = targetDir.resolve("scan-metadata.json");
+        Path metaPath = targetDir.resolve("scan-run.json");
         Files.writeString(metaPath, gson.toJson(json), StandardCharsets.UTF_8);
-        System.out.println("   ✅ Wrote scan-metadata.json");
+        System.out.println("   ✅ Wrote scan-run.json");
     }
 
     /**

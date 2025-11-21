@@ -105,7 +105,7 @@ export function ReportFooter({ scanMetadata, channel, dataBasePath }: ReportFoot
                             📄 Semgrep
                         </Link>
                         {" | "}
-                        <Link href={`${dataBasePath}/scan-metadata.json`} target="_json_metadata" underline="hover" sx={{ color: "#5dade2" }}>
+                        <Link href={`${dataBasePath}/scan-run.json`} target="_json_metadata" underline="hover" sx={{ color: "#5dade2" }}>
                             📄 Metadata
                         </Link>
                     </Typography>
