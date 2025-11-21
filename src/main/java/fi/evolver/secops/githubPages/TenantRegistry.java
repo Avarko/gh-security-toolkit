@@ -199,6 +199,27 @@ public class TenantRegistry {
     }
 
     /**
+     * Returns list of all registered tenant IDs.
+     * Used for cleanup of orphaned tenant directories.
+     */
+    public List<String> getRegisteredTenantIds() {
+        List<String> ids = new ArrayList<>();
+        for (TenantEntry tenant : tenants) {
+            if (tenant.id != null && !tenant.id.isEmpty()) {
+                ids.add(tenant.id);
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * Checks if the registry has any tenants registered.
+     */
+    public boolean isEmpty() {
+        return tenants.isEmpty();
+    }
+
+    /**
      * Saves the tenant registry to JSON file.
      */
     private void saveRegistry() throws IOException {

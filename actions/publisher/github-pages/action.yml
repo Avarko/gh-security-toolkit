@@ -14,11 +14,11 @@ inputs:
     description: "GitHub token for artifact operations (use github.token)"
     required: true
 
-  # Optional customization
+  # Optional customization (reserved for future use)
   config_overrides:
     description: |
-      Optional JSON string with tenant branding and configuration overrides.
-      Example: {"branding": {"displayName": "My App", "orgDisplayName": "My Org", "logoUrl": "/logo.png"}}
+      Optional JSON string with configuration overrides.
+      Reserved for future use.
     required: false
     default: ""
 
@@ -122,19 +122,11 @@ runs:
         set -euo pipefail
         echo "🏗️  Building GitHub Pages (incremental update)..."
 
-        # Create a clean site directory
-        SITE_DIR="/tmp/github-pages-site"
-        mkdir -p "$SITE_DIR"
-
-        # Copy current data directory to site
-        if [ -d "./data" ]; then
-          cp -r ./data "$SITE_DIR/"
-        fi
-
+        # Run the builder (processes data in current directory)
         jbang "${{ github.action_path }}/../../../scripts/github_pages_builder.java" \
           /tmp/builder-config.json
 
-        # Archive the updated files before moving them
+        # Archive the updated data for persistence across runs
         ${{ github.action_path }}/scripts/archive-scan-history.sh \
           "." \
           "/tmp/github-pages-site-data-output"
@@ -142,13 +134,16 @@ runs:
           "." \
           "/tmp/multi-tenant-config-output"
 
-        # Move the built site to the site directory
-        mv ./data "$SITE_DIR/" 2>/dev/null || true
-        mv ./index.html "$SITE_DIR/" 2>/dev/null || true
-        mv ./assets "$SITE_DIR/" 2>/dev/null || true
-        mv ./favicon.ico "$SITE_DIR/" 2>/dev/null || true
-        mv ./404.html "$SITE_DIR/" 2>/dev/null || true
-        mv ./config "$SITE_DIR/" 2>/dev/null || true
+        # Prepare site directory for deployment
+        SITE_DIR="/tmp/github-pages-site"
+        mkdir -p "$SITE_DIR"
+
+        # Move all site content to deployment directory
+        for item in data index.html assets favicon.ico 404.html config; do
+          [ -e "./$item" ] && mv "./$item" "$SITE_DIR/" || true
+        done
+
+        echo "✅ Site prepared for deployment at $SITE_DIR"
 
     - name: Upload GitHub Pages site data artifact
       id: upload_site_data
