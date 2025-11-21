@@ -66,8 +66,10 @@ runs:
       shell: bash
       run: |
         # Create scan-context.json with metadata from GitHub Actions environment
+        # type: "test-report" ensures this won't appear in security scan history
         cat > /tmp/test-reports-scan-context.json << EOF
         {
+          "type": "test-report",
           "channel": "${{ inputs.channel }}",
           "timestamp": "$(date -u +'%Y-%m-%d-%H%M%SZ')",
           "branch": "${GITHUB_REF_NAME:-}",
