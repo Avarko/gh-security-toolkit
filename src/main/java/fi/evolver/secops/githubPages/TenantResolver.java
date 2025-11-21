@@ -43,6 +43,21 @@ public final class TenantResolver {
      * @throws IllegalArgumentException if environment variables are missing
      */
     public static TenantInfo resolve(Path pagesPath) throws IOException {
+        return resolve(pagesPath, null, null, null);
+    }
+
+    /**
+     * Reads GitHub org/repo from environment variables and resolves tenant with display metadata.
+     *
+     * @param pagesPath Root path for GitHub Pages
+     * @param repoDisplayName Optional repository display name (from client config)
+     * @param orgDisplayName Optional organization display name (from client config)
+     * @param logoUrl Optional logo URL (from client config)
+     * @return TenantInfo with resolved tenant ID and data root
+     * @throws IOException if registry operations fail
+     * @throws IllegalArgumentException if environment variables are missing
+     */
+    public static TenantInfo resolve(Path pagesPath, String repoDisplayName, String orgDisplayName, String logoUrl) throws IOException {
         String githubOrg = System.getenv("GITHUB_REPOSITORY_OWNER");
         String githubRepo = System.getenv("GITHUB_REPOSITORY");
 
@@ -56,10 +71,19 @@ public final class TenantResolver {
         System.out.println("🔐 Tenant identity (from GitHub Actions context):");
         System.out.println("   GitHub org: " + githubOrg);
         System.out.println("   GitHub repo: " + githubRepo);
+        if (orgDisplayName != null && !orgDisplayName.isEmpty()) {
+            System.out.println("   Org display name: " + orgDisplayName);
+        }
+        if (repoDisplayName != null && !repoDisplayName.isEmpty()) {
+            System.out.println("   Repo display name: " + repoDisplayName);
+        }
+        if (logoUrl != null && !logoUrl.isEmpty()) {
+            System.out.println("   Logo URL: " + logoUrl);
+        }
 
         // Resolve or create tenant UUID using TenantRegistry
         TenantRegistry registry = new TenantRegistry(pagesPath);
-        String tenantId = registry.resolveTenantId(githubOrg, githubRepo, null, null, null);
+        String tenantId = registry.resolveTenantId(githubOrg, githubRepo, repoDisplayName, orgDisplayName, logoUrl);
 
         // Data root is /data/<uuid>/
         Path dataRoot = pagesPath.resolve("data").resolve(tenantId);

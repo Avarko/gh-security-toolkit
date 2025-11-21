@@ -76,6 +76,11 @@ CI_JOB_URL="${CI_JOB_URL:-${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPO
 ACTOR_NAME=$(jq -r '.actorName // empty' "$SCAN_CONTEXT")
 ACTOR_NAME="${ACTOR_NAME:-${GITHUB_ACTOR:-}}"
 
+# Organization/tenant display metadata (from client config)
+ORG_DISPLAY_NAME=$(jq -r '.orgDisplayName // empty' "$SCAN_CONTEXT")
+ORG_LOGO_URL=$(jq -r '.orgLogoUrl // empty' "$SCAN_CONTEXT")
+REPO_DISPLAY_NAME=$(jq -r '.repoDisplayName // empty' "$SCAN_CONTEXT")
+
 echo ""
 echo "📋 Creating builder configuration..."
 echo "   📂 Output dir: $OUTDIR"
@@ -97,6 +102,9 @@ CONFIG=$(jq -n \
   --arg ciJobName "$CI_JOB_NAME" \
   --arg ciJobUrl "$CI_JOB_URL" \
   --arg actorName "$ACTOR_NAME" \
+  --arg orgDisplayName "$ORG_DISPLAY_NAME" \
+  --arg orgLogoUrl "$ORG_LOGO_URL" \
+  --arg repoDisplayName "$REPO_DISPLAY_NAME" \
   '{
     input: {
       outdir: $outdir,
@@ -112,7 +120,10 @@ CONFIG=$(jq -n \
       scanId: $scanId,
       ciJobName: $ciJobName,
       ciJobUrl: $ciJobUrl,
-      actorName: $actorName
+      actorName: $actorName,
+      orgDisplayName: $orgDisplayName,
+      orgLogoUrl: $orgLogoUrl,
+      repoDisplayName: $repoDisplayName
     }
   }')
 

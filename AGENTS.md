@@ -18,13 +18,65 @@
 - Can be configured with different retention policies
 - Appears as a separate timeline in the dashboard
 
+## Client Configuration System
+
+### Configuration File
+
+Client repositories can customize toolkit behavior via `.gh-security-toolkit/config.yaml`:
+
+```yaml
+# .gh-security-toolkit/config.yaml
+version: "1"
+
+organization:
+  display_name: "My Company"
+  logo_url: "https://example.com/logo.svg"
+
+repository:
+  display_name: "My Application"
+
+scanning:
+  trivy:
+    severity: "MEDIUM,HIGH,CRITICAL"
+  semgrep:
+    configs:
+      - "p/owasp-top-ten"
+      - "p/java"
+
+publishing:
+  retention_keep: 20
+  retention_days: 90
+```
+
+### Configuration Priority (highest to lowest)
+
+```
+1. Action inputs          → Workflow-specific overrides
+2. .gh-security-toolkit/  → Repository-level config
+   └── config.yaml
+3. Native tool configs    → .trivy.yaml, .trivyignore, .semgrepignore
+4. Toolkit defaults       → Built-in default values
+```
+
+### Data Flow: Config to Dashboard
+
+```
+1. security-scan action reads .gh-security-toolkit/config.yaml
+2. Values merged with action inputs (inputs take priority)
+3. Org metadata written to scan-context.json
+4. create-config.sh extracts org metadata into builder-config.json
+5. GitHubPagesBuilder.java passes to TenantResolver.resolve()
+6. TenantRegistry updates tenant-registry.json with display names
+7. Dashboard reads tenant-registry.json and displays org branding
+```
+
 ## Repository Structure
 
 ```
 gh-security-toolkit/
 ├── actions/
 │   ├── security-scan/          # Main composite action for security scanning
-│   │   └── action.yml          # Runs Trivy, Semgrep, summarizes, publishes
+│   │   └── action.yml          # Reads config, runs Trivy, Semgrep, publishes
 │   ├── publish-test-reports/   # Composite action for test reports
 │   │   └── action.yml          # Publishes JaCoCo/Surefire to GitHub Pages
 │   ├── scanner/                # Security scanners
@@ -35,6 +87,8 @@ gh-security-toolkit/
 │   ├── publisher/
 │   │   ├── github-release/     # Publishes to GitHub Releases
 │   │   └── github-pages/       # Publishes to GitHub Pages + builds dashboard
+│   │       └── scripts/
+│   │           └── create-config.sh  # Creates builder-config.json with org metadata
 │   ├── builder/
 │   │   └── dashboard/          # Builds React dashboard SPA
 │   └── cleanup/                # Cleanup old releases/artifacts
@@ -49,7 +103,10 @@ gh-security-toolkit/
 ├── scripts/
 │   └── github_pages_builder.java  # JBang script: processes scan data
 └── src/main/java/fi/evolver/secops/githubPages/
-    ├── GitHubPagesBuilder.java     # Main entry point
+    ├── GitHubPagesBuilder.java     # Main entry point (passes org metadata to TenantResolver)
+    ├── ConfigParser.java           # Parses builder-config.json (includes org metadata)
+    ├── TenantResolver.java         # Resolves tenant with optional display metadata
+    ├── TenantRegistry.java         # Manages tenant UUID mappings + display names
     ├── model/                      # Data models (Java <-> TypeScript)
     │   ├── ScanHistory.java        # scan-history.json root
     │   ├── HistoryEntry.java       # Single scan entry
@@ -58,6 +115,20 @@ gh-security-toolkit/
     │   └── ScanMetadata.java       # Scan metadata
     ├── loader/                     # Load scan results from JSON
     └── transformer/                # Transform + aggregate findings
+```
+
+### Client Repository Structure (example)
+
+```
+my-app/
+├── .gh-security-toolkit/
+│   └── config.yaml             # Client configuration (org branding, defaults)
+├── .trivy.yaml                 # Native Trivy config (optional)
+├── .semgrepignore              # Native Semgrep ignores (optional)
+├── .github/
+│   └── workflows/
+│       └── security.yml        # Workflow using security-scan action
+└── src/
 ```
 
 ## Data Flow Architecture
@@ -403,15 +474,20 @@ No API backend. Pure static site.
 
 | File | Purpose |
 |------|---------|
-| `actions/security-scan/action.yml` | Main composite action |
+| `actions/security-scan/action.yml` | Main composite action (reads client config) |
 | `actions/publish-test-reports/action.yml` | Test reports composite action |
 | `actions/scanner/trivy/action.yml` | Trivy scanner (filesystem + image) |
 | `actions/scanner/semgrep/action.yml` | Semgrep SAST scanner |
 | `actions/publisher/github-pages/action.yml` | Pages publisher |
-| `scripts/github_pages_builder.java` | Scan data processor |
+| `actions/publisher/github-pages/scripts/create-config.sh` | Builder config creator (extracts org metadata) |
+| `scripts/github_pages_builder.java` | Scan data processor (entry point) |
+| `src/.../ConfigParser.java` | Builder config parser (includes org metadata) |
+| `src/.../TenantResolver.java` | Tenant resolution with display metadata |
+| `src/.../TenantRegistry.java` | Tenant UUID mappings + org branding |
 | `src/.../model/HistoryStats.java` | Java stats model |
 | `dashboard/src/features/scans/model/historyTypes.ts` | TypeScript schemas |
 | `dashboard/src/features/scans/api/historyClient.ts` | Data fetcher |
+| `dashboard/src/lib/tenantRegistry.ts` | Client-side tenant config reader |
 
 ## Testing
 
@@ -472,5 +548,6 @@ npm run test -- historyTypes.test.ts
 ---
 
 **Last updated**: 2025-11-21
+**Version**: Added client configuration system (.gh-security-toolkit/config.yaml)
 **Maintainers**: evolver
 **Questions**: See GitHub Issues or README.md
