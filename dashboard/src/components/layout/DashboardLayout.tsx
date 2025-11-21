@@ -1,11 +1,13 @@
 /**
  * Reusable dashboard layout with sidebar navigation and app bar.
  * Can be used across multiple routes for consistent UI.
+ *
+ * In single-tenant mode (GitHub Pages): Simple layout with static title.
+ * In multi-tenant mode: Title shows tenant branding from multi-tenant config.
  */
 
 import type { ReactNode } from "react";
 import { Link as RouterLink, useLocation, useParams } from "react-router-dom";
-import { useEffect, useState } from "react";
 import {
     AppBar,
     Box,
@@ -21,7 +23,12 @@ import {
 } from "@mui/material";
 import { Security as SecurityIcon, Science as ScienceIcon } from "@mui/icons-material";
 import { ReportFooter } from "./ReportFooter";
-import { loadTenantRegistry, findTenantByGitHub, type TenantEntry } from "../../lib/tenantRegistry";
+import {
+    isSingleTenant,
+    isMultiTenant,
+    findTenantByUrlPath,
+    type MultiTenantEntry,
+} from "../../config/tenantMode";
 
 const DRAWER_WIDTH = 240;
 
@@ -50,114 +57,108 @@ const NAV_ITEMS: NavItem[] = [
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
     const location = useLocation();
-    const { orgSlug, repoSlug } = useParams<{
-        orgSlug?: string;
-        repoSlug?: string;
-    }>();
+    const { tenantPath } = useParams<{ tenantPath?: string }>();
 
-    const [tenant, setTenant] = useState<TenantEntry | null>(null);
+    // Resolve tenant info in multi-tenant mode
+    let tenant: MultiTenantEntry | undefined;
+    if (isMultiTenant() && tenantPath) {
+        tenant = findTenantByUrlPath(tenantPath);
+    }
 
-    useEffect(() => {
-        if (orgSlug && repoSlug) {
-            loadTenantRegistry().then((registry) => {
-                const found = findTenantByGitHub(registry, orgSlug, repoSlug);
-                setTenant(found || null);
-            });
-        }
-    }, [orgSlug, repoSlug]);
+    // Build base path for navigation links
+    const basePath = isMultiTenant() && tenantPath ? `/${tenantPath}` : "";
 
-    const basePath =
-        orgSlug && repoSlug
-            ? `/org/${orgSlug}/repo/${repoSlug}`
-            : null;
-
-    // Build title with display names and GitHub links
+    // Build title based on tenant mode
     const renderTitle = () => {
-        if (!orgSlug || !repoSlug) {
-            return "Security scan dashboard";
+        if (isSingleTenant()) {
+            return "Security dashboard";
         }
 
-        const orgDisplayName = tenant?.org_display_name;
-        const repoDisplayName = tenant?.display_name;
-        const logoUrl = tenant?.logo_url;
+        // Multi-tenant mode: show tenant branding if available
+        if (tenant) {
+            const { org_display_name, display_name, logo_url, github_org, github_repo } = tenant;
 
-        return (
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                {/* Logo if available */}
-                {logoUrl && (
-                    <img
-                        src={logoUrl}
-                        alt={orgDisplayName || orgSlug}
-                        style={{
-                            height: "32px",
-                            width: "auto",
-                            objectFit: "contain",
-                        }}
-                    />
-                )}
+            return (
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                    {/* Logo if available */}
+                    {logo_url && (
+                        <img
+                            src={logo_url}
+                            alt={org_display_name || github_org}
+                            style={{
+                                height: "32px",
+                                width: "auto",
+                                objectFit: "contain",
+                            }}
+                        />
+                    )}
 
-                {/* Org display name or GitHub org */}
-                {orgDisplayName ? (
-                    <>
-                        <span>{orgDisplayName}</span>
-                        <span style={{ color: "#656d76" }}>(</span>
+                    {/* Org display name or GitHub org */}
+                    {org_display_name ? (
+                        <>
+                            <span>{org_display_name}</span>
+                            <span style={{ color: "#656d76" }}>(</span>
+                            <a
+                                href={`https://github.com/${github_org}`}
+                                target="_ghorg"
+                                style={{ color: "#0969da", textDecoration: "none" }}
+                                onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                                onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
+                            >
+                                {github_org}
+                            </a>
+                            <span style={{ color: "#656d76" }}>)</span>
+                        </>
+                    ) : (
                         <a
-                            href={`https://github.com/${orgSlug}`}
+                            href={`https://github.com/${github_org}`}
                             target="_ghorg"
                             style={{ color: "#0969da", textDecoration: "none" }}
                             onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
                             onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
                         >
-                            {orgSlug}
+                            {github_org}
                         </a>
-                        <span style={{ color: "#656d76" }}>)</span>
-                    </>
-                ) : (
-                    <a
-                        href={`https://github.com/${orgSlug}`}
-                        target="_ghorg"
-                        style={{ color: "#0969da", textDecoration: "none" }}
-                        onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
-                        onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
-                    >
-                        {orgSlug}
-                    </a>
-                )}
+                    )}
 
-                <span style={{ color: "#656d76" }}>/</span>
+                    <span style={{ color: "#656d76" }}>/</span>
 
-                {/* Repo display name or GitHub repo */}
-                {repoDisplayName ? (
-                    <>
-                        <span>{repoDisplayName}</span>
-                        <span style={{ color: "#656d76" }}>(</span>
+                    {/* Repo display name or GitHub repo */}
+                    {display_name ? (
+                        <>
+                            <span>{display_name}</span>
+                            <span style={{ color: "#656d76" }}>(</span>
+                            <a
+                                href={`https://github.com/${github_org}/${github_repo}`}
+                                target="_ghrepo"
+                                style={{ color: "#0969da", textDecoration: "none" }}
+                                onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
+                                onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
+                            >
+                                {github_repo}
+                            </a>
+                            <span style={{ color: "#656d76" }}>)</span>
+                        </>
+                    ) : (
                         <a
-                            href={`https://github.com/${orgSlug}/${repoSlug}`}
+                            href={`https://github.com/${github_org}/${github_repo}`}
                             target="_ghrepo"
                             style={{ color: "#0969da", textDecoration: "none" }}
                             onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
                             onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
                         >
-                            {repoSlug}
+                            {github_repo}
                         </a>
-                        <span style={{ color: "#656d76" }}>)</span>
-                    </>
-                ) : (
-                    <a
-                        href={`https://github.com/${orgSlug}/${repoSlug}`}
-                        target="_ghrepo"
-                        style={{ color: "#0969da", textDecoration: "none" }}
-                        onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
-                        onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
-                    >
-                        {repoSlug}
-                    </a>
-                )}
+                    )}
 
-                <span style={{ color: "#656d76" }}>–</span>
-                <span>Security dashboard</span>
-            </Box>
-        );
+                    <span style={{ color: "#656d76" }}>–</span>
+                    <span>Security dashboard</span>
+                </Box>
+            );
+        }
+
+        // Multi-tenant mode but no tenant found
+        return "Security dashboard";
     };
 
     return (
@@ -213,7 +214,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 </Toolbar>
                 <List>
                     {NAV_ITEMS.map((item) => {
-                        const to = basePath ? `${basePath}/${item.path}` : "/";
+                        const to = basePath ? `${basePath}/${item.path}` : `/${item.path}`;
 
                         const isActive =
                             location.pathname === to ||
