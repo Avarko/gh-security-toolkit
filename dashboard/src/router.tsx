@@ -18,9 +18,10 @@ import ChannelScanRunDetailRoute, {
     loader as channelScanRunDetailLoader,
 } from "./routes/org/app/security-scans/ChannelScanRunDetailRoute";
 import ScanRunDetailErrorPage from "./features/scans/components/ScanRunDetailErrorPage";
+import TestReportsIndexRoute, {
+    loader as testReportsLoader,
+} from "./routes/org/app/test-reports/TestReportsIndexRoute";
 
-// TODO
-const TestReportsPage = () => <div>TODO: Test Reports</div>;
 const CloudFindingsPage = () => <div>TODO: Cloud Findings</div>;
 const NotFoundPage = () => <div>404 – Page not found</div>;
 
@@ -62,7 +63,11 @@ export const router = createBrowserRouter([
                                     },
                                 ],
                             },
-                            // TODO add later test-reports, cloud-findings etc.
+                            {
+                                path: "test-reports",
+                                element: <TestReportsIndexRoute />,
+                                loader: testReportsLoader,
+                            },
                         ],
                     },
                 ],
