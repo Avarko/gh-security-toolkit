@@ -2,6 +2,7 @@ name: Download test reports
 description: |
   Downloads test reports artifact from GitHub Actions.
   Used for deploying test reports to GitHub Pages or other hosting.
+  Supports downloading from different workflow runs.
 
 inputs:
   download-path:
@@ -18,10 +19,12 @@ runs:
   using: composite
   steps:
     - name: Download artifact
-      uses: actions/download-artifact@v6
+      uses: dawidd6/action-download-artifact@v6
       with:
         name: __gh_security_toolkit__test_reports__
         path: ${{ inputs.download-path }}
+        search_artifacts: true
+        if_no_artifact_found: fail
 
     - name: Verify download
       shell: bash
@@ -41,6 +44,9 @@ runs:
           fi
           if [ -d "${{ inputs.download-path }}/tests" ]; then
             echo "   ✅ Test reports found"
+          fi
+          if [ -f "${{ inputs.download-path }}/scan-context.json" ]; then
+            echo "   ✅ scan-context.json found"
           fi
         else
           echo "❌ ERROR: Test reports artifact not found or empty"
@@ -66,4 +72,7 @@ runs:
         fi
         if [ -f "${{ inputs.download-path }}/index.html" ]; then
           echo "- ✅ Landing page available" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ -f "${{ inputs.download-path }}/scan-context.json" ]; then
+          echo "- ✅ scan-context.json available" >> $GITHUB_STEP_SUMMARY
         fi
