@@ -118,11 +118,11 @@ runs:
           CMD="trufflehog filesystem . --json --results=$RESULTS_FILTER $EXTRA_ARGS"
         fi
 
-        echo "🔐 Running TruffleHog..."
+        echo "Running TruffleHog..."
         echo "Command: $CMD"
 
-        # Run scan and capture output
-        TEMP_OUTPUT=$(mktemp)
+        # Run scan and capture output (use namespaced temp file to avoid collisions)
+        TEMP_OUTPUT="${RUNNER_TEMP}/trufflehog-output-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
         eval "$CMD" > "$TEMP_OUTPUT" 2>&1
         EXIT_CODE=$?
 
