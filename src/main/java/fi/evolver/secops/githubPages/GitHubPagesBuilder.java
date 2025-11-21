@@ -76,8 +76,13 @@ public class GitHubPagesBuilder {
 
         Path pagesPath = Path.of(pagesRoot);
 
-        // 3. Resolve tenant identity from GitHub context
-        TenantResolver.TenantInfo tenantInfo = TenantResolver.resolve(pagesPath);
+        // 3. Resolve tenant identity from GitHub context (with optional display metadata from client config)
+        TenantResolver.TenantInfo tenantInfo = TenantResolver.resolve(
+                pagesPath,
+                config.metadata.repoDisplayName,
+                config.metadata.orgDisplayName,
+                config.metadata.orgLogoUrl
+        );
 
         // 4. Merge dashboard build artifacts
         if (dashboardBuildDir != null && !dashboardBuildDir.isEmpty()) {
