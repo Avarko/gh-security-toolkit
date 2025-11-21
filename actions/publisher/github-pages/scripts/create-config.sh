@@ -11,7 +11,7 @@
 #   output_json         - Path to write config JSON
 #
 # Optional arguments:
-#   config_overrides_json - Path to JSON with branding overrides
+#   config_overrides_json - Path to JSON with configuration overrides (reserved for future use)
 #
 # Environment variables (auto-detected from GitHub Actions):
 #   GITHUB_REPOSITORY, GITHUB_SHA, GITHUB_REF_NAME, GITHUB_RUN_ID,
@@ -73,13 +73,12 @@ CONFIG=$(jq -n \
       ciJobName: $ciJobName,
       ciJobUrl: $ciJobUrl,
       actorName: $actorName
-    },
-    branding: {}
+    }
   }')
 
-# Merge with config overrides if provided (for branding)
+# Merge with config overrides if provided (reserved for future use)
 if [ -n "$CONFIG_OVERRIDES" ] && [ -f "$CONFIG_OVERRIDES" ]; then
-    echo "   🎨 Applying branding overrides"
+    echo "   📝 Applying configuration overrides"
     CONFIG=$(echo "$CONFIG" | jq --slurpfile overrides "$CONFIG_OVERRIDES" '. * $overrides[0]')
 fi
 
