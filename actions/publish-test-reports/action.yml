@@ -1,40 +1,64 @@
-name: Upload test reports
+name: "Publish test reports"
 description: |
-  Uploads JaCoCo coverage reports and Surefire test reports as artifacts.
-  Collects reports from standard Maven target directories.
+  Composite action for publishing JaCoCo coverage and Surefire test reports to GitHub Pages.
+  Unlike the previous reusable workflow, this action runs in the same job as the caller,
+  eliminating the need for artifact uploads/downloads.
+
+  The caller workflow must:
+  - Have built and generated the test reports
+  - Set appropriate permissions (contents: write, pages: write, id-token: write, actions: read)
 
 inputs:
-  jacoco-report-path:
+  # === TEST REPORT PATHS ===
+  jacoco_report_path:
     description: "Path to JaCoCo HTML report directory (e.g., target/site/jacoco)"
     required: false
     default: ""
-  surefire-report-path:
+
+  surefire_report_path:
     description: "Path to Surefire HTML report directory (e.g., target/site/surefire-report)"
     required: false
     default: ""
+
+  # === METADATA ===
   channel:
     description: "Channel name for organizing reports (e.g., 'nightly', 'pr-123')"
     required: true
-  retention-days:
-    description: "Number of days to retain the artifact"
-    required: false
-    default: "1"
-  custom-index-html:
+
+  custom_index_html:
     description: "Optional path to custom index.html for landing page"
     required: false
     default: ""
 
+  # === GITHUB TOKEN ===
+  github_token:
+    description: "GitHub token for API operations (defaults to github.token)"
+    required: false
+    default: ${{ github.token }}
+
 outputs:
-  has-jacoco:
+  has_jacoco:
     description: "Whether JaCoCo report was included"
     value: ${{ steps.check-reports.outputs.has-jacoco }}
-  has-surefire:
+  has_surefire:
     description: "Whether Surefire report was included"
     value: ${{ steps.check-reports.outputs.has-surefire }}
+  output_dir:
+    description: "Directory containing prepared test reports"
+    value: ${{ steps.setup.outputs.output_dir }}
 
 runs:
   using: composite
   steps:
+    - name: Setup directories
+      id: setup
+      shell: bash
+      run: |
+        # Use unique directory to avoid collisions when action is called multiple times
+        OUTPUT_DIR="${RUNNER_TEMP}/test-reports-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+        mkdir -p "$OUTPUT_DIR"
+        echo "output_dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
+
     - name: Check which reports exist
       id: check-reports
       shell: bash
@@ -42,20 +66,20 @@ runs:
         HAS_JACOCO="false"
         HAS_SUREFIRE="false"
 
-        if [ -n "${{ inputs.jacoco-report-path }}" ] && [ -d "${{ inputs.jacoco-report-path }}" ]; then
-          echo "✅ JaCoCo report found at: ${{ inputs.jacoco-report-path }}"
+        if [ -n "${{ inputs.jacoco_report_path }}" ] && [ -d "${{ inputs.jacoco_report_path }}" ]; then
+          echo "JaCoCo report found at: ${{ inputs.jacoco_report_path }}"
           HAS_JACOCO="true"
         fi
 
-        if [ -n "${{ inputs.surefire-report-path }}" ] && [ -d "${{ inputs.surefire-report-path }}" ]; then
-          echo "✅ Surefire report found at: ${{ inputs.surefire-report-path }}"
+        if [ -n "${{ inputs.surefire_report_path }}" ] && [ -d "${{ inputs.surefire_report_path }}" ]; then
+          echo "Surefire report found at: ${{ inputs.surefire_report_path }}"
           HAS_SUREFIRE="true"
         fi
 
         if [ "$HAS_JACOCO" = "false" ] && [ "$HAS_SUREFIRE" = "false" ]; then
-          echo "❌ ERROR: No test reports found!"
-          echo "   JaCoCo path: ${{ inputs.jacoco-report-path }}"
-          echo "   Surefire path: ${{ inputs.surefire-report-path }}"
+          echo "ERROR: No test reports found!"
+          echo "   JaCoCo path: ${{ inputs.jacoco_report_path }}"
+          echo "   Surefire path: ${{ inputs.surefire_report_path }}"
           exit 1
         fi
 
@@ -65,9 +89,8 @@ runs:
     - name: Create scan context metadata
       shell: bash
       run: |
-        # Create scan-context.json with metadata from GitHub Actions environment
         # type: "test-report" ensures this won't appear in security scan history
-        cat > /tmp/test-reports-scan-context.json << EOF
+        cat > "${{ steps.setup.outputs.output_dir }}/scan-context.json" << EOF
         {
           "type": "test-report",
           "channel": "${{ inputs.channel }}",
@@ -81,52 +104,48 @@ runs:
           "actorName": "${GITHUB_ACTOR:-}"
         }
         EOF
-
-        echo "📋 Created scan-context.json:"
-        cat /tmp/test-reports-scan-context.json
+        echo "Created scan-context.json:"
+        cat "${{ steps.setup.outputs.output_dir }}/scan-context.json"
 
     - name: Create site structure
       shell: bash
       run: |
-        echo "📁 Creating site directory structure..."
-        mkdir -p test-reports-site/coverage
-        mkdir -p test-reports-site/tests
-
-        # Include scan-context.json in the artifact
-        cp /tmp/test-reports-scan-context.json test-reports-site/scan-context.json
+        echo "Creating site directory structure..."
+        mkdir -p "${{ steps.setup.outputs.output_dir }}/coverage"
+        mkdir -p "${{ steps.setup.outputs.output_dir }}/tests"
 
     - name: Copy JaCoCo coverage report
       if: steps.check-reports.outputs.has-jacoco == 'true'
       shell: bash
       run: |
-        echo "📊 Copying JaCoCo coverage report..."
-        cp -r "${{ inputs.jacoco-report-path }}"/* test-reports-site/coverage/
-        echo "   ✅ JaCoCo report copied"
+        echo "Copying JaCoCo coverage report..."
+        cp -r "${{ inputs.jacoco_report_path }}"/* "${{ steps.setup.outputs.output_dir }}/coverage/"
+        echo "JaCoCo report copied"
 
     - name: Copy Surefire test report
       if: steps.check-reports.outputs.has-surefire == 'true'
       shell: bash
       run: |
-        echo "🧪 Copying Surefire test report..."
-        cp -r "${{ inputs.surefire-report-path }}"/* test-reports-site/tests/
+        echo "Copying Surefire test report..."
+        cp -r "${{ inputs.surefire_report_path }}"/* "${{ steps.setup.outputs.output_dir }}/tests/"
 
         # Rename surefire.html to index.html if it exists
-        if [ -f "test-reports-site/tests/surefire.html" ]; then
-          mv test-reports-site/tests/surefire.html test-reports-site/tests/index.html
-          echo "   ✅ Surefire report copied and renamed to index.html"
+        if [ -f "${{ steps.setup.outputs.output_dir }}/tests/surefire.html" ]; then
+          mv "${{ steps.setup.outputs.output_dir }}/tests/surefire.html" "${{ steps.setup.outputs.output_dir }}/tests/index.html"
+          echo "Surefire report copied and renamed to index.html"
         else
-          echo "   ✅ Surefire report copied"
+          echo "Surefire report copied"
         fi
 
     - name: Create landing page
       shell: bash
       run: |
-        if [ -n "${{ inputs.custom-index-html }}" ] && [ -f "${{ inputs.custom-index-html }}" ]; then
-          echo "📄 Using custom index.html..."
-          cp "${{ inputs.custom-index-html }}" test-reports-site/index.html
+        if [ -n "${{ inputs.custom_index_html }}" ] && [ -f "${{ inputs.custom_index_html }}" ]; then
+          echo "Using custom index.html..."
+          cp "${{ inputs.custom_index_html }}" "${{ steps.setup.outputs.output_dir }}/index.html"
         else
-          echo "📄 Generating default index.html..."
-          cat > test-reports-site/index.html << 'EOF'
+          echo "Generating default index.html..."
+          cat > "${{ steps.setup.outputs.output_dir }}/index.html" << 'EOF'
         <!DOCTYPE html>
         <html lang="en">
         <head>
@@ -157,17 +176,9 @@ runs:
                     padding: 40px;
                     text-align: center;
                 }
-                .header h1 {
-                    font-size: 2.5rem;
-                    margin-bottom: 10px;
-                }
-                .header p {
-                    opacity: 0.9;
-                    font-size: 1.1rem;
-                }
-                .content {
-                    padding: 40px;
-                }
+                .header h1 { font-size: 2.5rem; margin-bottom: 10px; }
+                .header p { opacity: 0.9; font-size: 1.1rem; }
+                .content { padding: 40px; }
                 .report-card {
                     background: #f8f9fa;
                     border-radius: 12px;
@@ -189,10 +200,7 @@ runs:
                     align-items: center;
                     gap: 10px;
                 }
-                .report-card p {
-                    color: #6c757d;
-                    margin-bottom: 15px;
-                }
+                .report-card p { color: #6c757d; margin-bottom: 15px; }
                 .report-card a {
                     display: inline-block;
                     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -203,9 +211,7 @@ runs:
                     font-weight: 600;
                     transition: transform 0.2s;
                 }
-                .report-card a:hover {
-                    transform: scale(1.05);
-                }
+                .report-card a:hover { transform: scale(1.05); }
                 .icon { font-size: 1.8rem; }
                 .footer {
                     text-align: center;
@@ -218,52 +224,48 @@ runs:
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>🧪 Test Reports</h1>
+                    <h1>Test Reports</h1>
                     <p>Quality assurance and code coverage metrics</p>
                 </div>
                 <div class="content">
                     <div class="report-card">
                         <h2><span class="icon">📊</span> Code Coverage Report</h2>
                         <p>JaCoCo coverage analysis showing line, branch, and method coverage metrics</p>
-                        <a href="./coverage/index.html">View Coverage Report →</a>
+                        <a href="./coverage/index.html">View Coverage Report</a>
                     </div>
                     <div class="report-card">
                         <h2><span class="icon">✅</span> Test Results</h2>
                         <p>Surefire test execution report with pass/fail details and execution times</p>
-                        <a href="./tests/index.html">View Test Report →</a>
+                        <a href="./tests/index.html">View Test Report</a>
                     </div>
                 </div>
                 <div class="footer">
-                    Generated by GitHub Actions • Test Reports
+                    Generated by GitHub Actions
                 </div>
             </div>
         </body>
         </html>
         EOF
         fi
-        echo "   ✅ Landing page created"
+        echo "Landing page created"
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
+    # === PUBLISH TO GITHUB PAGES ===
+    - name: Publish to GitHub Pages
+      id: pages
+      uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@reactui
       with:
-        name: __gh_security_toolkit__test_reports__
-        path: test-reports-site
-        if-no-files-found: error
-        retention-days: ${{ inputs.retention-days }}
-        compression-level: 6
+        github_token: ${{ inputs.github_token }}
+        outdir: ${{ steps.setup.outputs.output_dir }}
 
     - name: Summary
       shell: bash
       run: |
-        echo "## 📦 Test Reports Uploaded" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Artifact Name:** \`__gh_security_toolkit__test_reports__\`" >> $GITHUB_STEP_SUMMARY
-        echo "**Retention:** ${{ inputs.retention-days }} days" >> $GITHUB_STEP_SUMMARY
+        echo "## Test Reports Published" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Included Reports:" >> $GITHUB_STEP_SUMMARY
         if [ "${{ steps.check-reports.outputs.has-jacoco }}" = "true" ]; then
-          echo "- ✅ JaCoCo Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "- JaCoCo Coverage Report" >> $GITHUB_STEP_SUMMARY
         fi
         if [ "${{ steps.check-reports.outputs.has-surefire }}" = "true" ]; then
-          echo "- ✅ Surefire Test Report" >> $GITHUB_STEP_SUMMARY
+          echo "- Surefire Test Report" >> $GITHUB_STEP_SUMMARY
         fi

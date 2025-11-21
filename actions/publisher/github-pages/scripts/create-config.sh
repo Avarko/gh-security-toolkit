@@ -3,7 +3,7 @@
 # Creates configuration JSON for GitHub Pages builder.
 # Reads metadata from scan-context.json in outdir (created by artifact upload actions).
 #
-# Usage: create-config.sh <outdir> <output_json> [config_overrides_json]
+# Usage: create-config.sh <outdir> <output_json> [config_overrides_json] [dashboard_build_dir]
 #
 # Required arguments:
 #   outdir              - Directory containing scan outputs and scan-context.json
@@ -11,6 +11,7 @@
 #
 # Optional arguments:
 #   config_overrides_json - Path to JSON with configuration overrides (reserved for future use)
+#   dashboard_build_dir   - Path to dashboard build directory (default: uses RUNNER_TEMP)
 #
 # The scan-context.json file must contain at minimum:
 #   - channel: Channel name for organizing scans
@@ -22,13 +23,14 @@
 set -euo pipefail
 
 if [ $# -lt 2 ]; then
-    echo "Usage: $0 <outdir> <output_json> [config_overrides_json]"
+    echo "Usage: $0 <outdir> <output_json> [config_overrides_json] [dashboard_build_dir]"
     exit 1
 fi
 
 OUTDIR="$(cd "$1" 2>/dev/null && pwd || realpath "$1")"
 OUTPUT_JSON="$2"
 CONFIG_OVERRIDES="${3:-}"
+DASHBOARD_BUILD_DIR="${4:-${RUNNER_TEMP:-/tmp}/dashboard-build}"
 
 # Hardcoded: always use repository root
 PAGES_ROOT="$(pwd)"
@@ -85,6 +87,7 @@ echo "   📦 Pages root: $PAGES_ROOT (repository root)"
 CONFIG=$(jq -n \
   --arg outdir "$OUTDIR" \
   --arg pagesRoot "$PAGES_ROOT" \
+  --arg dashboardBuildDir "$DASHBOARD_BUILD_DIR" \
   --arg channel "$CHANNEL" \
   --arg timestamp "$TIMESTAMP" \
   --arg repository "$REPOSITORY" \
@@ -98,7 +101,7 @@ CONFIG=$(jq -n \
     input: {
       outdir: $outdir,
       pagesRoot: $pagesRoot,
-      dashboardBuildDir: "/tmp/dashboard-build"
+      dashboardBuildDir: $dashboardBuildDir
     },
     metadata: {
       timestamp: $timestamp,

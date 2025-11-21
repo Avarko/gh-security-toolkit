@@ -3,12 +3,13 @@
 # Downloads and restores GitHub Pages site data artifact (all channels, all tenants).
 # Combines download + restore into a single operation.
 #
-# Usage: download-and-restore-history.sh <repository> <pages_root> <github_output_path>
+# Usage: download-and-restore-history.sh <repository> <pages_root> <github_output_path> [temp_base]
 #
 # Arguments:
 #   repository         - GitHub repository in format "owner/repo"
 #   pages_root         - Root directory for GitHub Pages (usually: .)
 #   github_output_path - Path to GITHUB_OUTPUT file for setting outputs
+#   temp_base          - Base directory for temporary files (default: RUNNER_TEMP or /tmp)
 #
 # Outputs (written to GITHUB_OUTPUT):
 #   found - "true" if artifact was found and restored, "false" otherwise
@@ -19,16 +20,17 @@
 set -euo pipefail
 
 if [ $# -lt 3 ]; then
-    echo "Usage: $0 <repository> <pages_root> <github_output_path>"
+    echo "Usage: $0 <repository> <pages_root> <github_output_path> [temp_base]"
     exit 1
 fi
 
 REPOSITORY="$1"
 PAGES_ROOT="$(cd "$2" 2>/dev/null && pwd || realpath "$2")"
 GITHUB_OUTPUT="$3"
+TEMP_BASE="${4:-${RUNNER_TEMP:-/tmp}}"
 
 ARTIFACT_NAME="__gh_security_toolkit__github_pages_site_data"
-OUTPUT_DIR="/tmp/github-pages-site-data-artifact"
+OUTPUT_DIR="${TEMP_BASE}/github-pages-site-data-artifact"
 
 echo "==> Searching for artifact: $ARTIFACT_NAME"
 
