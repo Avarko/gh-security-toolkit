@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 #
-# Creates scan-context.json metadata file for security scan results.
+# Creates scan-context.json metadata file for security scan or test report results.
 #
 # Usage: create-scan-context.sh
 #
 # Environment variables (required):
 #   INPUT_OUTPUT_FILE       - Path where scan-context.json will be written
 #   INPUT_CHANNEL           - Channel name for the scan
+#
+# Environment variables (optional):
+#   INPUT_TYPE              - Type: "security-scan" (default) or "test-report"
 #   INPUT_ORG_DISPLAY_NAME  - Organization display name
 #   INPUT_ORG_LOGO_URL      - Organization logo URL
 #   INPUT_REPO_DISPLAY_NAME - Repository display name
@@ -18,8 +21,10 @@
 set -euo pipefail
 
 OUTPUT_FILE="${INPUT_OUTPUT_FILE:?INPUT_OUTPUT_FILE is required}"
+TYPE="${INPUT_TYPE:-security-scan}"
 
 jq -n \
+  --arg type "$TYPE" \
   --arg channel "${INPUT_CHANNEL:-}" \
   --arg timestamp "$(date -u +'%Y-%m-%d-%H%M%SZ')" \
   --arg branch "${GITHUB_REF_NAME:-}" \
@@ -33,6 +38,7 @@ jq -n \
   --arg orgLogoUrl "${INPUT_ORG_LOGO_URL:-}" \
   --arg repoDisplayName "${INPUT_REPO_DISPLAY_NAME:-}" \
   '{
+    type: $type,
     channel: $channel,
     timestamp: $timestamp,
     branch: $branch,

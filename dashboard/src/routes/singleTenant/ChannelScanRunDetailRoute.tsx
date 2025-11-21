@@ -10,10 +10,17 @@ import { Container, Typography } from "@mui/material";
 
 import { ScanRunDetailPage } from "../../features/scans/components/ScanRunDetailPage";
 import { ValidationErrorDisplay } from "../../features/scans/components/ValidationErrorDisplay";
-import type { ScanRun } from "../../features/scans/types/scanRun";
+import type { ScanRunMetadata, TrivyScan, SemgrepScan } from "../../features/scans/types/scanRun";
 
 type LoaderData =
-    | { success: true; scanRun: ScanRun }
+    | {
+          success: true;
+          channel: string;
+          metadata: ScanRunMetadata;
+          trivyData: TrivyScan;
+          semgrepData: SemgrepScan;
+          dataBasePath: string;
+      }
     | { success: false; error: string; details?: unknown };
 
 export async function loader(args: LoaderFunctionArgs): Promise<LoaderData> {
@@ -27,20 +34,53 @@ export async function loader(args: LoaderFunctionArgs): Promise<LoaderData> {
     }
 
     // In single-tenant mode, data is at /data/runs/<channel>/<timestamp>/
-    const scanRunUrl = `/data/runs/${channel}/${timestamp}/scan-run.json`;
+    const dataBasePath = `/data/runs/${channel}/${timestamp}`;
 
     try {
-        const response = await fetch(scanRunUrl);
+        // Load all scan data files in parallel
+        const [metadataRes, trivyFsRes, trivyImageRes, semgrepRes] = await Promise.all([
+            fetch(`${dataBasePath}/scan-run.json`),
+            fetch(`${dataBasePath}/trivy-fs-results.json`),
+            fetch(`${dataBasePath}/trivy-image-results.json`),
+            fetch(`${dataBasePath}/semgrep-results.json`),
+        ]);
 
-        if (!response.ok) {
+        if (!metadataRes.ok) {
             return {
                 success: false,
-                error: `HTTP ${response.status}: Failed to load scan run from ${scanRunUrl}`,
+                error: `HTTP ${metadataRes.status}: Failed to load scan metadata from ${dataBasePath}/scan-run.json`,
             };
         }
 
-        const scanRun = (await response.json()) as ScanRun;
-        return { success: true, scanRun };
+        const metadata = (await metadataRes.json()) as ScanRunMetadata;
+
+        // Trivy and Semgrep files may not exist - use empty defaults
+        const trivyFs: TrivyScan = trivyFsRes.ok
+            ? await trivyFsRes.json()
+            : { Results: [] };
+        const trivyImage: TrivyScan = trivyImageRes.ok
+            ? await trivyImageRes.json()
+            : { Results: [] };
+        const semgrepData: SemgrepScan = semgrepRes.ok
+            ? await semgrepRes.json()
+            : { results: [] };
+
+        // Merge Trivy results from both filesystem and image scans
+        const trivyData: TrivyScan = {
+            Results: [
+                ...(trivyFs.Results ?? []),
+                ...(trivyImage.Results ?? []),
+            ],
+        };
+
+        return {
+            success: true,
+            channel,
+            metadata,
+            trivyData,
+            semgrepData,
+            dataBasePath,
+        };
     } catch (error) {
         return {
             success: false,
@@ -65,7 +105,15 @@ export default function ChannelScanRunDetailRoute() {
     }
 
     if (data.success) {
-        return <ScanRunDetailPage scanRun={data.scanRun} />;
+        return (
+            <ScanRunDetailPage
+                channel={data.channel}
+                metadata={data.metadata}
+                trivyData={data.trivyData}
+                semgrepData={data.semgrepData}
+                dataBasePath={data.dataBasePath}
+            />
+        );
     }
 
     return (

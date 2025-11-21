@@ -2,7 +2,7 @@
 import { z } from "zod";
 
 /**
- * scan-metadata.json
+ * scan-run.json
  */
 
 const scanRunMetadataInnerSchema = z.object({

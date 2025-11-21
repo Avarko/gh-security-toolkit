@@ -288,7 +288,7 @@ publish_to: "github-release,github-pages"  # Both
         └── nightly-master/
             ├── 2025-11-09-120000Z/
             │   ├── index.html              # Scan detail report
-            │   ├── scan-metadata.json
+            │   ├── scan-run.json
             │   ├── trivy-fs-results.json
             │   ├── trivy-image-results.json
             │   └── semgrep-results.json

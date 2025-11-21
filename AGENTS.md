@@ -246,7 +246,7 @@ Deployed to `https://<org>.github.io/<repo>/` (Private Pages):
         │           ├── trivy-fs-results.json      (~285 KB)
         │           ├── trivy-image-results.json   (~1.8 MB)
         │           ├── semgrep-results.json       (~4 KB)
-        │           └── scan-metadata.json         (~75 bytes)
+        │           └── scan-run.json              (~75 bytes)
         ├── hist/
         │   └── scan-history.json  # ALL scans stats (compact, grows ~1 KB per scan)
         └── channels/              # Reserved for future use

@@ -26,7 +26,7 @@ Publishes security scan results and test reports as static HTML pages to GitHub 
         └── runs/
             └── nightly-master/
                 ├── 2025-11-07-033946Z/
-                │   ├── scan-metadata.json
+                │   ├── scan-run.json
                 │   ├── trivy-fs-results.json
                 │   ├── trivy-image-results.json
                 │   └── semgrep-results.json
