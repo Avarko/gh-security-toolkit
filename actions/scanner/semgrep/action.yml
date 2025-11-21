@@ -234,4 +234,4 @@ outputs:
     value: ${{ steps.summary.outputs.semgrep_summary }}
   semgrep_version:
     description: "Semgrep version"
-    value: ${{ steps.version.outputs.version }}
+    value: ${{ steps.version.outputs.semgrep_version }}
