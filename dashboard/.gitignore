@@ -2,3 +2,7 @@ node_modules
 build
 .cache
 .env
+
+# Local development symlinks (created by npm run dev)
+public/data
+public/config
