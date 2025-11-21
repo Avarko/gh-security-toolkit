@@ -74,17 +74,19 @@ describe('scanMetadataSchema', () => {
     });
 
     it('should reject short commit SHA', () => {
-        const invalidScan = {
+        // Short commit SHAs (< 7 chars) are invalid and will be rejected
+        // because the schema has strict validation on metadata fields
+        const scanWithShortCommit = {
             timestamp: '2024-01-15-120000Z',
             channel: 'prod',
             metadata: {
                 branch: 'main',
-                commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+                commit: 'abc', // Too short - invalid
                 repository: 'owner/repo',
             },
         };
 
-        const result = scanMetadataSchema.safeParse(invalidScan);
+        const result = scanMetadataSchema.safeParse(scanWithShortCommit);
         expect(result.success).toBe(false);
     });
 
@@ -106,46 +108,47 @@ describe('scanMetadataSchema', () => {
         const result = scanMetadataSchema.safeParse(scanWithNegative);
         // With .catch(0), this should actually pass and convert to 0
         expect(result.success).toBe(true);
-
-        it('should handle string instead of number with .catch()', () => {
-            const scanWithString = {
-                timestamp: '2024-01-15-120000Z',
-                channel: 'prod',
-                metadata: {
-                    branch: 'main',
-                    commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
-                },
-                trivyFsResults: {
-                    totalVulnerabilities: {
-                        CRITICAL: 'not-a-number',
-                    },
-                },
-            };
-
-            const result = scanMetadataSchema.safeParse(scanWithString);
-            // With .catch(0), this should convert invalid values to 0
-            if (result.success) {
-                expect(result.data.trivyFsResults?.totalVulnerabilities.CRITICAL).toBe(0);
-            }
-        });
-
-        it('should reject unknown fields with .strict()', () => {
-            const scanWithExtra = {
-                timestamp: '2024-01-15-120000Z',
-                channel: 'prod',
-                metadata: {
-                    branch: 'main',
-                    commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
-                },
-                extraField: 123,
-            };
-
-            const result = scanMetadataSchema.safeParse(scanWithExtra);
-            expect(result.success).toBe(false);
-        });
     });
 
-    describe('scanHistorySchema', () => {
+    it('should handle string instead of number with .catch()', () => {
+        const scanWithString = {
+            timestamp: '2024-01-15-120000Z',
+            channel: 'prod',
+            metadata: {
+                branch: 'main',
+                commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+            },
+            trivyFsResults: {
+                totalVulnerabilities: {
+                    CRITICAL: 'not-a-number',
+                },
+            },
+        };
+
+        const result = scanMetadataSchema.safeParse(scanWithString);
+        // With .catch(0), this should convert invalid values to 0
+        if (result.success) {
+            expect(result.data.trivyFsResults?.totalVulnerabilities.CRITICAL).toBe(0);
+        }
+    });
+
+    it('should reject unknown fields with .strict()', () => {
+        const scanWithExtra = {
+            timestamp: '2024-01-15-120000Z',
+            channel: 'prod',
+            metadata: {
+                branch: 'main',
+                commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+            },
+            extraField: 123,
+        };
+
+        const result = scanMetadataSchema.safeParse(scanWithExtra);
+        expect(result.success).toBe(false);
+    });
+});
+
+describe('scanHistorySchema', () => {
         it('should validate correct scan history', () => {
             const validHistory = {
                 version: '1.0',
@@ -153,8 +156,11 @@ describe('scanMetadataSchema', () => {
                     {
                         timestamp: '2024-01-15-120000Z',
                         channel: 'prod',
-                        branch: 'main',
-                        commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+                        metadata: {
+                            branch: 'main',
+                            commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+                            repository: 'owner/repo',
+                        },
                     },
                 ],
             };
@@ -188,3 +194,4 @@ describe('scanMetadataSchema', () => {
             const result = scanHistorySchema.safeParse(hugeHistory);
             expect(result.success).toBe(false);
         });
+});

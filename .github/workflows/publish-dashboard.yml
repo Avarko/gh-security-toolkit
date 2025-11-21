@@ -61,10 +61,25 @@ jobs:
         id: ts
         run: echo "ts=$(date -u +'%Y-%m-%d-%H%M%SZ')" >> "$GITHUB_OUTPUT"
 
-      - name: Create minimal scan data
+      - name: Create minimal scan data with context
         id: setup
         run: |
           mkdir -p scan-output
+
+          # Create scan-context.json (required by publisher)
+          cat > scan-output/scan-context.json << EOF
+          {
+            "channel": "${{ inputs.channel }}",
+            "timestamp": "${{ steps.ts.outputs.ts }}",
+            "branch": "${GITHUB_REF_NAME:-}",
+            "repository": "${GITHUB_REPOSITORY:-}",
+            "commitSha": "${GITHUB_SHA:-}",
+            "scanId": "${GITHUB_RUN_ID:-}",
+            "ciJobName": "${GITHUB_WORKFLOW:-}",
+            "ciJobUrl": "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}",
+            "actorName": "${GITHUB_ACTOR:-}"
+          }
+          EOF
 
           if [ "${{ inputs.use_existing_scans }}" = "true" ]; then
             echo "ℹ️  Using existing scan history - no new scan data added"
@@ -100,7 +115,6 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           outdir: ${{ steps.setup.outputs.output_dir }}
-          channel: ${{ inputs.channel }}
           config_overrides: |
             {
               "branding": {

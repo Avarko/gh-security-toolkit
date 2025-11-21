@@ -44,14 +44,15 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
             return groups;
         }
         history.scans.forEach((scan) => {
-            if (!groups[scan.channel]) {
-                groups[scan.channel] = [];
+            const ch = scan.channel;
+            if (!groups[ch]) {
+                groups[ch] = [];
             }
-            groups[scan.channel].push(scan);
+            groups[ch]!.push(scan);
         });
         // Sort each channel's scans by timestamp (newest first)
         Object.keys(groups).forEach((channel) => {
-            groups[channel].sort((a, b) => {
+            groups[channel]!.sort((a, b) => {
                 const dateA = parseTimestamp(a.timestamp);
                 const dateB = parseTimestamp(b.timestamp);
                 if (!dateA || !dateB) return 0;

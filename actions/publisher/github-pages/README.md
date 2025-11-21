@@ -1,6 +1,6 @@
 # GitHub Pages Publisher
 
-Publishes security scan results as static HTML pages to GitHub Pages.
+Publishes security scan results and test reports as static HTML pages to GitHub Pages.
 
 > **🔒 Security**: This action **requires Private Pages** (GitHub Enterprise Cloud). It will verify Pages visibility before deployment and **refuse to publish** if Pages is configured as public.
 
@@ -20,26 +20,25 @@ Publishes security scan results as static HTML pages to GitHub Pages.
 ├── 404.html                              # Error page
 ├── assets/                               # Static assets
 └── data/
-    ├── hist/
-    │   └── scan-history.json             # Versioned history (v2)
-    ├── channels/
-    │   └── nightly-master/
-    │       └── index.html                # Channel page (all runs)
-    └── runs/
-        └── nightly-master/
-            ├── 2025-11-07-033946Z/
-            │   ├── index.html            # Scan detail page
-            │   ├── scan-metadata.json
-            │   ├── trivy-fs-results.json
-            │   ├── trivy-image-results.json
-            │   └── semgrep-results.json
-            └── 2025-11-07-101234Z/
-                └── ...
+    └── <tenant-uuid>/
+        ├── hist/
+        │   └── scan-history.json         # Versioned history (v2)
+        └── runs/
+            └── nightly-master/
+                ├── 2025-11-07-033946Z/
+                │   ├── scan-metadata.json
+                │   ├── trivy-fs-results.json
+                │   ├── trivy-image-results.json
+                │   └── semgrep-results.json
+                └── 2025-11-07-101234Z/
+                    └── ...
 ```
 
 ## Usage
 
-### Basic Example (Minimal)
+### Basic Example
+
+The publisher reads all metadata from `scan-context.json` in the outdir. This file is automatically created by the artifact upload actions.
 
 ```yaml
 - name: Publish to GitHub Pages
@@ -47,9 +46,24 @@ Publishes security scan results as static HTML pages to GitHub Pages.
   with:
     github_token: ${{ github.token }}
     outdir: scan-output
-    channel: nightly
-    # That's it! All metadata is auto-detected from GitHub Actions environment
+    # Channel and all metadata come from scan-context.json in outdir
 ```
+
+### Prerequisites
+
+The `outdir` must contain a `scan-context.json` file with at minimum:
+
+```json
+{
+  "channel": "nightly",
+  "timestamp": "2025-11-21-120000Z"
+}
+```
+
+This file is automatically created by:
+- `actions/artifacts/filesystem-for-scanning/upload`
+- `actions/artifacts/docker-image-for-scanning/upload`
+- `actions/artifacts/test-reports/upload`
 
 ### Configure GitHub Pages
 
@@ -81,8 +95,7 @@ permissions:
 | Input | Description | Default |
 |-------|-------------|---------|
 | `github_token` | GitHub token for artifact operations (use `${{ github.token }}`) | - |
-| `outdir` | Directory containing scan outputs and scan-metadata.json | - |
-| `channel` | Channel name for organizing scans (e.g., `nightly`, `pr-123`) | - |
+| `outdir` | Directory containing scan outputs and `scan-context.json` | - |
 
 ### Optional Inputs
 
@@ -90,46 +103,21 @@ permissions:
 |-------|-------------|---------|
 | `config_overrides` | Reserved for future use | `""` |
 
-### Auto-Detected Metadata
+### Metadata from scan-context.json
 
-The following metadata is **automatically detected** from GitHub Actions environment and no longer needs to be passed as inputs:
+All metadata is read from `scan-context.json` in the outdir:
 
-- **timestamp** - Auto-generated using current UTC time
-- **branch** - From `GITHUB_REF_NAME`
-- **repository** - From `GITHUB_REPOSITORY`
-- **commit_sha** - From `GITHUB_SHA`
-- **scan_id** - From `GITHUB_RUN_ID`
-- **ci_job_name** - From `GITHUB_WORKFLOW`
-- **ci_job_url** - Auto-constructed from environment variables
-- **actor_name** - From `GITHUB_ACTOR`
-
-### Scanner-Specific Metadata
-
-The following metadata should be included in `scan-metadata.json` within your scan output directory (created by your scanner):
-
-```json
-{
-  "scanType": "security",
-  "scanners": {
-    "trivy": {
-      "version": "0.48.0",
-      "scanDate": "2025-11-20T12:34:56Z"
-    },
-    "semgrep": {
-      "version": "1.55.0",
-      "scanDate": "2025-11-20T12:35:12Z"
-    }
-  },
-  "target": {
-    "type": "docker-image",
-    "imageName": "ghcr.io/org/app:latest"
-  },
-  "links": {
-    "documentation": "https://docs.example.com",
-    "issues": "https://github.com/org/repo/issues"
-  }
-}
-```
+| Field | Description | Required |
+|-------|-------------|----------|
+| `channel` | Channel name for organizing scans (e.g., `nightly`, `pr-123`) | **Yes** |
+| `timestamp` | Scan timestamp | No (auto-generated if missing) |
+| `branch` | Git branch name | No |
+| `repository` | Repository name (owner/repo) | No |
+| `commitSha` | Git commit SHA | No |
+| `scanId` | CI run ID | No |
+| `ciJobName` | CI workflow name | No |
+| `ciJobUrl` | Link to CI job | No |
+| `actorName` | User who triggered the workflow | No |
 
 ## Outputs
 
@@ -155,29 +143,37 @@ This action stores the entire GitHub Pages site data (all channels, all tenants)
 
 ## Examples
 
-### Use both publishers
+### Security scans (via security-scan.yml workflow)
 
 ```yaml
-inputs:
-  publish_to: 'github-release,github-pages'  # Publish to both
+# Client repository calls security-scan.yml which:
+# 1. Downloads artifacts (with scan-context.json inside)
+# 2. Runs scanners
+# 3. Calls publisher/github-pages (reads channel from scan-context.json)
+
+- name: Upload filesystem for scanning
+  uses: Avarko/gh-security-toolkit/actions/artifacts/filesystem-for-scanning/upload@main
+  with:
+    path: .
+    channel: nightly  # This gets embedded in scan-context.json
+
+- name: Run security scan
+  uses: Avarko/gh-security-toolkit/.github/workflows/security-scan.yml@main
+  with:
+    channel: nightly  # Used for concurrency and release naming
 ```
 
-### Multiple channels
+### Test reports
 
 ```yaml
-- name: Publish nightly scans
-  uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@main
+- name: Upload test reports
+  uses: Avarko/gh-security-toolkit/actions/artifacts/test-reports/upload@main
   with:
-    github_token: ${{ github.token }}
-    outdir: scan-output
-    channel: nightly
+    jacoco-report-path: target/site/jacoco
+    surefire-report-path: target/reports
+    channel: ci  # Embedded in scan-context.json
 
-- name: Publish PR scans
-  uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@main
-  with:
-    github_token: ${{ github.token }}
-    outdir: scan-output
-    channel: pr-${{ github.event.pull_request.number }}
+# Then call publisher directly or via a workflow that downloads the artifact
 ```
 
 ## Developer Notes
@@ -185,15 +181,13 @@ inputs:
 The static HTML is generated by `scripts/github_pages_builder.java` using:
 - **JBang** for scripting
 - **Gson** for JSON parsing
-- **React + Remix** dashboard (built separately)
+- **React** dashboard (built separately)
 
 ### Configuration JSON Structure
 
-The builder accepts a single JSON configuration file:
+The builder accepts a single JSON configuration file (created by `create-config.sh` from `scan-context.json`):
 
-```bash
-# Create a config file
-cat > /tmp/config.json <<EOF
+```json
 {
   "input": {
     "outdir": "./scan-output",
@@ -212,10 +206,6 @@ cat > /tmp/config.json <<EOF
     "actorName": "username"
   }
 }
-EOF
-
-# Run builder
-jbang scripts/github_pages_builder.java /tmp/config.json
 ```
 
 ### Timestamp Format

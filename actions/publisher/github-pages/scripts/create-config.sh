@@ -1,62 +1,99 @@
 #!/usr/bin/env bash
 #
 # Creates configuration JSON for GitHub Pages builder.
-# Auto-detects all metadata from GitHub Actions environment.
+# Reads metadata from scan-context.json in outdir (created by artifact upload actions).
 #
-# Usage: create-config.sh <outdir> <channel> <output_json> [config_overrides_json]
+# Usage: create-config.sh <outdir> <output_json> [config_overrides_json]
 #
 # Required arguments:
-#   outdir              - Directory containing scan outputs
-#   channel             - Channel name
+#   outdir              - Directory containing scan outputs and scan-context.json
 #   output_json         - Path to write config JSON
 #
 # Optional arguments:
 #   config_overrides_json - Path to JSON with configuration overrides (reserved for future use)
 #
-# Environment variables (auto-detected from GitHub Actions):
-#   GITHUB_REPOSITORY, GITHUB_SHA, GITHUB_REF_NAME, GITHUB_RUN_ID,
-#   GITHUB_WORKFLOW, GITHUB_SERVER_URL, GITHUB_ACTOR
+# The scan-context.json file must contain at minimum:
+#   - channel: Channel name for organizing scans
+#   - timestamp: Scan timestamp
+#
+# It may also contain (optional):
+#   - branch, repository, commitSha, scanId, ciJobName, ciJobUrl, actorName
 
 set -euo pipefail
 
-if [ $# -lt 3 ]; then
-    echo "Usage: $0 <outdir> <channel> <output_json> [config_overrides_json]"
+if [ $# -lt 2 ]; then
+    echo "Usage: $0 <outdir> <output_json> [config_overrides_json]"
     exit 1
 fi
 
 OUTDIR="$(cd "$1" 2>/dev/null && pwd || realpath "$1")"
-CHANNEL="$2"
-OUTPUT_JSON="$3"
-CONFIG_OVERRIDES="${4:-}"
-
-# Auto-generate timestamp
-TIMESTAMP=$(date -u +'%Y-%m-%d-%H%M%SZ')
+OUTPUT_JSON="$2"
+CONFIG_OVERRIDES="${3:-}"
 
 # Hardcoded: always use repository root
 PAGES_ROOT="$(pwd)"
 
-# Construct CI job URL from environment
-CI_JOB_URL="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+# Require scan-context.json in outdir
+SCAN_CONTEXT="$OUTDIR/scan-context.json"
+if [ ! -f "$SCAN_CONTEXT" ]; then
+    echo "❌ ERROR: scan-context.json not found in $OUTDIR"
+    echo ""
+    echo "   The artifact must include scan-context.json with channel metadata."
+    echo "   Use the following actions to create artifacts with proper metadata:"
+    echo "   - actions/artifacts/filesystem-for-scanning/upload"
+    echo "   - actions/artifacts/docker-image-for-scanning/upload"
+    echo "   - actions/artifacts/test-reports/upload"
+    exit 1
+fi
 
+echo "📋 Reading metadata from scan-context.json"
+cat "$SCAN_CONTEXT"
+
+# Extract required field: channel
+CHANNEL=$(jq -r '.channel // empty' "$SCAN_CONTEXT")
+if [ -z "$CHANNEL" ]; then
+    echo "❌ ERROR: 'channel' field missing or empty in scan-context.json"
+    exit 1
+fi
+
+# Extract other metadata fields (with defaults)
+TIMESTAMP=$(jq -r '.timestamp // empty' "$SCAN_CONTEXT")
+TIMESTAMP="${TIMESTAMP:-$(date -u +'%Y-%m-%d-%H%M%SZ')}"
+BRANCH=$(jq -r '.branch // empty' "$SCAN_CONTEXT")
+BRANCH="${BRANCH:-${GITHUB_REF_NAME:-}}"
+REPOSITORY=$(jq -r '.repository // empty' "$SCAN_CONTEXT")
+REPOSITORY="${REPOSITORY:-${GITHUB_REPOSITORY:-}}"
+COMMIT_SHA=$(jq -r '.commitSha // empty' "$SCAN_CONTEXT")
+COMMIT_SHA="${COMMIT_SHA:-${GITHUB_SHA:-}}"
+SCAN_ID=$(jq -r '.scanId // empty' "$SCAN_CONTEXT")
+SCAN_ID="${SCAN_ID:-${GITHUB_RUN_ID:-}}"
+CI_JOB_NAME=$(jq -r '.ciJobName // empty' "$SCAN_CONTEXT")
+CI_JOB_NAME="${CI_JOB_NAME:-${GITHUB_WORKFLOW:-}}"
+CI_JOB_URL=$(jq -r '.ciJobUrl // empty' "$SCAN_CONTEXT")
+CI_JOB_URL="${CI_JOB_URL:-${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}}"
+ACTOR_NAME=$(jq -r '.actorName // empty' "$SCAN_CONTEXT")
+ACTOR_NAME="${ACTOR_NAME:-${GITHUB_ACTOR:-}}"
+
+echo ""
 echo "📋 Creating builder configuration..."
 echo "   📂 Output dir: $OUTDIR"
 echo "   🏷️  Channel: $CHANNEL"
-echo "   ⏰ Timestamp: $TIMESTAMP (auto-generated)"
+echo "   ⏰ Timestamp: $TIMESTAMP"
 echo "   📦 Pages root: $PAGES_ROOT (repository root)"
 
-# Build base configuration using environment variables
+# Build configuration
 CONFIG=$(jq -n \
   --arg outdir "$OUTDIR" \
   --arg pagesRoot "$PAGES_ROOT" \
   --arg channel "$CHANNEL" \
   --arg timestamp "$TIMESTAMP" \
-  --arg repository "${GITHUB_REPOSITORY:-}" \
-  --arg commitSha "${GITHUB_SHA:-}" \
-  --arg branch "${GITHUB_REF_NAME:-}" \
-  --arg scanId "${GITHUB_RUN_ID:-}" \
-  --arg ciJobName "${GITHUB_WORKFLOW:-}" \
+  --arg repository "$REPOSITORY" \
+  --arg commitSha "$COMMIT_SHA" \
+  --arg branch "$BRANCH" \
+  --arg scanId "$SCAN_ID" \
+  --arg ciJobName "$CI_JOB_NAME" \
   --arg ciJobUrl "$CI_JOB_URL" \
-  --arg actorName "${GITHUB_ACTOR:-}" \
+  --arg actorName "$ACTOR_NAME" \
   '{
     input: {
       outdir: $outdir,

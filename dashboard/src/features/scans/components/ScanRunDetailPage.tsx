@@ -278,7 +278,6 @@ export function ScanRunDetailPage({
             {/* Footer with metadata */}
             <ReportFooter
                 scanMetadata={metadata}
-                footerMeta={metadata?.footer}
                 channel={channel}
                 dataBasePath={dataBasePath}
             />

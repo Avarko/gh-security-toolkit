@@ -57,7 +57,7 @@ public final class DataProcessor {
      * @param channel Channel name (e.g., "nightly", "pr-123")
      * @param isoTimestamp ISO timestamp for display purposes
      * @param compactTimestamp Compact timestamp for file paths
-     * @param metadataJson Optional path to metadata JSON file
+     * @param configMetadata Metadata from configuration (branch, repository, commitSha)
      * @return ProcessingResult with metadata and stats
      * @throws IOException if file operations fail
      */
@@ -68,7 +68,7 @@ public final class DataProcessor {
             String channel,
             String isoTimestamp,
             String compactTimestamp,
-            String metadataJson) throws IOException {
+            ConfigParser.Metadata configMetadata) throws IOException {
 
         // Create runs directory for this scan
         Path dataRunsPath = dataRoot
@@ -81,13 +81,20 @@ public final class DataProcessor {
         ScanResultLoader loader = new ScanResultLoader(gson);
         FindingsTransformer transformer = new FindingsTransformer();
 
-        RawScanData rawData = loader.load(outputDir, metadataJson);
+        RawScanData rawData = loader.load(outputDir, null);
         TransformedScanData transformedData = transformer.transform(rawData, isoTimestamp);
 
         boolean hasDependabot = rawData.dependabotSummary != null
                 && !rawData.dependabotSummary.isBlank();
 
-        ScanMetadata metadata = transformedData.metadata;
+        // Use metadata from config (if available), otherwise use empty metadata
+        ScanMetadata metadata = configMetadata != null
+                ? new ScanMetadata(
+                        configMetadata.branch,
+                        configMetadata.commitSha,
+                        configMetadata.repository,
+                        isoTimestamp)
+                : ScanMetadata.empty(isoTimestamp);
 
         // Extract statistics for history
         ScanStats scanStats = transformer.extractStats(

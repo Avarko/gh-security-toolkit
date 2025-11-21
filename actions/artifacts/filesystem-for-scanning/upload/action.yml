@@ -4,6 +4,9 @@ inputs:
   path:
     description: "Path(s) to upload. Supports glob patterns and multiple paths (one per line or comma-separated)"
     required: true
+  channel:
+    description: "Channel name for organizing scans (e.g., 'nightly', 'pr-123')"
+    required: true
   retention-days:
     description: "Number of days to retain the artifact"
     required: false
@@ -16,11 +19,37 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Create scan context metadata
+      shell: bash
+      run: |
+        # Create scan-context.json with metadata from GitHub Actions environment
+        SCAN_CONTEXT_DIR="/tmp/gh-security-toolkit-scan-context"
+        mkdir -p "$SCAN_CONTEXT_DIR"
+
+        cat > "$SCAN_CONTEXT_DIR/scan-context.json" << EOF
+        {
+          "channel": "${{ inputs.channel }}",
+          "timestamp": "$(date -u +'%Y-%m-%d-%H%M%SZ')",
+          "branch": "${GITHUB_REF_NAME:-}",
+          "repository": "${GITHUB_REPOSITORY:-}",
+          "commitSha": "${GITHUB_SHA:-}",
+          "scanId": "${GITHUB_RUN_ID:-}",
+          "ciJobName": "${GITHUB_WORKFLOW:-}",
+          "ciJobUrl": "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}",
+          "actorName": "${GITHUB_ACTOR:-}"
+        }
+        EOF
+
+        echo "📋 Created scan-context.json:"
+        cat "$SCAN_CONTEXT_DIR/scan-context.json"
+
     - name: Upload filesystem artifact
       uses: actions/upload-artifact@v5
       with:
         name: __gh_security_toolkit__filesystem_for_scan__
-        path: ${{ inputs.path }}
+        path: |
+          ${{ inputs.path }}
+          /tmp/gh-security-toolkit-scan-context/scan-context.json
         retention-days: ${{ inputs.retention-days }}
         compression-level: ${{ inputs.compression-level }}
         if-no-files-found: error
