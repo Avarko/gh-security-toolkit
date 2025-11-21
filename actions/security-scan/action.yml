@@ -215,7 +215,7 @@ runs:
           # Security: reject path traversal attempts
           if [[ "$path" =~ \.\. ]]; then
             echo "❌ REJECTED (path traversal not allowed): '$path'"
-            INVALID_COUNT=$(  (INVALID_COUNT + 1))
+            INVALID_COUNT=$((INVALID_COUNT + 1))
             INVALID_PATHS="${INVALID_PATHS}\n  - $path (path traversal)"
             continue
           fi
