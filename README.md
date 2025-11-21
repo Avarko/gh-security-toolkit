@@ -2,7 +2,7 @@
 
 **Security scanning and reporting toolkit for GitHub Actions CI/CD and Makefile integration for local "shift left" scans during development.**
 
-Provides reusable GitHub Actions workflows and Makefile integration for vulnerability scanning, misconfiguration detection, and security reporting with flexible publishing options (GitHub Releases and/or GitHub Pages).
+Provides reusable GitHub Actions composite actions and Makefile integration for vulnerability scanning, misconfiguration detection, and security reporting with flexible publishing options (GitHub Releases and/or GitHub Pages).
 
 ---
 
@@ -24,13 +24,14 @@ Provides reusable GitHub Actions workflows and Makefile integration for vulnerab
 
 ## Overview
 
-`gh-security-toolkit` is a modular security scanning solution that integrates multiple industry-standard tools into a unified workflow. Results are published as GitHub Releases with retention policies or as interactive HTML reports on GitHub Pages.
+`gh-security-toolkit` is a modular security scanning solution that integrates multiple industry-standard tools into unified composite actions. Results are published as GitHub Releases with retention policies or as interactive HTML reports on GitHub Pages.
 
 **Key features:**
-- 🔍 **Multi-scanner support**: currently Trivy (filesystem + Docker images) and Semgrep Community Edition
-- 📊 **Dual publishing for CI/CD scans**: GitHub Releases (with automatic cleanup) or GitHub Pages (with scan history) with automatic cleanup/retention
-- 🏷️ **Channel-based organization**: Separate CI/CD scan histories per environment (nightly, PR, manual, etc.)
-- 🔒 **Local scans during development** via easy Makefile integration
+- **Multi-scanner support**: currently Trivy (filesystem + Docker images) and Semgrep Community Edition
+- **Dual publishing for CI/CD scans**: GitHub Releases (with automatic cleanup) or GitHub Pages (with scan history) with automatic cleanup/retention
+- **Channel-based organization**: Separate CI/CD scan histories per environment (nightly, PR, manual, etc.)
+- **Composite actions**: Run scans in the same job as your build - no artifact upload/download overhead
+- **Local scans during development** via easy Makefile integration
 
 ---
 
@@ -57,63 +58,55 @@ make sec/scan       # Perform full scan
 
 ### GitHub Actions CI/CD
 
-1. Add upload actions in your workflow. These deliver the filesystem and/or Docker image to the scanning job via GitHub Artifacts.
+The security scan runs as a composite action in the same job as your build. No artifact uploads needed - just pass the filesystem path and/or Docker image reference directly.
 
 ```yaml
-name: Build
+name: Build and Scan
 on: [push]
+
 jobs:
-  build:
+  build-and-scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write       # Required for creating releases and tags
+      id-token: write       # Required for OIDC authentication (GitHub Pages)
+      pages: write          # Required for deploying to GitHub Pages
+      actions: read         # Required for artifact management
+
     steps:
       - uses: actions/checkout@v4
 
-      # Upload your working dir's filesystem for scanning
-      - uses: Avarko/gh-security-toolkit/actions/artifacts/filesystem/put@reactui
-        with:
-          artifact_name_part: filesystem  # short name, will be prefixed/suffixed internally
-          path: |     # or simply use . as path
-            src/
-            .github/
-            Dockerfile
+      - name: Build application
+        run: |
+          # Your build steps here
+          ./build.sh
 
-      # Build and upload your Docker image for scanning
-      - name: Build image
-        # build your Docker image as you wish
+      - name: Build Docker image
+        run: |
+          docker build -t myapp:${{ github.sha }} .
 
-      - uses: Avarko/gh-security-toolkit/actions/artifacts/docker-image/put@reactui
+      # Run security scan - everything in the same job!
+      - name: Security scan
+        uses: Avarko/gh-security-toolkit/actions/security-scan@reactui
         with:
-          artifact_name_part: docker_image  # short name, will be prefixed/suffixed internally
-          image-name: myapp:latest   # refer to your built image tag
+          channel: nightly-master
+          filesystem_path: .                        # Scan the checkout directory
+          docker_image_ref: myapp:${{ github.sha }} # Scan the built image
+          publish_to: github-pages
 ```
 
-2. Add a security scan job. This needs to be a separate job as it references a reuseable workflow.
+### Publishing test reports
 
 ```yaml
-name: Security Scan
-on:
-  workflow_run:
-    workflows: ["Build"]
-    types: [completed]
+      - name: Run tests with coverage
+        run: mvn test jacoco:report surefire-report:report
 
-jobs:
-  scan:
-    uses: Avarko/gh-security-toolkit/.github/workflows/security-scan.yml@reactui
-    with:
-      channel: nightly-master   # choose any meaningful name for scans done by this job
-      publish_to: github-pages  # or "github-release" or "github-release,github-pages"
-      branch: ${{ github.ref_name }}
-      repository: ${{ github.repository }}
-      commit_sha: ${{ github.sha }}
-
-      # Optional: Display metadata for dashboard
-      dashboard_display_name: "My Application"
-      dashboard_org_display_name: "My Organization"
-    permissions:
-      contents: write       # Required for creating releases and tags
-      id-token: write       # Required for OIDC authentication (e.g., GitHub Pages)
-      pages: write          # Required for deploying to GitHub Pages
-      actions: read         # Required for actions to manage action artifacts
+      - name: Publish test reports
+        uses: Avarko/gh-security-toolkit/actions/publish-test-reports@reactui
+        with:
+          channel: main
+          jacoco_report_path: target/site/jacoco
+          surefire_report_path: target/site/surefire-report
 ```
 
 ---
@@ -123,17 +116,17 @@ jobs:
 ### 1. **Shift left development**
 > "As a developer, I want to easily run local vulnerability scans to assess the impact of updates to Docker images, Terraform, application libraries, and utility scripts."
 
-✅ Enable and run local scans with just a few additional lines in the Makefile.
+Enable and run local scans with just a few additional lines in the Makefile.
 
 ### 2. **Manage findings lifecycle**
 > "As a developer, I want to configure which vulnerabilities and misconfigurations to report, so the results remain actionable."
 
-✅ The toolkit supports `.trivy.yaml` and `.semgrepignore` configuration files to customize what gets scanned and reported.
+The toolkit supports `.trivy.yaml` and `.semgrepignore` configuration files to customize what gets scanned and reported.
 
 ### 3. **Nightly Continuous Scans**
 > "As a security engineer, I want nightly scans of all main branches with historical diffs and results to GitHub Releases with alerts to Slack."
 
-✅ Use the provided workflow to:
+Use the provided composite action to:
 - build & scan containers,
 - upload results as JSON artifacts or GitHub Releases,
 - compare with previous scans,
@@ -142,17 +135,17 @@ jobs:
 ### 4. **Historical Scan Tracking**
 > "As a team, I want to track security scan results over time to understand our security posture trends."
 
-✅ The toolkit publishes scan results to GitHub Releases (with configurable retention policies) and generates GitHub Pages with historical scan comparisons across channels.
+The toolkit publishes scan results to GitHub Releases (with configurable retention policies) and generates GitHub Pages with historical scan comparisons across channels.
 
 ### 5. **Multi-Channel Notifications**
-> “As an (secops) engineering lead/product owner, I want summarized vulnerability reports automatically sent to Slack and GitHub.”
+> "As an (secops) engineering lead/product owner, I want summarized vulnerability reports automatically sent to Slack and GitHub."
 
-✅ Currently provides integration to Slack. Other notifications easy to add.
+Currently provides integration to Slack. Other notifications easy to add.
 
 ### 6. **Security Baseline Across Repos**
-> “As a platform team, I want a reusable, uniform scanning standard across all projects.”
+> "As a platform team, I want a reusable, uniform scanning standard across all projects."
 
-✅ The toolkit provides opinionated, versioned workflows and local development scripts you can apply with varying levels of enforcement.
+The toolkit provides opinionated, versioned composite actions and local development scripts you can apply with varying levels of enforcement.
 
 
 ---
@@ -161,39 +154,40 @@ jobs:
 
 ```
 gh-security-toolkit/
-├─ .github/workflows/
-│  ├─ security-scan.yml          # Reusable workflow
-│  └─ int-manual-build-scanner-cli.yml  # Manual CLI build
-│
 ├─ actions/
-│  ├─ scanner/                   # Scan execution
-│  │  ├─ trivy/                  # Filesystem + Docker image scanning
-│  │  └─ semgrep/                # SAST scanning
+│  ├─ security-scan/            # Main composite action for security scanning
+│  │  └─ action.yml             # Runs Trivy, Semgrep, summarizes, publishes
 │  │
-│  ├─ summarizer/                # Result aggregation
+│  ├─ publish-test-reports/     # Composite action for test reports
+│  │  └─ action.yml             # Publishes JaCoCo/Surefire to GitHub Pages
+│  │
+│  ├─ scanner/                  # Scan execution
+│  │  ├─ trivy/                 # Filesystem + Docker image scanning
+│  │  └─ semgrep/               # SAST scanning
+│  │
+│  ├─ summarizer/               # Result aggregation
 │  │  └─ action.yml
 │  │
-│  ├─ publisher/                 # Result publishing
-│  │  ├─ github-release/         # Publish to GitHub Releases
-│  │  └─ github-pages/           # Publish to GitHub Pages
+│  ├─ publisher/                # Result publishing
+│  │  ├─ github-release/        # Publish to GitHub Releases
+│  │  └─ github-pages/          # Publish to GitHub Pages
 │  │
-│  ├─ uploader/                  # Artifact creation
-│  │  ├─ filesystem/             # Upload source code
-│  │  └─ docker-image/           # Upload Docker images
+│  ├─ builder/
+│  │  └─ dashboard/             # Builds React dashboard SPA
 │  │
 │  └─ cleanup/
-│     └─ github-release/         # Release retention management
+│     └─ github-release/        # Release retention management
 │
-├─ cli/                          # Docker-based CLI
+├─ cli/                         # Docker-based CLI
 │  └─ Dockerfile
 │
-├─ scripts/                      # JBang processing scripts
+├─ scripts/                     # JBang processing scripts
 │  ├─ github_pages_builder.java
 │  ├─ semgrep_summarize.java
 │  ├─ slack_integration.java
 │  └─ trivy_summarize.java
 │
-├─ dashboard/                    # React + Vite SPA for GitHub Pages UI
+├─ dashboard/                   # React + Vite SPA for GitHub Pages UI
 │  ├─ src/
 │  │  ├─ features/scans/        # Scan visualization components
 │  │  │  ├─ model/              # Zod schemas for data validation
@@ -216,6 +210,13 @@ gh-security-toolkit/
 ---
 
 ## Components
+
+### Main Actions
+
+| Action | Purpose |
+|--------|---------|
+| **`actions/security-scan`** | Main composite action: runs Trivy + Semgrep, summarizes, publishes |
+| **`actions/publish-test-reports`** | Publishes JaCoCo/Surefire test reports to GitHub Pages |
 
 ### Scanners
 
@@ -268,16 +269,16 @@ publish_to: "github-release,github-pages"  # Both
 ```
 
 **Interactive features:**
-- 📋 Vulnerability tables with severity highlighting
-- 📈 Channel timeline graphs with toggleable severities (powered by persistent scan-history JSON v2)
-- 🔗 Direct CVE links to OSV, NVD, CVE.org
-- 📄 Raw JSON data downloads
-- 📌 Sticky footer with metadata (CI job, Git info)
-- 🔍 Scan history navigation
+- Vulnerability tables with severity highlighting
+- Channel timeline graphs with toggleable severities (powered by persistent scan-history JSON v2)
+- Direct CVE links to OSV, NVD, CVE.org
+- Raw JSON data downloads
+- Sticky footer with metadata (CI job, Git info)
+- Scan history navigation
 
 **Privacy:**
-- ✅ Enforces Private Pages (GitHub Enterprise Cloud required)
-- ❌ Deployment fails if Pages is configured as public
+- Enforces Private Pages (GitHub Enterprise Cloud required)
+- Deployment fails if Pages is configured as public
 
 ---
 
@@ -312,64 +313,36 @@ All scan data is organized using a **GUID-based tenant system** for maximum secu
 - `GITHUB_REPOSITORY_OWNER` - GitHub organization or user (provided by GitHub, not client)
 - `GITHUB_REPOSITORY` - Repository name (provided by GitHub, not client)
 
-**Tenant registry**: Maps GitHub org/repo pairs to UUIDs in `/config/tenant-registry.json`
-```json
-{
-  "tenants": [
-    {
-      "id": "a7f3c2e1-4b9d-4a3e-8f2b-1c5d9e6f7a8b",
-      "github_org": "avarko",
-      "github_repo": "app-fc-ciam-backend",
-      "created_at": "2025-01-15T10:00:00Z",
-      "display_name": "VR CIAM Backend",
-      "org_display_name": "VR Group"
-    }
-  ]
-}
-```
-
 **Security benefits**:
-- ✅ Tenant identity is determined by GitHub (trusted source), not client-provided data
-- ✅ UUIDs prevent tenant guessing (2^122 possible values)
-- ✅ Path traversal impossible (`../`, `./`, etc. cannot reach other tenants)
-- ✅ Case-insensitive GitHub org/repo names are normalized (lowercase) before lookup
-- ✅ Data paths are immutable even if GitHub repo is renamed
-
-**Dashboard URLs**: Frontend uses friendly URLs that map to UUIDs internally
-- URL format: `/org/<github-org>/app/<app>/repo/<github-repo>/security-scans`
-- Backend resolves GitHub org/repo → UUID → `/data/<uuid>/`
-
-### Optional display metadata
-
-You can optionally provide display names for better UX:
-
-```yaml
-dashboard_display_name: "VR CIAM Backend"
-dashboard_org_display_name: "VR Group"
-```
-
-These are stored in the tenant registry but **not used for data paths** (only UUIDs are used for paths).
+- Tenant identity is determined by GitHub (trusted source), not client-provided data
+- UUIDs prevent tenant guessing (2^122 possible values)
+- Path traversal impossible (`../`, `./`, etc. cannot reach other tenants)
+- Case-insensitive GitHub org/repo names are normalized (lowercase) before lookup
+- Data paths are immutable even if GitHub repo is renamed
 
 ---
 
 ## Configuration
 
-### Workflow inputs
+### Security scan action inputs
 
 | Input | Description | Default |
 |-------|-------------|---------|
 | `channel` | Channel name for organizing scans | *Required* |
-| `publish_to` | Where to publish: `github-release`, `github-pages`, or both | `github-release` |
+| `filesystem_path` | Path to filesystem to scan | `""` |
+| `docker_image_ref` | Docker image reference (name:tag) to scan | `""` |
+| `publish_to` | Where to publish: `github-release`, `github-pages`, or both | `github-pages` |
 | `retention_days` | Days to retain results | `30` |
 | `retention_keep` | Max results per channel | `10` |
 | `trivy_severity` | Minimum severity to report | `MEDIUM,HIGH,CRITICAL` |
 | `trivy_config` | Path to `.trivy.yaml` config | `""` |
+| `semgrep_configs` | Semgrep rule configurations | `p/owasp-top-ten,...` |
 
 ### Permissions required
 
 ```yaml
 permissions:
-  contents: write    # Release creation, docs/ commits
+  contents: write    # Release creation
   pages: write       # GitHub Pages deployment
   id-token: write    # Pages OIDC authentication
   actions: read      # Artifact history access
@@ -396,15 +369,15 @@ severity:
 
 ### Data privacy and air-gapped execution
 
-**Your data stays with you — no external communication during scans:**
+**Your data stays with you - no external communication during scans:**
 
 **Local development (Makefile):**
 - **Offline vulnerability databases**: The toolkit Docker image includes pre-downloaded Trivy DB, VEX Hub, and Cosign TUF cache
 - **Read-only workspace mounts**: Your source code is mounted read-only (`:ro`) by default
 
 **GitHub Actions CI/CD:**
-- ✅ **Network communication only for publishing**: Results are published only to your own git repository's GitHub Releases/Pages
-- ✅ **Optional integrations**: Slack notifications (if `SLACK_BOT_TOKEN` configured) and Dependabot API (if `dependabot_gh_token` provided)
+- **Network communication only for publishing**: Results are published only to your own git repository's GitHub Releases/Pages
+- **Optional integrations**: Slack notifications (if `SLACK_BOT_TOKEN` configured) and Dependabot API (if `dependabot_gh_token` provided)
 
 **Scans keep your source code private.**
 
@@ -413,11 +386,11 @@ severity:
 GitHub Pages publisher **refuses to deploy** if Pages is configured as public:
 
 ```
-❌ Error: GitHub Pages is configured as PUBLIC
+Error: GitHub Pages is configured as PUBLIC
    This would expose security scan results to the internet.
 
    To fix:
-   1. Go to Settings → Pages
+   1. Go to Settings -> Pages
    2. Change visibility to "Private"
    3. Re-run this workflow
 ```
@@ -443,9 +416,8 @@ Three independent retention mechanisms:
 
 3. **Artifact cleanup** (optional, `.github/workflows/clean-artifacts.yml`)
    - Scheduled workflow to cleanup old artifacts in the toolkit repository
-   - Configurable retention per artifact type (filesystem, docker image, etc.)
+   - Configurable retention per artifact type
    - Can be called from client repositories to clean toolkit artifacts
-   - Scripts are embedded in the workflow for reliability
 
 ---
 
@@ -467,48 +439,15 @@ Channels are isolated scan histories. Good practices:
 
 ### Cross-branch scans
 
-Same channel name across branches → shared history:
+Same channel name across branches -> shared history:
 
 ```yaml
 # main branch
 channel: nightly-production
 
 # develop branch
-channel: nightly-production  # Same artifact!
+channel: nightly-production  # Same history!
 ```
-
-### Artifact cleanup workflow
-
-The toolkit creates several types of artifacts during scanning. To prevent accumulation, use the reusable cleanup workflow.
-
-**Important:** Schedule cleanup at a time when security scans are **not** running to avoid race conditions.
-
-```yaml
-name: Cleanup Artifacts
-on:
-  schedule:
-    - cron: '0 2 * * *'  # Nightly at 2 AM UTC (avoid scan times!)
-  workflow_dispatch:     # Manual trigger
-
-jobs:
-  cleanup:
-    uses: Avarko/gh-security-toolkit/.github/workflows/clean-artifacts.yml@reactui
-    with:
-      scan_filesystem_keep: 3   # Keep 3 newest filesystem artifacts
-      scan_docker_image_keep: 3 # Keep 3 newest Docker image artifacts
-      dashboard_build_keep: 3   # Keep 3 newest dashboard builds
-      site_history_keep: 3      # Keep 3 newest scan history artifacts
-      dashboard_deployments_keep: 3   # Keep 3 newest dashboard pages per channel
-    permissions:
-      actions: write  # Required to delete artifacts
-```
-
-**Artifact types cleaned:**
-- `__gh_security_toolkit__filesystem__` - Uploaded source code for scanning
-- `__gh_security_toolkit__docker_image__` - Uploaded Docker images
-- `__gh_security_toolkit__security-dashboard-build` - Dashboard build artifacts
-- `__gh_security_toolkit__github_pages_site_data` - GitHub Pages full site data contents
-- `__gh_security_toolkit__github_pages_deployment` - Pages deployment artifacts
 
 ---
 
@@ -563,8 +502,10 @@ npm run dev
 
 ## Examples
 
-See individual action READMEs:
+See individual action documentation:
 
+- [Security Scan Action](actions/security-scan/action.yml)
+- [Publish Test Reports Action](actions/publish-test-reports/action.yml)
 - [Trivy Scanner](actions/scanner/trivy/action.yml)
 - [Semgrep Scanner](actions/scanner/semgrep/action.yml)
 - [GitHub Pages Publisher](actions/publisher/github-pages/README.md)
@@ -574,4 +515,4 @@ See individual action READMEs:
 
 ## License
 
-MIT License — feel free to fork, extend, and reuse.
+MIT License - feel free to fork, extend, and reuse.

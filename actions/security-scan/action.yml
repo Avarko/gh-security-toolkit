@@ -1,0 +1,223 @@
+name: "Security scan"
+description: |
+  Composite action for running security scans on filesystem and/or Docker images.
+  Unlike the previous reusable workflow, this action runs in the same job as the caller,
+  eliminating the need for artifact uploads/downloads.
+
+  The caller workflow must:
+  - Build the Docker image (if scanning images)
+  - Have the filesystem available (if scanning filesystem)
+  - Set appropriate permissions (contents: write, pages: write, id-token: write, actions: read)
+  - Handle concurrency if needed
+
+inputs:
+  # === SCAN TARGETS ===
+  filesystem_path:
+    description: "Path to filesystem to scan (optional). Can be your checkout directory or build output."
+    required: false
+    default: ""
+
+  docker_image_ref:
+    description: "Docker image reference (name:tag) to scan (optional). The image must already exist in the local Docker daemon."
+    required: false
+    default: ""
+
+  # === TRIVY CONFIGURATION ===
+  trivy_config:
+    description: "Path to .trivy.yaml config file (optional)"
+    required: false
+    default: ""
+
+  trivy_severity:
+    description: "Minimum severity to report (UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL)"
+    required: false
+    default: "MEDIUM,HIGH,CRITICAL"
+
+  # === SEMGREP CONFIGURATION ===
+  semgrep_configs:
+    description: "Semgrep rule configurations to use (comma-separated)"
+    required: false
+    default: "p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets"
+
+  # === RELEASE NOTES ===
+  release_notes_maxlength:
+    description: "Maximum length of release notes body (characters). GitHub limit is 125000."
+    required: false
+    default: "30000"
+
+  # === PUBLISHING ===
+  publish_to:
+    description: 'Where to publish results: "github-release", "github-pages", or "github-release,github-pages" for both'
+    required: false
+    default: "github-pages"
+
+  # === METADATA FOR REPORTING ===
+  channel:
+    description: "Channel name for release grouping (tag-friendly, e.g., 'master', 'dev', 'prod'). Used in tags and release retention."
+    required: true
+
+  # === RETENTION (for github-release) ===
+  retention_keep:
+    description: "Number of releases to keep per channel"
+    required: false
+    default: "10"
+
+  retention_days:
+    description: "Days to keep releases"
+    required: false
+    default: "30"
+
+  # === GITHUB TOKEN ===
+  github_token:
+    description: "GitHub token for API operations (defaults to github.token)"
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  trivy_fs_json:
+    description: "Path to Trivy filesystem scan JSON results"
+    value: ${{ steps.trivy.outputs.fs_json }}
+  trivy_image_json:
+    description: "Path to Trivy image scan JSON results"
+    value: ${{ steps.trivy.outputs.image_json }}
+  semgrep_summary:
+    description: "Path to Semgrep summary"
+    value: ${{ steps.semgrep.outputs.semgrep_summary }}
+  release_body_markdown:
+    description: "Path to release body markdown file"
+    value: ${{ steps.sum.outputs.release_body_markdown }}
+  output_dir:
+    description: "Directory containing all scan outputs"
+    value: ${{ steps.setup.outputs.output_dir }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup directories
+      id: setup
+      shell: bash
+      run: |
+        OUTPUT_DIR="${RUNNER_TEMP}/scan-output-${{ github.run_id }}"
+        mkdir -p "$OUTPUT_DIR"
+        echo "output_dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
+
+    - name: Timestamp
+      id: ts
+      shell: bash
+      run: |
+        # ISO 8601 timestamp for scan identification
+        echo "ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+    - name: Validate channel name
+      shell: bash
+      run: |
+        CHANNEL="${{ inputs.channel }}"
+
+        # Check if empty
+        if [ -z "$CHANNEL" ]; then
+          echo "Error: channel is required but empty"
+          exit 1
+        fi
+
+        # Check length (max 35 characters)
+        if [ ${#CHANNEL} -gt 35 ]; then
+          echo "Error: channel name too long (max 35 characters): '$CHANNEL'"
+          exit 1
+        fi
+
+        # Check for invalid characters (only allow: a-z, A-Z, 0-9, dash, underscore)
+        if ! echo "$CHANNEL" | grep -qE '^[a-zA-Z0-9_-]+$'; then
+          echo "Error: channel contains invalid characters: '$CHANNEL'"
+          echo "   Allowed: a-z, A-Z, 0-9, dash (-), underscore (_)"
+          exit 1
+        fi
+
+        # Check it doesn't start/end with dash or underscore
+        if echo "$CHANNEL" | grep -qE '^[-_]|[-_]$'; then
+          echo "Error: channel cannot start or end with dash/underscore: '$CHANNEL'"
+          exit 1
+        fi
+
+        echo "Channel name is valid: '$CHANNEL'"
+
+    - name: Create scan context metadata
+      shell: bash
+      run: |
+        cat > "${{ steps.setup.outputs.output_dir }}/scan-context.json" << EOF
+        {
+          "channel": "${{ inputs.channel }}",
+          "timestamp": "$(date -u +'%Y-%m-%d-%H%M%SZ')",
+          "branch": "${GITHUB_REF_NAME:-}",
+          "repository": "${GITHUB_REPOSITORY:-}",
+          "commitSha": "${GITHUB_SHA:-}",
+          "scanId": "${GITHUB_RUN_ID:-}",
+          "ciJobName": "${GITHUB_WORKFLOW:-}",
+          "ciJobUrl": "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}",
+          "actorName": "${GITHUB_ACTOR:-}"
+        }
+        EOF
+        echo "Created scan-context.json:"
+        cat "${{ steps.setup.outputs.output_dir }}/scan-context.json"
+
+    # === RUN TRIVY SCANS ===
+    - name: Run Trivy scans
+      id: trivy
+      uses: Avarko/gh-security-toolkit/actions/scanner/trivy@reactui
+      with:
+        filesystem_path: ${{ inputs.filesystem_path }}
+        docker_image_ref: ${{ inputs.docker_image_ref }}
+        trivy_config: ${{ inputs.trivy_config }}
+        trivy_severity: ${{ inputs.trivy_severity }}
+        trivy_output_dir: ${{ steps.setup.outputs.output_dir }}
+
+    # === RUN SEMGREP SCAN ===
+    - name: Run Semgrep scan
+      id: semgrep
+      if: ${{ inputs.filesystem_path != '' }}
+      uses: Avarko/gh-security-toolkit/actions/scanner/semgrep@reactui
+      with:
+        filesystem_path: ${{ inputs.filesystem_path }}
+        semgrep_output_dir: ${{ steps.setup.outputs.output_dir }}
+        semgrep_configs: ${{ inputs.semgrep_configs }}
+
+    # === SUMMARIZE RESULTS ===
+    - name: Summarizer
+      id: sum
+      uses: Avarko/gh-security-toolkit/actions/summarizer@reactui
+      with:
+        fs_json: ${{ steps.trivy.outputs.fs_json || '' }}
+        image_json: ${{ steps.trivy.outputs.image_json || '' }}
+        semgrep_summary: ${{ steps.semgrep.outputs.semgrep_summary || '' }}
+        dependabot_summary: ""
+        outdir: ${{ steps.setup.outputs.output_dir }}
+        maxlength: ${{ inputs.release_notes_maxlength }}
+        title_vuln_fs: "Trivy (filesystem) vulnerability summary"
+        title_mis_fs: "Trivy (filesystem) misconfiguration summary"
+        title_vuln_img: "Trivy (image) vulnerability summary"
+        title_mis_img: "Trivy (image) misconfiguration summary"
+
+    # === PUBLISH TO GITHUB RELEASE ===
+    - name: Publish to GitHub Release
+      if: ${{ contains(inputs.publish_to, 'github-release') }}
+      uses: Avarko/gh-security-toolkit/actions/publisher/github-release@reactui
+      with:
+        outdir: ${{ steps.setup.outputs.output_dir }}
+        release_name: "Security scan ${{ inputs.channel }} ${{ steps.ts.outputs.ts }}"
+        tag_name: "security-scan-${{ inputs.channel }}-${{ steps.ts.outputs.ts }}"
+        body_file: ${{ steps.sum.outputs.release_body_markdown }}
+        draft: "false"
+        prerelease: "true"
+        overwrite_tag: "false"
+        channel: "security-scan-${{ inputs.channel }}"
+        retention_keep: ${{ inputs.retention_keep }}
+        retention_days: ${{ inputs.retention_days }}
+        github_token: ${{ inputs.github_token }}
+
+    # === PUBLISH TO GITHUB PAGES ===
+    - name: Publish to GitHub Pages
+      if: ${{ contains(inputs.publish_to, 'github-pages') }}
+      id: pages
+      uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@reactui
+      with:
+        github_token: ${{ inputs.github_token }}
+        outdir: ${{ steps.setup.outputs.output_dir }}
