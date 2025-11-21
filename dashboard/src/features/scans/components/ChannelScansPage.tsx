@@ -34,7 +34,7 @@ export function ChannelScansPage({ channel, scans }: ChannelScansPageProps) {
 
     const securityScansBasePath = basePath
         ? `${basePath}/security-scans`
-        : "/";
+        : "/security-scans";
 
     // Sort scans by timestamp (newest first)
     const sorted = [...scans].sort((a, b) => {

@@ -55,7 +55,7 @@ export function ScanRunDetailPage({
 
     const securityScansBasePath = basePath
         ? `${basePath}/security-scans`
-        : "/";
+        : "/security-scans";
 
     const channelPath = `${securityScansBasePath}/channel/${channel}`;
 

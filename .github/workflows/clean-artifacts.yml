@@ -3,21 +3,6 @@ name: Clean Artifacts
 on:
   workflow_call:
     inputs:
-      scan_filesystem_keep:
-        description: 'Number of __gh_security_toolkit__filesystem_for_scan__ artifacts to keep'
-        type: number
-        required: false
-        default: 3
-      scan_docker_image_keep:
-        description: 'Number of __gh_security_toolkit__docker_image_for_scan__ artifacts to keep'
-        type: number
-        required: false
-        default: 3
-      test_reports_keep:
-        description: 'Number of __gh_security_toolkit__test_reports__ artifacts to keep'
-        type: number
-        required: false
-        default: 3
       dashboard_build_keep:
         description: 'Number of __gh_security_toolkit__security-dashboard-build artifacts to keep'
         type: number
@@ -116,33 +101,6 @@ jobs:
           EOF
           chmod +x cleanup-script.sh
 
-      - name: Clean filesystem artifacts
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ./cleanup-script.sh \
-            "__gh_security_toolkit__filesystem_for_scan__" \
-            "${{ inputs.scan_filesystem_keep || 3 }}" \
-            "Avarko/gh-security-toolkit"
-
-      - name: Clean Docker image artifacts
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ./cleanup-script.sh \
-            "__gh_security_toolkit__docker_image_for_scan__" \
-            "${{ inputs.scan_docker_image_keep || 3 }}" \
-            "Avarko/gh-security-toolkit"
-
-      - name: Clean test reports artifacts
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ./cleanup-script.sh \
-            "__gh_security_toolkit__test_reports__" \
-            "${{ inputs.test_reports_keep || 3 }}" \
-            "Avarko/gh-security-toolkit"
-
       - name: Clean dashboard build artifacts
         env:
           GH_TOKEN: ${{ github.token }}
@@ -150,7 +108,7 @@ jobs:
           ./cleanup-script.sh \
             "__gh_security_toolkit__security-dashboard-build" \
             "${{ inputs.dashboard_build_keep || 3 }}" \
-            "Avarko/gh-security-toolkit"
+            "${{ github.repository }}"
 
       - name: Clean site data history artifacts
         env:
@@ -159,35 +117,22 @@ jobs:
           ./cleanup-script.sh \
             "__gh_security_toolkit__github_pages_site_data" \
             "${{ inputs.site_history_keep || 3 }}" \
-            "Avarko/gh-security-toolkit"
+            "${{ github.repository }}"
 
-      - name: Clean multi-tenant config artifacts
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ./cleanup-script.sh \
-            "__gh_security_toolkit__multi-tenant-config" \
-            "1" \
-            "Avarko/gh-security-toolkit"
-
-      - name: Clean dashboard pages artifacts (all channels)
+      - name: Clean dashboard pages artifacts
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           ./cleanup-script.sh \
             "__gh_security_toolkit__github_pages_deployment" \
             "${{ inputs.dashboard_deployments_keep || 3 }}" \
-            "Avarko/gh-security-toolkit"
+            "${{ github.repository }}"
 
       - name: Cleanup summary
         run: |
-          echo "✅ Artifact cleanup complete for Avarko/gh-security-toolkit!"
+          echo "✅ Artifact cleanup complete for ${{ github.repository }}!"
           echo ""
           echo "Retention policy applied:"
-          echo "  • __gh_security_toolkit__filesystem_for_scan__: keep ${{ inputs.scan_filesystem_keep || 3 }} newest"
-          echo "  • __gh_security_toolkit__docker_image_for_scan__: keep ${{ inputs.scan_docker_image_keep || 3 }} newest"
-          echo "  • __gh_security_toolkit__test_reports__: keep ${{ inputs.test_reports_keep || 3 }} newest"
           echo "  • __gh_security_toolkit__security-dashboard-build: keep ${{ inputs.dashboard_build_keep || 3 }} newest"
           echo "  • __gh_security_toolkit__github_pages_site_data: keep ${{ inputs.site_history_keep || 3 }} newest"
-          echo "  • __gh_security_toolkit__multi-tenant-config: keep 1 newest (tenant registry)"
-          echo "  • __gh_security_toolkit__github_pages_deployment: keep ${{ inputs.dashboard_deployments_keep || 3 }} newest per channel"
+          echo "  • __gh_security_toolkit__github_pages_deployment: keep ${{ inputs.dashboard_deployments_keep || 3 }} newest"

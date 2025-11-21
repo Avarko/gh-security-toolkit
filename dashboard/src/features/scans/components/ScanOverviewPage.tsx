@@ -35,7 +35,7 @@ export function ScanOverviewPage({ history }: ScanOverviewPageProps) {
 
     const securityScansBasePath = basePath
         ? `${basePath}/security-scans`
-        : "/"; // fallback, if params are missing
+        : "/security-scans";
 
     // Group scans by channel and sort each channel's scans by timestamp (newest first)
     const channelGroups = useMemo(() => {
