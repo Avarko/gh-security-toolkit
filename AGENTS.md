@@ -37,6 +37,7 @@ repository:
 
 scanning:
   trivy:
+    config: ".trivy.yaml"
     severity: "MEDIUM,HIGH,CRITICAL"
   semgrep:
     configs:

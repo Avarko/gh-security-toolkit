@@ -26,6 +26,7 @@ CONFIG_FILE=".gh-security-toolkit/config.yaml"
 ORG_DISPLAY_NAME=""
 ORG_LOGO_URL=""
 REPO_DISPLAY_NAME=""
+TRIVY_CONFIG=""
 TRIVY_SEVERITY="MEDIUM,HIGH,CRITICAL"
 SEMGREP_CONFIGS="p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets"
 RETENTION_KEEP="10"
@@ -47,6 +48,9 @@ if [ -f "$CONFIG_FILE" ]; then
 
   FILE_SEVERITY=$(yq -r '.scanning.trivy.severity // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
   [ -n "$FILE_SEVERITY" ] && TRIVY_SEVERITY="$FILE_SEVERITY"
+
+  FILE_TRIVY_CONFIG=$(yq -r '.scanning.trivy.config // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+  [ -n "$FILE_TRIVY_CONFIG" ] && TRIVY_CONFIG="$FILE_TRIVY_CONFIG"
 
   FILE_SEMGREP=$(yq -r '.scanning.semgrep.configs | join(",") // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
   [ -n "$FILE_SEMGREP" ] && SEMGREP_CONFIGS="$FILE_SEMGREP"
@@ -78,6 +82,9 @@ if [ -n "${INPUT_CONFIG_OVERRIDES:-}" ]; then
   OVERRIDE_SEVERITY=$(echo "$INPUT_CONFIG_OVERRIDES" | yq -r '.trivy_severity // ""' 2>/dev/null || echo "")
   [ -n "$OVERRIDE_SEVERITY" ] && TRIVY_SEVERITY="$OVERRIDE_SEVERITY"
 
+  OVERRIDE_TRIVY_CONFIG=$(echo "$INPUT_CONFIG_OVERRIDES" | yq -r '.trivy_config // ""' 2>/dev/null || echo "")
+  [ -n "$OVERRIDE_TRIVY_CONFIG" ] && TRIVY_CONFIG="$OVERRIDE_TRIVY_CONFIG"
+
   OVERRIDE_SEMGREP=$(echo "$INPUT_CONFIG_OVERRIDES" | yq -r '.semgrep_configs // ""' 2>/dev/null || echo "")
   [ -n "$OVERRIDE_SEMGREP" ] && SEMGREP_CONFIGS="$OVERRIDE_SEMGREP"
 
@@ -94,6 +101,7 @@ fi
 echo "org_display_name=$ORG_DISPLAY_NAME" >> "$GITHUB_OUTPUT"
 echo "org_logo_url=$ORG_LOGO_URL" >> "$GITHUB_OUTPUT"
 echo "repo_display_name=$REPO_DISPLAY_NAME" >> "$GITHUB_OUTPUT"
+echo "trivy_config=$TRIVY_CONFIG" >> "$GITHUB_OUTPUT"
 echo "trivy_severity=$TRIVY_SEVERITY" >> "$GITHUB_OUTPUT"
 echo "semgrep_configs=$SEMGREP_CONFIGS" >> "$GITHUB_OUTPUT"
 echo "retention_keep=$RETENTION_KEEP" >> "$GITHUB_OUTPUT"
@@ -104,6 +112,7 @@ echo "📊 Resolved configuration:"
 echo "   Organization: ${ORG_DISPLAY_NAME:-<not set>}"
 echo "   Logo URL: ${ORG_LOGO_URL:-<not set>}"
 echo "   Repository: ${REPO_DISPLAY_NAME:-<not set>}"
+echo "   Trivy config: ${TRIVY_CONFIG:-<not set>}"
 echo "   Trivy severity: $TRIVY_SEVERITY"
 echo "   Semgrep configs: $SEMGREP_CONFIGS"
 echo "   Retention keep: $RETENTION_KEEP"

@@ -21,18 +21,18 @@ inputs:
           trivy_severity: HIGH,CRITICAL
           retention_keep: 5
       Supported keys: org_display_name, org_logo_url, repo_display_name,
-                      trivy_severity, semgrep_configs, retention_keep, retention_days
+                      trivy_config, trivy_severity, semgrep_configs, retention_keep, retention_days
     required: false
     default: ""
 
   # === SCAN TARGETS ===
-  filesystem_paths:
+  scan_filesystem_paths:
     description: |
       Newline-separated list of paths to scan (optional).
       Each path can be a file or directory. Paths are copied to a temporary
       scan root preserving directory structure.
       Example:
-        filesystem_paths: |
+        scan_filesystem_paths: |
           backend/target/
           backend/pom.xml
           frontend/package.json
@@ -40,14 +40,8 @@ inputs:
     required: false
     default: ""
 
-  docker_image_ref:
+  scan_docker_image_ref:
     description: "Docker image reference (name:tag) to scan (optional). The image must already exist in the local Docker daemon."
-    required: false
-    default: ""
-
-  # === TRIVY CONFIGURATION ===
-  trivy_config:
-    description: "Path to .trivy.yaml config file (optional)"
     required: false
     default: ""
 
@@ -85,7 +79,7 @@ outputs:
     description: "Directory containing all scan outputs"
     value: ${{ steps.setup.outputs.output_dir }}
   filesystem_scan_root:
-    description: "Directory containing merged filesystem paths for scanning (if filesystem_paths was provided)"
+    description: "Directory containing merged filesystem paths for scanning (if scan_filesystem_paths was provided)"
     value: ${{ steps.fsroot.outputs.scan_root }}
 
 runs:
@@ -136,11 +130,11 @@ runs:
     # === BUILD FILESYSTEM SCAN ROOT ===
     - name: Build filesystem scan root
       id: fsroot
-      if: ${{ inputs.filesystem_paths != '' }}
+      if: ${{ inputs.scan_filesystem_paths != '' }}
       shell: bash
       env:
         INPUT_TARGET_ROOT: ${{ runner.temp }}/trivy-fs-root-${{ github.run_id }}-${{ github.run_attempt }}
-        FILESYSTEM_PATHS: ${{ inputs.filesystem_paths }}
+        FILESYSTEM_PATHS: ${{ inputs.scan_filesystem_paths }}
       run: |
         ${{ github.action_path }}/scripts/build-fsroot.sh
 
@@ -150,8 +144,8 @@ runs:
       uses: Avarko/gh-security-toolkit/actions/scanner/trivy@reactui
       with:
         filesystem_path: ${{ steps.fsroot.outputs.scan_root || '' }}
-        docker_image_ref: ${{ inputs.docker_image_ref }}
-        trivy_config: ${{ inputs.trivy_config }}
+        docker_image_ref: ${{ inputs.scan_docker_image_ref }}
+        trivy_config: ${{ steps.config.outputs.trivy_config }}
         trivy_severity: ${{ steps.config.outputs.trivy_severity }}
         trivy_output_dir: ${{ steps.setup.outputs.output_dir }}
 
