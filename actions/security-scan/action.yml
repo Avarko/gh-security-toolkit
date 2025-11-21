@@ -12,8 +12,17 @@ description: |
 
 inputs:
   # === SCAN TARGETS ===
-  filesystem_path:
-    description: "Path to filesystem to scan (optional). Can be your checkout directory or build output."
+  filesystem_paths:
+    description: |
+      Newline-separated list of paths to scan (optional).
+      Each path can be a file or directory. Paths are copied to a temporary
+      scan root preserving directory structure.
+      Example:
+        filesystem_paths: |
+          backend/target/
+          backend/pom.xml
+          frontend/package.json
+          Dockerfile
     required: false
     default: ""
 
@@ -89,6 +98,9 @@ outputs:
   output_dir:
     description: "Directory containing all scan outputs"
     value: ${{ steps.setup.outputs.output_dir }}
+  filesystem_scan_root:
+    description: "Directory containing merged filesystem paths for scanning (if filesystem_paths was provided)"
+    value: ${{ steps.fsroot.outputs.scan_root }}
 
 runs:
   using: "composite"
@@ -160,12 +172,140 @@ runs:
         echo "Created scan-context.json:"
         cat "${{ steps.setup.outputs.output_dir }}/scan-context.json"
 
+    # === BUILD FILESYSTEM SCAN ROOT ===
+    - name: Build filesystem scan root
+      id: fsroot
+      if: ${{ inputs.filesystem_paths != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        ROOT="${RUNNER_TEMP}/trivy-fs-root-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+        mkdir -p "$ROOT"
+
+        PATHS="${{ inputs.filesystem_paths }}"
+
+        echo "📁 Building filesystem scan root at: $ROOT"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+        # Count for summary
+        VALID_COUNT=0
+        INVALID_COUNT=0
+        INVALID_PATHS=""
+
+        # Process newline-separated paths
+        while IFS= read -r path || [ -n "$path" ]; do
+          # Skip empty lines and comments
+          [ -z "$path" ] && continue
+          [[ "$path" =~ ^[[:space:]]*# ]] && continue
+
+          # Trim whitespace
+          path="${path#"${path%%[![:space:]]*}"}"   # trim left
+          path="${path%"${path##*[![:space:]]}"}"   # trim right
+          [ -z "$path" ] && continue
+
+          # Security: reject absolute paths (must be relative to workspace)
+          if [[ "$path" = /* ]]; then
+            echo "❌ REJECTED (absolute path not allowed): '$path'"
+            INVALID_COUNT=$((INVALID_COUNT + 1))
+            INVALID_PATHS="${INVALID_PATHS}\n  - $path (absolute path)"
+            continue
+          fi
+
+          # Security: reject path traversal attempts
+          if [[ "$path" =~ \.\. ]]; then
+            echo "❌ REJECTED (path traversal not allowed): '$path'"
+            INVALID_COUNT=$(  (INVALID_COUNT + 1))
+            INVALID_PATHS="${INVALID_PATHS}\n  - $path (path traversal)"
+            continue
+          fi
+
+          # Security: reject paths with shell metacharacters
+          if [[ "$path" =~ [\;\|\&\$\`\(\)\{\}\[\]\<\>\!\*\?] ]]; then
+            echo "❌ REJECTED (invalid characters): '$path'"
+            INVALID_COUNT=$((INVALID_COUNT + 1))
+            INVALID_PATHS="${INVALID_PATHS}\n  - $path (invalid characters)"
+            continue
+          fi
+
+          # Validate: check path exists
+          if [ ! -e "$path" ]; then
+            echo "❌ REJECTED (path not found): '$path'"
+            INVALID_COUNT=$((INVALID_COUNT + 1))
+            INVALID_PATHS="${INVALID_PATHS}\n  - $path (not found)"
+            continue
+          fi
+
+          # Copy with rsync preserving relative path structure
+          echo "✅ Adding: '$path'"
+          rsync -a --relative "$path" "$ROOT/"
+          VALID_COUNT=$((VALID_COUNT + 1))
+        done <<< "$PATHS"
+
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "📊 Summary: $VALID_COUNT valid paths, $INVALID_COUNT rejected"
+
+        # Fail fast if any paths were invalid
+        if [ "$INVALID_COUNT" -gt 0 ]; then
+          echo ""
+          echo "❌ ERROR: $INVALID_COUNT path(s) failed validation:${INVALID_PATHS}"
+          echo ""
+          echo "Please fix the filesystem_paths input and retry."
+          exit 1
+        fi
+
+        # Fail if no valid paths were found
+        if [ "$VALID_COUNT" -eq 0 ]; then
+          echo ""
+          echo "❌ ERROR: No valid paths found in filesystem_paths input."
+          echo "   Provided input was:"
+          echo "$PATHS" | head -20
+          exit 1
+        fi
+
+        # Show what was copied
+        echo ""
+        echo "📦 File type summary:"
+        FILE_LIST="$ROOT/.filelist"
+        if ! find "$ROOT" -type f > "$FILE_LIST"; then
+          echo "  (find failed, skipping summary)"
+        else
+          if [ ! -s "$FILE_LIST" ]; then
+            echo "  (no files found)"
+          else
+            declare -A ext_counts=()
+            while IFS= read -r f; do
+              filename=${f##*/}        # basename
+              ext=${filename##*.}
+
+              if [ "$filename" = "$ext" ]; then
+                ext="(none)"
+              fi
+              if [[ -v "ext_counts[$ext]" ]]; then
+                ext_counts["$ext"]=$(( ext_counts["$ext"] + 1 ))
+              else
+                ext_counts["$ext"]=1
+              fi
+            done < "$FILE_LIST"
+            total=0
+            for ext in "${!ext_counts[@]}"; do
+              count=${ext_counts[$ext]}
+              printf "  %-10s %6d files\n" "$ext" "$count"
+              total=$(( total + count ))
+            done
+            echo "  --------------------------"
+            echo "  Total files: $total"
+          fi
+        fi
+        echo "scan_root=$ROOT" >> "$GITHUB_OUTPUT"
+        echo "has_fs_scan=true" >> "$GITHUB_OUTPUT"
+
     # === RUN TRIVY SCANS ===
     - name: Run Trivy scans
       id: trivy
       uses: Avarko/gh-security-toolkit/actions/scanner/trivy@reactui
       with:
-        filesystem_path: ${{ inputs.filesystem_path }}
+        filesystem_path: ${{ steps.fsroot.outputs.scan_root || '' }}
         docker_image_ref: ${{ inputs.docker_image_ref }}
         trivy_config: ${{ inputs.trivy_config }}
         trivy_severity: ${{ inputs.trivy_severity }}
@@ -174,10 +314,10 @@ runs:
     # === RUN SEMGREP SCAN ===
     - name: Run Semgrep scan
       id: semgrep
-      if: ${{ inputs.filesystem_path != '' }}
+      if: ${{ steps.fsroot.outputs.has_fs_scan == 'true' }}
       uses: Avarko/gh-security-toolkit/actions/scanner/semgrep@reactui
       with:
-        filesystem_path: ${{ inputs.filesystem_path }}
+        filesystem_path: ${{ steps.fsroot.outputs.scan_root }}
         semgrep_output_dir: ${{ steps.setup.outputs.output_dir }}
         semgrep_configs: ${{ inputs.semgrep_configs }}
 

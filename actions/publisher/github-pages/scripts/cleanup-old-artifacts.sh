@@ -12,6 +12,9 @@
 #
 # Environment:
 #   GH_TOKEN - GitHub token for artifact operations
+#
+# Note: Requires 'actions: write' permission to delete artifacts.
+#       The caller workflow must have this permission set.
 
 set -euo pipefail
 
