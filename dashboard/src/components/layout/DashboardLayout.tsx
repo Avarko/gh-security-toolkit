@@ -19,7 +19,7 @@ import {
     Toolbar,
     Typography,
 } from "@mui/material";
-import { Security as SecurityIcon } from "@mui/icons-material";
+import { Security as SecurityIcon, Science as ScienceIcon } from "@mui/icons-material";
 import { ReportFooter } from "./ReportFooter";
 import { loadTenantRegistry, findTenantByGitHub, type TenantEntry } from "../../lib/tenantRegistry";
 
@@ -31,16 +31,21 @@ type DashboardLayoutProps = {
 
 type NavItem = {
     label: string;
+    path: string;
     icon: ReactNode;
 };
 
 const NAV_ITEMS: NavItem[] = [
     {
         label: "Security Scans",
+        path: "security-scans",
         icon: <SecurityIcon />,
     },
-    // Future navigation items:
-    // { label: "Test Runs", to: "/tests", icon: <ScienceIcon /> },
+    {
+        label: "Test Reports",
+        path: "test-reports",
+        icon: <ScienceIcon />,
+    },
 ];
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
@@ -65,10 +70,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         orgSlug && repoSlug
             ? `/org/${orgSlug}/repo/${repoSlug}`
             : null;
-
-    const securityScansPath = basePath
-        ? `${basePath}/security-scans`
-        : "/"; // fallback
 
     // Build title with display names and GitHub links
     const renderTitle = () => {
@@ -212,8 +213,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 </Toolbar>
                 <List>
                     {NAV_ITEMS.map((item) => {
-                        // tällä hetkellä vain Security Scans
-                        const to = securityScansPath;
+                        const to = basePath ? `${basePath}/${item.path}` : "/";
 
                         const isActive =
                             location.pathname === to ||
