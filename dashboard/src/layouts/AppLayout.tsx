@@ -11,9 +11,9 @@ export function AppLayout() {
 
     const tabs = [
         { label: "Overview", to: base },
-        { label: "Security Scans", to: `${base}/security-scans` },
-        { label: "Test Reports", to: `${base}/test-reports` },
-        { label: "Cloud Findings", to: `${base}/cloud-findings` },
+        { label: "Security scans", to: `${base}/security-scans` },
+        { label: "Test reports", to: `${base}/test-reports` },
+        { label: "Cloud findings", to: `${base}/cloud-findings` },
     ];
 
     return (

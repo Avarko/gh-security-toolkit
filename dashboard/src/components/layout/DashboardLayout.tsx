@@ -37,12 +37,12 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
     {
-        label: "Security Scans",
+        label: "Security scans",
         path: "security-scans",
         icon: <SecurityIcon />,
     },
     {
-        label: "Test Reports",
+        label: "Test reports",
         path: "test-reports",
         icon: <ScienceIcon />,
     },
@@ -74,7 +74,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     // Build title with display names and GitHub links
     const renderTitle = () => {
         if (!orgSlug || !repoSlug) {
-            return "Security Scan Dashboard";
+            return "Security scan dashboard";
         }
 
         const orgDisplayName = tenant?.org_display_name;
@@ -155,7 +155,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 )}
 
                 <span style={{ color: "#656d76" }}>–</span>
-                <span>Security Dashboard</span>
+                <span>Security dashboard</span>
             </Box>
         );
     };

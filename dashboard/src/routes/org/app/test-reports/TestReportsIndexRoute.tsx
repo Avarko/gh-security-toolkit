@@ -54,7 +54,7 @@ export default function TestReportsIndexRoute() {
     return (
         <Box>
             <Typography variant="h4" gutterBottom>
-                Test Reports
+                Test reports
             </Typography>
             <Typography variant="body1" color="text.secondary" paragraph>
                 Code coverage and test execution reports from CI/CD pipelines.
@@ -73,7 +73,7 @@ export default function TestReportsIndexRoute() {
                             <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
                                 <BarChartIcon color="primary" />
                                 <Typography variant="h6">
-                                    JaCoCo Coverage Report
+                                    JaCoCo coverage report
                                 </Typography>
                             </Box>
                             <Typography variant="body2" color="text.secondary">
@@ -89,7 +89,7 @@ export default function TestReportsIndexRoute() {
                                 target="_blank"
                                 rel="noopener noreferrer"
                             >
-                                Open Coverage Report
+                                Open coverage report
                             </Button>
                         </CardActions>
                     </Card>
@@ -101,7 +101,7 @@ export default function TestReportsIndexRoute() {
                             <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
                                 <ScienceIcon color="success" />
                                 <Typography variant="h6">
-                                    Surefire Test Report
+                                    Surefire test report
                                 </Typography>
                             </Box>
                             <Typography variant="body2" color="text.secondary">
@@ -117,7 +117,7 @@ export default function TestReportsIndexRoute() {
                                 target="_blank"
                                 rel="noopener noreferrer"
                             >
-                                Open Test Report
+                                Open test report
                             </Button>
                         </CardActions>
                     </Card>

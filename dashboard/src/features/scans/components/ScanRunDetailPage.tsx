@@ -115,7 +115,7 @@ export function ScanRunDetailPage({
                     underline="hover"
                     color="inherit"
                 >
-                    Security Scans
+                    Security scans
                 </MuiLink>
                 <MuiLink
                     component={RouterLink}
@@ -132,7 +132,7 @@ export function ScanRunDetailPage({
             {/* Perustiedot */}
             <Box sx={{ mb: 3 }}>
                 <Typography variant="h4" sx={{ mb: 1, fontWeight: 600 }}>
-                    Scan Details
+                    Scan details
                 </Typography>
                 <Paper sx={{ p: 2 }}>
                     <Box
@@ -167,11 +167,11 @@ export function ScanRunDetailPage({
             {/* Trivy-vulnerabiliteetit */}
             <Box sx={{ mb: 4 }}>
                 <Typography variant="h5" sx={{ mb: 1.5 }}>
-                    Trivy Vulnerabilities ({trivyVulns.length})
+                    Trivy vulnerabilities ({trivyVulns.length})
                 </Typography>
 
                 {trivyVulns.length === 0 ? (
-                    <Typography variant="body2">No Trivy vulnerabilities found.</Typography>
+                    <Typography variant="body2">No Trivy vulnerabilities found</Typography>
                 ) : (
                     <Paper sx={{ p: 2 }}>
                         <TableContainer sx={{ maxHeight: 600 }}>
@@ -222,11 +222,11 @@ export function ScanRunDetailPage({
             {/* Semgrep-löydökset */}
             <Box sx={{ mb: 2 }}>
                 <Typography variant="h5" sx={{ mb: 1.5 }}>
-                    Semgrep Findings ({semgrepFindings.length})
+                    Semgrep findings ({semgrepFindings.length})
                 </Typography>
 
                 {semgrepFindings.length === 0 ? (
-                    <Typography variant="body2">No Semgrep findings.</Typography>
+                    <Typography variant="body2">No Semgrep findings</Typography>
                 ) : (
                     <Paper sx={{ p: 2 }}>
                         <TableContainer sx={{ maxHeight: 600 }}>
