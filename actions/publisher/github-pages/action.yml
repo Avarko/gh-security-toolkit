@@ -41,7 +41,6 @@ runs:
         echo "builder_config=${TEMP_BASE}/builder-config.json" >> "$GITHUB_OUTPUT"
         echo "dashboard_build=${TEMP_BASE}/dashboard-build" >> "$GITHUB_OUTPUT"
         echo "site_data_output=${TEMP_BASE}/site-data-output" >> "$GITHUB_OUTPUT"
-        echo "config_output=${TEMP_BASE}/config-output" >> "$GITHUB_OUTPUT"
         echo "site_dir=${TEMP_BASE}/site" >> "$GITHUB_OUTPUT"
 
     - name: Check GitHub Pages visibility
@@ -94,19 +93,6 @@ runs:
           "${{ steps.config_overrides.outputs.path }}" \
           "${{ steps.temp.outputs.dashboard_build }}"
 
-    - name: Download and restore multi-tenant config
-      continue-on-error: true
-      id: download_config
-      shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.github_token }}
-      run: |
-        ${{ github.action_path }}/scripts/download-and-restore-config.sh \
-          "${{ github.repository }}" \
-          "." \
-          "$GITHUB_OUTPUT" \
-          "${{ steps.temp.outputs.base }}"
-
     - name: Download and restore GitHub Pages site data
       continue-on-error: true
       id: download_history
@@ -151,9 +137,6 @@ runs:
         ${{ github.action_path }}/scripts/archive-scan-history.sh \
           "." \
           "${{ steps.temp.outputs.site_data_output }}"
-        ${{ github.action_path }}/scripts/archive-multi-tenant-config.sh \
-          "." \
-          "${{ steps.temp.outputs.config_output }}"
 
         # Prepare site directory for deployment
         SITE_DIR="${{ steps.temp.outputs.site_dir }}"
@@ -185,26 +168,6 @@ runs:
           "${{ github.repository }}" \
           "__gh_security_toolkit__github_pages_site_data" \
           "${{ steps.upload_site_data.outputs.artifact-id }}"
-
-    - name: Upload multi-tenant config artifact
-      id: upload_config
-      uses: actions/upload-artifact@v4
-      with:
-        name: __gh_security_toolkit__multi-tenant-config
-        path: ${{ steps.temp.outputs.config_output }}/multi-tenant-config.tar.gz
-        retention-days: 90
-        overwrite: true
-
-    - name: Cleanup old multi-tenant config artifacts
-      if: ${{ steps.upload_config.outcome == 'success' }}
-      shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.github_token }}
-      run: |
-        ${{ github.action_path }}/scripts/cleanup-old-artifacts.sh \
-          "${{ github.repository }}" \
-          "__gh_security_toolkit__multi-tenant-config" \
-          "${{ steps.upload_config.outputs.artifact-id }}"
 
     - name: Setup Pages
       uses: actions/configure-pages@v5

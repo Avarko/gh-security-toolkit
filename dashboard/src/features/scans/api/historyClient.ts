@@ -1,5 +1,10 @@
 /**
  * Client API for fetching scan history data.
+ *
+ * Provides separate functions for single-tenant and multi-tenant modes:
+ * - fetchScanHistorySingleTenant(): Data at /data/hist/scan-history.json
+ * - fetchScanHistoryMultiTenant(tenantId): Data at /data/<uuid>/hist/scan-history.json
+ *
  * Includes comprehensive validation using Zod schemas.
  */
 
@@ -8,9 +13,6 @@ import {
     type ScanHistory,
     type ValidationResult,
 } from "../model/historyTypes";
-import { getDataRoot } from "../../../lib/dataPath";
-import { MissingTenantParamsError } from "../../../errors/MissingTenantParamsError";
-import type { TenantRegistry } from "../../../lib/tenantRegistry";
 
 /**
  * Result type for scan history loading.
@@ -18,34 +20,48 @@ import type { TenantRegistry } from "../../../lib/tenantRegistry";
  */
 export type ScanHistoryLoadResult = ValidationResult<ScanHistory>;
 
-export type HistoryContext = {
-    githubOrg: string;
-    githubRepo: string;
-    registry: TenantRegistry;
-};
+/**
+ * Fetches and validates scan history data for SINGLE-TENANT mode.
+ *
+ * In single-tenant mode (GitHub Pages):
+ * - Data is stored directly at /data/hist/scan-history.json
+ * - No tenant resolution needed
+ * - No UUID in path
+ */
+export async function fetchScanHistorySingleTenant(): Promise<ScanHistoryLoadResult> {
+    const url = "/data/hist/scan-history.json";
+    return fetchAndValidateScanHistory(url);
+}
 
 /**
- * Fetches and validates scan history data from the server,
- * scoped to a specific tenant (identified by GitHub org/repo).
+ * Fetches and validates scan history data for MULTI-TENANT mode.
  *
- * Security principle (GUID-based tenant system):
- * - getDataRoot maps GitHub org/repo to a UUID via the tenant registry
- * - Data is stored at /data/<uuid>/ to prevent tenant forgery
- * - Throws MissingTenantParamsError if org/repo not found in registry
+ * In multi-tenant mode (S3/CDN):
+ * - Data is stored at /data/<uuid>/hist/scan-history.json
+ * - Tenant ID (UUID) is resolved from URL path via tenant config
  *
- * This error is NOT encapsulated as a validation error but allowed to propagate,
- * so that the router's error boundary can handle it as a configuration error.
- *
- * Other errors (network, HTTP status, JSON parse, Zod) are returned
- * as a ScanHistoryLoadResult object (success: false).
+ * @param tenantId - The tenant's UUID (from multi-tenant config)
  */
-export async function fetchScanHistory(
-    ctx: HistoryContext
+export async function fetchScanHistoryMultiTenant(
+    tenantId: string
 ): Promise<ScanHistoryLoadResult> {
-    // This may throw MissingTenantParamsError → let it bubble up
-    const base = getDataRoot(ctx);
-    const url = `${base}/hist/scan-history.json`;
+    if (!tenantId) {
+        return {
+            success: false,
+            error: "Tenant ID is required in multi-tenant mode",
+        };
+    }
 
+    const url = `/data/${tenantId}/hist/scan-history.json`;
+    return fetchAndValidateScanHistory(url);
+}
+
+/**
+ * Internal function to fetch and validate scan history from a URL.
+ */
+async function fetchAndValidateScanHistory(
+    url: string
+): Promise<ScanHistoryLoadResult> {
     try {
         const response = await fetch(url);
 
@@ -88,12 +104,6 @@ export async function fetchScanHistory(
             data: parseResult.data,
         };
     } catch (error) {
-        // Configuration error: let MissingTenantParamsError bubble up
-        if (error instanceof MissingTenantParamsError) {
-            throw error;
-        }
-
-        // Other unexpected errors are encapsulated normally
         return {
             success: false,
             error:
