@@ -11,20 +11,17 @@ description: |
   - Handle concurrency if needed
 
 inputs:
-  # === CLIENT CONFIG (optional, from .gh-security-toolkit/config.yaml) ===
-  # These inputs are typically read from the client's config file, but can be overridden per-workflow
-  org_display_name:
-    description: "Organization display name for dashboard (overrides config.yaml)"
-    required: false
-    default: ""
-
-  org_logo_url:
-    description: "Organization logo URL for dashboard (overrides config.yaml)"
-    required: false
-    default: ""
-
-  repo_display_name:
-    description: "Repository display name for dashboard (overrides config.yaml)"
+  # === CONFIG OVERRIDES (optional) ===
+  config_overrides:
+    description: |
+      Optional YAML string to override values from .gh-security-toolkit/config.yaml.
+      Example:
+        config_overrides: |
+          org_display_name: My Organization
+          trivy_severity: HIGH,CRITICAL
+          retention_keep: 5
+      Supported keys: org_display_name, org_logo_url, repo_display_name,
+                      trivy_severity, semgrep_configs, retention_keep, retention_days
     required: false
     default: ""
 
@@ -54,23 +51,6 @@ inputs:
     required: false
     default: ""
 
-  trivy_severity:
-    description: "Minimum severity to report (UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL)"
-    required: false
-    default: "MEDIUM,HIGH,CRITICAL"
-
-  # === SEMGREP CONFIGURATION ===
-  semgrep_configs:
-    description: "Semgrep rule configurations to use (comma-separated)"
-    required: false
-    default: "p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets"
-
-  # === RELEASE NOTES ===
-  release_notes_maxlength:
-    description: "Maximum length of release notes body (characters). GitHub limit is 125000."
-    required: false
-    default: "30000"
-
   # === PUBLISHING ===
   publish_to:
     description: 'Where to publish results: "github-release", "github-pages", or "github-release,github-pages" for both'
@@ -81,17 +61,6 @@ inputs:
   channel:
     description: "Channel name for release grouping (tag-friendly, e.g., 'master', 'dev', 'prod'). Used in tags and release retention."
     required: true
-
-  # === RETENTION (for github-release) ===
-  retention_keep:
-    description: "Number of releases to keep per channel"
-    required: false
-    default: "10"
-
-  retention_days:
-    description: "Days to keep releases"
-    required: false
-    default: "30"
 
   # === GITHUB TOKEN ===
   github_token:
@@ -140,82 +109,29 @@ runs:
 
     - name: Validate channel name
       shell: bash
+      env:
+        INPUT_CHANNEL: ${{ inputs.channel }}
       run: |
-        CHANNEL="${{ inputs.channel }}"
-
-        # Check if empty
-        if [ -z "$CHANNEL" ]; then
-          echo "Error: channel is required but empty"
-          exit 1
-        fi
-
-        # Check length (max 35 characters)
-        if [ ${#CHANNEL} -gt 35 ]; then
-          echo "Error: channel name too long (max 35 characters): '$CHANNEL'"
-          exit 1
-        fi
-
-        # Check for invalid characters (only allow: a-z, A-Z, 0-9, dash, underscore)
-        if ! echo "$CHANNEL" | grep -qE '^[a-zA-Z0-9_-]+$'; then
-          echo "Error: channel contains invalid characters: '$CHANNEL'"
-          echo "   Allowed: a-z, A-Z, 0-9, dash (-), underscore (_)"
-          exit 1
-        fi
-
-        # Check it doesn't start/end with dash or underscore
-        if echo "$CHANNEL" | grep -qE '^[-_]|[-_]$'; then
-          echo "Error: channel cannot start or end with dash/underscore: '$CHANNEL'"
-          exit 1
-        fi
-
-        echo "Channel name is valid: '$CHANNEL'"
+        ${{ github.action_path }}/scripts/validate-channel.sh
 
     - name: Read client config file
       id: config
       shell: bash
       env:
-        INPUT_ORG_DISPLAY_NAME: ${{ inputs.org_display_name }}
-        INPUT_ORG_LOGO_URL: ${{ inputs.org_logo_url }}
-        INPUT_REPO_DISPLAY_NAME: ${{ inputs.repo_display_name }}
-        INPUT_TRIVY_SEVERITY: ${{ inputs.trivy_severity }}
-        INPUT_SEMGREP_CONFIGS: ${{ inputs.semgrep_configs }}
-        INPUT_RETENTION_KEEP: ${{ inputs.retention_keep }}
-        INPUT_RETENTION_DAYS: ${{ inputs.retention_days }}
+        INPUT_CONFIG_OVERRIDES: ${{ inputs.config_overrides }}
       run: |
-        ${{ github.action_path }}/scripts/read-client-config.sh "$GITHUB_OUTPUT"
+        ${{ github.action_path }}/scripts/read-client-config.sh
 
     - name: Create scan context metadata
       shell: bash
+      env:
+        INPUT_OUTPUT_FILE: ${{ steps.setup.outputs.output_dir }}/scan-context.json
+        INPUT_CHANNEL: ${{ inputs.channel }}
+        INPUT_ORG_DISPLAY_NAME: ${{ steps.config.outputs.org_display_name }}
+        INPUT_ORG_LOGO_URL: ${{ steps.config.outputs.org_logo_url }}
+        INPUT_REPO_DISPLAY_NAME: ${{ steps.config.outputs.repo_display_name }}
       run: |
-        jq -n \
-          --arg channel "${{ inputs.channel }}" \
-          --arg timestamp "$(date -u +'%Y-%m-%d-%H%M%SZ')" \
-          --arg branch "${GITHUB_REF_NAME:-}" \
-          --arg repository "${GITHUB_REPOSITORY:-}" \
-          --arg commitSha "${GITHUB_SHA:-}" \
-          --arg scanId "${GITHUB_RUN_ID:-}" \
-          --arg ciJobName "${GITHUB_WORKFLOW:-}" \
-          --arg ciJobUrl "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-          --arg actorName "${GITHUB_ACTOR:-}" \
-          --arg orgDisplayName "${{ steps.config.outputs.org_display_name }}" \
-          --arg orgLogoUrl "${{ steps.config.outputs.org_logo_url }}" \
-          --arg repoDisplayName "${{ steps.config.outputs.repo_display_name }}" \
-          '{
-            channel: $channel,
-            timestamp: $timestamp,
-            branch: $branch,
-            repository: $repository,
-            commitSha: $commitSha,
-            scanId: $scanId,
-            ciJobName: $ciJobName,
-            ciJobUrl: $ciJobUrl,
-            actorName: $actorName,
-            orgDisplayName: $orgDisplayName,
-            orgLogoUrl: $orgLogoUrl,
-            repoDisplayName: $repoDisplayName
-          }' > "${{ steps.setup.outputs.output_dir }}/scan-context.json"
-        echo "Created scan-context.json:"
-        cat "${{ steps.setup.outputs.output_dir }}/scan-context.json"
+        ${{ github.action_path }}/scripts/create-scan-context.sh
 
     # === BUILD FILESYSTEM SCAN ROOT ===
     - name: Build filesystem scan root
@@ -223,11 +139,10 @@ runs:
       if: ${{ inputs.filesystem_paths != '' }}
       shell: bash
       env:
+        INPUT_TARGET_ROOT: ${{ runner.temp }}/trivy-fs-root-${{ github.run_id }}-${{ github.run_attempt }}
         FILESYSTEM_PATHS: ${{ inputs.filesystem_paths }}
       run: |
-        ${{ github.action_path }}/scripts/build-fsroot.sh \
-          "${RUNNER_TEMP}/trivy-fs-root-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
-          "$GITHUB_OUTPUT"
+        ${{ github.action_path }}/scripts/build-fsroot.sh
 
     # === RUN TRIVY SCANS ===
     - name: Run Trivy scans

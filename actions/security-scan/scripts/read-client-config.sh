@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
 #
 # Reads client configuration from .gh-security-toolkit/config.yaml
-# Merges with provided defaults (action inputs take priority over config file).
+# and applies overrides from config_overrides input.
 #
-# Usage: read-client-config.sh <github_output_file>
+# Priority (highest to lowest):
+#   1. config_overrides input (YAML string)
+#   2. .gh-security-toolkit/config.yaml file
+#   3. Built-in defaults
 #
-# Arguments:
-#   github_output_file - Path to $GITHUB_OUTPUT file
+# Usage: read-client-config.sh
 #
-# Environment variables (inputs with defaults):
-#   INPUT_ORG_DISPLAY_NAME  - Organization display name override
-#   INPUT_ORG_LOGO_URL      - Organization logo URL override
-#   INPUT_REPO_DISPLAY_NAME - Repository display name override
-#   INPUT_TRIVY_SEVERITY    - Trivy severity levels (default: "MEDIUM,HIGH,CRITICAL")
-#   INPUT_SEMGREP_CONFIGS   - Semgrep configurations (default: "p/owasp-top-ten,...")
-#   INPUT_RETENTION_KEEP    - Number of releases to keep (default: "10")
-#   INPUT_RETENTION_DAYS    - Days to keep releases (default: "30")
+# Environment variables:
+#   INPUT_CONFIG_OVERRIDES  - Optional YAML string with config overrides
+#   GITHUB_OUTPUT           - GitHub Actions output file (set automatically)
 #
 # Outputs (written to GITHUB_OUTPUT):
 #   org_display_name, org_logo_url, repo_display_name,
@@ -23,61 +20,74 @@
 
 set -euo pipefail
 
-if [ $# -lt 1 ]; then
-    echo "Usage: $0 <github_output_file>"
-    exit 1
-fi
-
-GITHUB_OUTPUT="$1"
 CONFIG_FILE=".gh-security-toolkit/config.yaml"
 
-# Initialize outputs with action inputs (highest priority)
-ORG_DISPLAY_NAME="${INPUT_ORG_DISPLAY_NAME:-}"
-ORG_LOGO_URL="${INPUT_ORG_LOGO_URL:-}"
-REPO_DISPLAY_NAME="${INPUT_REPO_DISPLAY_NAME:-}"
-TRIVY_SEVERITY="${INPUT_TRIVY_SEVERITY:-MEDIUM,HIGH,CRITICAL}"
-SEMGREP_CONFIGS="${INPUT_SEMGREP_CONFIGS:-p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets}"
-RETENTION_KEEP="${INPUT_RETENTION_KEEP:-10}"
-RETENTION_DAYS="${INPUT_RETENTION_DAYS:-30}"
+# Initialize with defaults
+ORG_DISPLAY_NAME=""
+ORG_LOGO_URL=""
+REPO_DISPLAY_NAME=""
+TRIVY_SEVERITY="MEDIUM,HIGH,CRITICAL"
+SEMGREP_CONFIGS="p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets"
+RETENTION_KEEP="10"
+RETENTION_DAYS="30"
 
-# Check for config file
+# Layer 1: Read from config file (if exists)
 if [ -f "$CONFIG_FILE" ]; then
   echo "📋 Found client config: $CONFIG_FILE"
 
-  # Read values from config (only if action input is empty)
-  if [ -z "$ORG_DISPLAY_NAME" ]; then
-    ORG_DISPLAY_NAME=$(yq -r '.organization.display_name // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
-  fi
-  if [ -z "$ORG_LOGO_URL" ]; then
-    ORG_LOGO_URL=$(yq -r '.organization.logo_url // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
-  fi
-  if [ -z "$REPO_DISPLAY_NAME" ]; then
-    REPO_DISPLAY_NAME=$(yq -r '.repository.display_name // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
-  fi
+  # Read values from config file
+  FILE_ORG=$(yq -r '.organization.display_name // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+  [ -n "$FILE_ORG" ] && ORG_DISPLAY_NAME="$FILE_ORG"
 
-  # Scanning defaults (action inputs take priority)
-  if [ "$TRIVY_SEVERITY" = "MEDIUM,HIGH,CRITICAL" ]; then
-    CONFIG_TRIVY_SEVERITY=$(yq -r '.scanning.trivy.severity // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
-    [ -n "$CONFIG_TRIVY_SEVERITY" ] && TRIVY_SEVERITY="$CONFIG_TRIVY_SEVERITY"
-  fi
-  if [ "$SEMGREP_CONFIGS" = "p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets" ]; then
-    CONFIG_SEMGREP=$(yq -r '.scanning.semgrep.configs | join(",") // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
-    [ -n "$CONFIG_SEMGREP" ] && SEMGREP_CONFIGS="$CONFIG_SEMGREP"
-  fi
+  FILE_LOGO=$(yq -r '.organization.logo_url // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+  [ -n "$FILE_LOGO" ] && ORG_LOGO_URL="$FILE_LOGO"
 
-  # Publishing defaults
-  if [ "$RETENTION_KEEP" = "10" ]; then
-    CONFIG_RETENTION_KEEP=$(yq -r '.publishing.retention_keep // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
-    [ -n "$CONFIG_RETENTION_KEEP" ] && RETENTION_KEEP="$CONFIG_RETENTION_KEEP"
-  fi
-  if [ "$RETENTION_DAYS" = "30" ]; then
-    CONFIG_RETENTION_DAYS=$(yq -r '.publishing.retention_days // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
-    [ -n "$CONFIG_RETENTION_DAYS" ] && RETENTION_DAYS="$CONFIG_RETENTION_DAYS"
-  fi
+  FILE_REPO=$(yq -r '.repository.display_name // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+  [ -n "$FILE_REPO" ] && REPO_DISPLAY_NAME="$FILE_REPO"
 
-  echo "   ✅ Config loaded"
+  FILE_SEVERITY=$(yq -r '.scanning.trivy.severity // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+  [ -n "$FILE_SEVERITY" ] && TRIVY_SEVERITY="$FILE_SEVERITY"
+
+  FILE_SEMGREP=$(yq -r '.scanning.semgrep.configs | join(",") // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+  [ -n "$FILE_SEMGREP" ] && SEMGREP_CONFIGS="$FILE_SEMGREP"
+
+  FILE_KEEP=$(yq -r '.publishing.retention_keep // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+  [ -n "$FILE_KEEP" ] && RETENTION_KEEP="$FILE_KEEP"
+
+  FILE_DAYS=$(yq -r '.publishing.retention_days // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+  [ -n "$FILE_DAYS" ] && RETENTION_DAYS="$FILE_DAYS"
+
+  echo "   ✅ Config file loaded"
 else
   echo "ℹ️  No client config file found at $CONFIG_FILE (using defaults)"
+fi
+
+# Layer 2: Apply config_overrides (highest priority)
+if [ -n "${INPUT_CONFIG_OVERRIDES:-}" ]; then
+  echo "📝 Applying config_overrides..."
+
+  OVERRIDE_ORG=$(echo "$INPUT_CONFIG_OVERRIDES" | yq -r '.org_display_name // ""' 2>/dev/null || echo "")
+  [ -n "$OVERRIDE_ORG" ] && ORG_DISPLAY_NAME="$OVERRIDE_ORG"
+
+  OVERRIDE_LOGO=$(echo "$INPUT_CONFIG_OVERRIDES" | yq -r '.org_logo_url // ""' 2>/dev/null || echo "")
+  [ -n "$OVERRIDE_LOGO" ] && ORG_LOGO_URL="$OVERRIDE_LOGO"
+
+  OVERRIDE_REPO=$(echo "$INPUT_CONFIG_OVERRIDES" | yq -r '.repo_display_name // ""' 2>/dev/null || echo "")
+  [ -n "$OVERRIDE_REPO" ] && REPO_DISPLAY_NAME="$OVERRIDE_REPO"
+
+  OVERRIDE_SEVERITY=$(echo "$INPUT_CONFIG_OVERRIDES" | yq -r '.trivy_severity // ""' 2>/dev/null || echo "")
+  [ -n "$OVERRIDE_SEVERITY" ] && TRIVY_SEVERITY="$OVERRIDE_SEVERITY"
+
+  OVERRIDE_SEMGREP=$(echo "$INPUT_CONFIG_OVERRIDES" | yq -r '.semgrep_configs // ""' 2>/dev/null || echo "")
+  [ -n "$OVERRIDE_SEMGREP" ] && SEMGREP_CONFIGS="$OVERRIDE_SEMGREP"
+
+  OVERRIDE_KEEP=$(echo "$INPUT_CONFIG_OVERRIDES" | yq -r '.retention_keep // ""' 2>/dev/null || echo "")
+  [ -n "$OVERRIDE_KEEP" ] && RETENTION_KEEP="$OVERRIDE_KEEP"
+
+  OVERRIDE_DAYS=$(echo "$INPUT_CONFIG_OVERRIDES" | yq -r '.retention_days // ""' 2>/dev/null || echo "")
+  [ -n "$OVERRIDE_DAYS" ] && RETENTION_DAYS="$OVERRIDE_DAYS"
+
+  echo "   ✅ Overrides applied"
 fi
 
 # Output resolved values

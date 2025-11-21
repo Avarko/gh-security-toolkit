@@ -4,14 +4,12 @@
 # Validates paths for security (no absolute paths, path traversal, or shell metacharacters).
 # Copies valid paths using rsync --relative to preserve directory structure.
 #
-# Usage: build-fsroot.sh <target_root> <github_output_file>
-#
-# Arguments:
-#   target_root         - Directory where paths will be copied
-#   github_output_file  - Path to $GITHUB_OUTPUT file
+# Usage: build-fsroot.sh
 #
 # Environment:
-#   FILESYSTEM_PATHS - Newline-separated list of paths to process
+#   INPUT_TARGET_ROOT    - Directory where paths will be copied
+#   FILESYSTEM_PATHS     - Newline-separated list of paths to process
+#   GITHUB_OUTPUT        - GitHub Actions output file (set automatically)
 #
 # Outputs (written to GITHUB_OUTPUT):
 #   scan_root    - Path to the created scan root directory
@@ -19,13 +17,7 @@
 
 set -euo pipefail
 
-if [ $# -lt 2 ]; then
-    echo "Usage: $0 <target_root> <github_output_file>"
-    exit 1
-fi
-
-ROOT="$1"
-GITHUB_OUTPUT="$2"
+ROOT="${INPUT_TARGET_ROOT:?INPUT_TARGET_ROOT is required}"
 PATHS="${FILESYSTEM_PATHS:-}"
 
 if [ -z "$PATHS" ]; then
