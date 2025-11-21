@@ -97,7 +97,8 @@ runs:
       id: setup
       shell: bash
       run: |
-        OUTPUT_DIR="${RUNNER_TEMP}/scan-output-${{ github.run_id }}"
+        # Use unique directory to avoid collisions when action is called multiple times
+        OUTPUT_DIR="${RUNNER_TEMP}/security-scan-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
         mkdir -p "$OUTPUT_DIR"
         echo "output_dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
 
