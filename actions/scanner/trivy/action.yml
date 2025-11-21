@@ -5,8 +5,8 @@ inputs:
     description: "Path to filesystem to scan (optional)"
     required: false
     default: ""
-  docker_image_tar:
-    description: "Path to Docker image tar file (optional)"
+  docker_image_ref:
+    description: "Docker image reference (name:tag or ID) to scan (optional). The image must already exist in the local Docker daemon."
     required: false
     default: ""
   trivy_config:
@@ -26,17 +26,6 @@ runs:
     - name: Prepare output directory
       shell: bash
       run: mkdir -p "${{ inputs.trivy_output_dir }}"
-
-    - name: Load Docker image (if provided)
-      id: load_image
-      if: ${{ inputs.docker_image_tar != '' }}
-      shell: bash
-      run: |
-        echo "Loading Docker image from ${{ inputs.docker_image_tar }}"
-        docker load -i "${{ inputs.docker_image_tar }}"
-        IMAGE_ID=$(docker images --format "{{.ID}}" | head -n1)
-        echo "image_id=$IMAGE_ID" >> "$GITHUB_OUTPUT"
-        echo "Loaded image: $IMAGE_ID"
 
     - name: Trivy cache
       continue-on-error: true
@@ -61,11 +50,11 @@ runs:
         scanners: vuln,misconfig
 
     - name: Trivy - Image scan
-      if: ${{ inputs.docker_image_tar != '' }}
+      if: ${{ inputs.docker_image_ref != '' }}
       uses: aquasecurity/trivy-action@master
       with:
         version: 'latest'
-        image-ref: ${{ steps.load_image.outputs.image_id }}
+        image-ref: ${{ inputs.docker_image_ref }}
         format: json
         output: ${{ inputs.trivy_output_dir }}/trivy-image-results.json
         exit-code: 0
@@ -88,7 +77,7 @@ runs:
       id: version
       shell: bash
       run: |
-        if [ -f "${{ inputs.filesystem_path != '' }}" ] || [ -f "${{ inputs.docker_image_tar != '' }}" ]; then
+        if [ -n "${{ inputs.filesystem_path }}" ] || [ -n "${{ inputs.docker_image_ref }}" ]; then
           TRIVY_VERSION=$(trivy --version | head -n1 | awk '{print $2}')
           echo "trivy_version=$TRIVY_VERSION" >> "$GITHUB_OUTPUT"
           echo "Trivy version: $TRIVY_VERSION"
@@ -104,9 +93,6 @@ outputs:
   image_json:
     description: "Image scan JSON path (if performed)"
     value: ${{ steps.outputs.outputs.image_json }}
-  image_id:
-    description: "Loaded Docker image ID (if image scan performed)"
-    value: ${{ steps.load_image.outputs.image_id }}
-  trivyversion:
+  trivy_version:
     description: "Trivy version"
     value: ${{ steps.version.outputs.trivy_version }}
