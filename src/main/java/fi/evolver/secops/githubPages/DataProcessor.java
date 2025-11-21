@@ -112,8 +112,12 @@ public final class DataProcessor {
         // 2) Write concise scan metadata
         writeMetadataJson(gson, dataRunsPath, metadata);
 
-        // 3) Update tenant-specific scan-history.json
-        appendScanHistory(gson, dataRoot, channel, compactTimestamp, metadata, historyStats);
+        // 3) Update tenant-specific scan-history.json (only for security scans)
+        if (configMetadata == null || configMetadata.isSecurityScan()) {
+            appendScanHistory(gson, dataRoot, channel, compactTimestamp, metadata, historyStats);
+        } else {
+            System.out.println("   ℹ️  Skipping scan-history.json update (type: " + configMetadata.type + ")");
+        }
 
         System.out.println("✅ Data processing complete!");
         System.out.println("   Run data: " + dataRunsPath);

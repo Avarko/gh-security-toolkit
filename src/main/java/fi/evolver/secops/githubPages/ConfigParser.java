@@ -50,6 +50,12 @@ public final class ConfigParser {
         public String ciJobName;
         public String ciJobUrl;
         public String actorName;
+        /** Type of data: "security-scan" (default), "test-report", etc. */
+        public String type;
+
+        public boolean isSecurityScan() {
+            return type == null || type.isEmpty() || "security-scan".equals(type);
+        }
     }
 
     /**
