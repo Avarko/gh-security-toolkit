@@ -3,7 +3,7 @@ description: "Publishes security scan results as static HTML pages to GitHub Pag
 inputs:
   # Essential inputs
   outdir:
-    description: "Directory containing scan outputs and scan-context.json (with channel metadata)"
+    description: "Directory containing scan outputs and scan-context.json"
     required: true
 
   github_token:
