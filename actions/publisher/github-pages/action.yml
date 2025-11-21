@@ -1,5 +1,13 @@
 name: "Publisher (GitHub Pages)"
-description: "Publishes security scan results as static HTML pages to GitHub Pages"
+description: |
+  Publishes security scan results as static HTML pages to GitHub Pages.
+
+  Required permissions in caller workflow:
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+      actions: write  # Required for artifact cleanup
 inputs:
   # Essential inputs
   outdir:
@@ -171,13 +179,12 @@ runs:
       if: ${{ steps.upload_site_data.outcome == 'success' }}
       shell: bash
       env:
-        GH_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ inputs.github_token }}
       run: |
         ${{ github.action_path }}/scripts/cleanup-old-artifacts.sh \
           "${{ github.repository }}" \
           "__gh_security_toolkit__github_pages_site_data" \
           "${{ steps.upload_site_data.outputs.artifact-id }}"
-
 
     - name: Upload multi-tenant config artifact
       id: upload_config
@@ -192,13 +199,12 @@ runs:
       if: ${{ steps.upload_config.outcome == 'success' }}
       shell: bash
       env:
-        GH_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ inputs.github_token }}
       run: |
         ${{ github.action_path }}/scripts/cleanup-old-artifacts.sh \
           "${{ github.repository }}" \
           "__gh_security_toolkit__multi-tenant-config" \
           "${{ steps.upload_config.outputs.artifact-id }}"
-
 
     - name: Setup Pages
       uses: actions/configure-pages@v5
