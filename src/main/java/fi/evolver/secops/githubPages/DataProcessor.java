@@ -8,6 +8,7 @@ import fi.evolver.secops.githubPages.model.HistoryStats;
 import fi.evolver.secops.githubPages.model.ScanHistory;
 import fi.evolver.secops.githubPages.model.ScanMetadata;
 import fi.evolver.secops.githubPages.model.ScanStats;
+import fi.evolver.secops.githubPages.model.TestReportHistory;
 import fi.evolver.secops.githubPages.transformer.FindingsTransformer;
 import fi.evolver.secops.githubPages.transformer.FindingsTransformer.TransformedScanData;
 
@@ -112,11 +113,16 @@ public final class DataProcessor {
         // 2) Write concise scan metadata
         writeMetadataJson(gson, dataRunsPath, metadata);
 
-        // 3) Update tenant-specific scan-history.json (only for security scans)
+        // 3) Update tenant-specific history file based on type
         if (configMetadata == null || configMetadata.isSecurityScan()) {
             appendScanHistory(gson, dataRoot, channel, compactTimestamp, metadata, historyStats);
+        } else if ("test-report".equals(configMetadata.type)) {
+            // Check which reports are available by looking at copied directories
+            boolean hasJacoco = Files.isDirectory(dataRunsPath.resolve("coverage"));
+            boolean hasSurefire = Files.isDirectory(dataRunsPath.resolve("tests"));
+            appendTestReportHistory(gson, dataRoot, channel, compactTimestamp, metadata, hasJacoco, hasSurefire);
         } else {
-            System.out.println("   ℹ️  Skipping scan-history.json update (type: " + configMetadata.type + ")");
+            System.out.println("   ℹ️  Skipping history update (unknown type: " + configMetadata.type + ")");
         }
 
         System.out.println("✅ Data processing complete!");
@@ -254,6 +260,87 @@ public final class DataProcessor {
         } catch (Exception e) {
             System.err.println("⚠️  Failed to read existing scan history (corrupt format): " + e.getMessage());
             return new ScanHistory();
+        }
+    }
+
+    /**
+     * Appends a new entry to test-report-history.json with retention limit.
+     */
+    private static void appendTestReportHistory(
+            Gson gson,
+            Path dataRoot,
+            String channel,
+            String timestamp,
+            ScanMetadata metadata,
+            boolean hasJacoco,
+            boolean hasSurefire) {
+        try {
+            Path histDir = dataRoot.resolve("hist");
+            Files.createDirectories(histDir);
+            Path historyPath = histDir.resolve("test-report-history.json");
+
+            TestReportHistory history = readTestReportHistory(gson, historyPath);
+
+            // Remove possible duplicate for the same channel+timestamp combination
+            history.reports.removeIf(entry -> channel.equals(entry.channel)
+                    && timestamp.equals(entry.timestamp));
+
+            TestReportHistory.TestReportEntry entry = TestReportHistory.TestReportEntry.from(
+                    channel, timestamp, metadata, hasJacoco, hasSurefire);
+            history.reports.add(entry);
+            history.reports.sort(Comparator.comparing(e -> e.timestamp));
+
+            // Enforce retention limit: remove oldest entries if over limit
+            if (history.reports.size() > MAX_HISTORY_ENTRIES) {
+                int toRemove = history.reports.size() - MAX_HISTORY_ENTRIES;
+                System.out.println("   📦 Removing " + toRemove + " oldest test report history entries (limit: " + MAX_HISTORY_ENTRIES + ")");
+                history.reports = new ArrayList<>(history.reports.subList(toRemove, history.reports.size()));
+            }
+
+            Files.writeString(historyPath, gson.toJson(history), StandardCharsets.UTF_8);
+            System.out.println("   ✅ Updated test-report-history.json at " + historyPath + " (" + history.reports.size() + " entries)");
+        } catch (Exception e) {
+            System.err.println("⚠️  Failed to append test report history: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Reads existing test report history from JSON file.
+     */
+    private static TestReportHistory readTestReportHistory(Gson gson, Path historyPath) {
+        if (!Files.exists(historyPath)) {
+            return new TestReportHistory();
+        }
+        try {
+            String json = Files.readString(historyPath);
+            if (json == null || json.isBlank()) {
+                return new TestReportHistory();
+            }
+
+            TestReportHistory history = gson.fromJson(json, TestReportHistory.class);
+            if (history == null) {
+                System.err.println("⚠️  Test report history JSON is null, starting fresh");
+                return new TestReportHistory();
+            }
+            if (history.reports == null) {
+                history.reports = new ArrayList<>();
+            }
+
+            // Filter out broken entries
+            ArrayList<TestReportHistory.TestReportEntry> valid = new ArrayList<>();
+            for (TestReportHistory.TestReportEntry entry : history.reports) {
+                if (entry == null || entry.channel == null || entry.timestamp == null) {
+                    System.err.println("⚠️  Skipping test report entry with missing channel or timestamp");
+                    continue;
+                }
+                valid.add(entry);
+            }
+            history.reports = valid;
+
+            return history;
+        } catch (Exception e) {
+            System.err.println("⚠️  Failed to read existing test report history (corrupt format): " + e.getMessage());
+            return new TestReportHistory();
         }
     }
 }

@@ -21,6 +21,9 @@ import ScanRunDetailErrorPage from "./features/scans/components/ScanRunDetailErr
 import TestReportsIndexRoute, {
     loader as testReportsLoader,
 } from "./routes/org/app/test-reports/TestReportsIndexRoute";
+import ChannelTestReportsRoute, {
+    loader as channelTestReportsLoader,
+} from "./routes/org/app/test-reports/ChannelTestReportsRoute";
 
 const CloudFindingsPage = () => <div>TODO: Cloud findings</div>;
 const NotFoundPage = () => <div>404 – Page not found</div>;
@@ -65,8 +68,18 @@ export const router = createBrowserRouter([
                             },
                             {
                                 path: "test-reports",
-                                element: <TestReportsIndexRoute />,
-                                loader: testReportsLoader,
+                                children: [
+                                    {
+                                        index: true,
+                                        element: <TestReportsIndexRoute />,
+                                        loader: testReportsLoader,
+                                    },
+                                    {
+                                        path: "channel/:channel",
+                                        element: <ChannelTestReportsRoute />,
+                                        loader: channelTestReportsLoader,
+                                    },
+                                ],
                             },
                         ],
                     },
