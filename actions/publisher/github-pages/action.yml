@@ -21,6 +21,21 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Setup temp directories
+      id: temp
+      shell: bash
+      run: |
+        # Use unique directory to avoid collisions when action is called multiple times
+        TEMP_BASE="${RUNNER_TEMP}/gh-pages-publisher-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+        mkdir -p "$TEMP_BASE"
+        echo "base=$TEMP_BASE" >> "$GITHUB_OUTPUT"
+        echo "config_overrides=${TEMP_BASE}/config-overrides.json" >> "$GITHUB_OUTPUT"
+        echo "builder_config=${TEMP_BASE}/builder-config.json" >> "$GITHUB_OUTPUT"
+        echo "dashboard_build=${TEMP_BASE}/dashboard-build" >> "$GITHUB_OUTPUT"
+        echo "site_data_output=${TEMP_BASE}/site-data-output" >> "$GITHUB_OUTPUT"
+        echo "config_output=${TEMP_BASE}/config-output" >> "$GITHUB_OUTPUT"
+        echo "site_dir=${TEMP_BASE}/site" >> "$GITHUB_OUTPUT"
+
     - name: Check GitHub Pages visibility
       shell: bash
       env:
@@ -49,17 +64,17 @@ runs:
           # Check if it's a file path or JSON string
           if [ -f "${{ inputs.config_overrides }}" ]; then
             echo "path=${{ inputs.config_overrides }}" >> "$GITHUB_OUTPUT"
-            echo "📄 Using config overrides from file: ${{ inputs.config_overrides }}"
+            echo "Using config overrides from file: ${{ inputs.config_overrides }}"
           else
             # It's a JSON string, write to temp file
-            TEMP_FILE="/tmp/config-overrides.json"
+            TEMP_FILE="${{ steps.temp.outputs.config_overrides }}"
             echo '${{ inputs.config_overrides }}' > "$TEMP_FILE"
             echo "path=$TEMP_FILE" >> "$GITHUB_OUTPUT"
-            echo "📝 Config overrides provided as JSON string"
+            echo "Config overrides provided as JSON string"
           fi
         else
           echo "path=" >> "$GITHUB_OUTPUT"
-          echo "ℹ️  No config overrides provided"
+          echo "No config overrides provided"
         fi
 
     - name: Create builder configuration
@@ -67,8 +82,9 @@ runs:
       run: |
         ${{ github.action_path }}/scripts/create-config.sh \
           "${{ inputs.outdir }}" \
-          "/tmp/builder-config.json" \
-          "${{ steps.config_overrides.outputs.path }}"
+          "${{ steps.temp.outputs.builder_config }}" \
+          "${{ steps.config_overrides.outputs.path }}" \
+          "${{ steps.temp.outputs.dashboard_build }}"
 
     - name: Download and restore multi-tenant config
       continue-on-error: true
@@ -80,7 +96,8 @@ runs:
         ${{ github.action_path }}/scripts/download-and-restore-config.sh \
           "${{ github.repository }}" \
           "." \
-          "$GITHUB_OUTPUT"
+          "$GITHUB_OUTPUT" \
+          "${{ steps.temp.outputs.base }}"
 
     - name: Download and restore GitHub Pages site data
       continue-on-error: true
@@ -92,7 +109,8 @@ runs:
         ${{ github.action_path }}/scripts/download-and-restore-history.sh \
           "${{ github.repository }}" \
           "." \
-          "$GITHUB_OUTPUT"
+          "$GITHUB_OUTPUT" \
+          "${{ steps.temp.outputs.base }}"
 
 
 
@@ -106,7 +124,7 @@ runs:
       uses: actions/download-artifact@v4
       with:
         name: __gh_security_toolkit__security-dashboard-build
-        path: /tmp/dashboard-build
+        path: ${{ steps.temp.outputs.dashboard_build }}
 
     - name: Build GitHub Pages
       shell: bash
@@ -115,22 +133,22 @@ runs:
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
         set -euo pipefail
-        echo "🏗️  Building GitHub Pages (incremental update)..."
+        echo "Building GitHub Pages (incremental update)..."
 
         # Run the builder (processes data in current directory)
         jbang "${{ github.action_path }}/../../../scripts/github_pages_builder.java" \
-          /tmp/builder-config.json
+          "${{ steps.temp.outputs.builder_config }}"
 
         # Archive the updated data for persistence across runs
         ${{ github.action_path }}/scripts/archive-scan-history.sh \
           "." \
-          "/tmp/github-pages-site-data-output"
+          "${{ steps.temp.outputs.site_data_output }}"
         ${{ github.action_path }}/scripts/archive-multi-tenant-config.sh \
           "." \
-          "/tmp/multi-tenant-config-output"
+          "${{ steps.temp.outputs.config_output }}"
 
         # Prepare site directory for deployment
-        SITE_DIR="/tmp/github-pages-site"
+        SITE_DIR="${{ steps.temp.outputs.site_dir }}"
         mkdir -p "$SITE_DIR"
 
         # Move all site content to deployment directory
@@ -138,14 +156,14 @@ runs:
           [ -e "./$item" ] && mv "./$item" "$SITE_DIR/" || true
         done
 
-        echo "✅ Site prepared for deployment at $SITE_DIR"
+        echo "Site prepared for deployment at $SITE_DIR"
 
     - name: Upload GitHub Pages site data artifact
       id: upload_site_data
       uses: actions/upload-artifact@v4
       with:
         name: __gh_security_toolkit__github_pages_site_data
-        path: /tmp/github-pages-site-data-output/scan-history.tar.gz
+        path: ${{ steps.temp.outputs.site_data_output }}/scan-history.tar.gz
         retention-days: 90
         overwrite: true
 
@@ -166,7 +184,7 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         name: __gh_security_toolkit__multi-tenant-config
-        path: /tmp/multi-tenant-config-output/multi-tenant-config.tar.gz
+        path: ${{ steps.temp.outputs.config_output }}/multi-tenant-config.tar.gz
         retention-days: 90
         overwrite: true
 
@@ -188,7 +206,7 @@ runs:
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v3
       with:
-        path: /tmp/github-pages-site
+        path: ${{ steps.temp.outputs.site_dir }}
         name: __gh_security_toolkit__github_pages_deployment
         retention-days: 1
 

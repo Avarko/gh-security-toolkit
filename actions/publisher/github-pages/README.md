@@ -60,10 +60,9 @@ The `outdir` must contain a `scan-context.json` file with at minimum:
 }
 ```
 
-This file is automatically created by:
-- `actions/artifacts/filesystem-for-scanning/upload`
-- `actions/artifacts/docker-image-for-scanning/upload`
-- `actions/artifacts/test-reports/upload`
+This file is automatically created by the composite actions:
+- `actions/security-scan` - Creates scan-context.json with security scan metadata
+- `actions/publish-test-reports` - Creates scan-context.json with test report metadata
 
 ### Configure GitHub Pages
 
@@ -143,37 +142,45 @@ This action stores the entire GitHub Pages site data (all channels, all tenants)
 
 ## Examples
 
-### Security scans (via security-scan.yml workflow)
+### Security scans (via composite action)
 
 ```yaml
-# Client repository calls security-scan.yml which:
-# 1. Downloads artifacts (with scan-context.json inside)
-# 2. Runs scanners
-# 3. Calls publisher/github-pages (reads channel from scan-context.json)
+# Single job with build and scan - no artifact upload/download needed
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
 
-- name: Upload filesystem for scanning
-  uses: Avarko/gh-security-toolkit/actions/artifacts/filesystem-for-scanning/upload@main
-  with:
-    path: .
-    channel: nightly  # This gets embedded in scan-context.json
+      - name: Build Docker image
+        run: docker build -t myapp:${{ github.sha }} .
 
-- name: Run security scan
-  uses: Avarko/gh-security-toolkit/.github/workflows/security-scan.yml@main
-  with:
-    channel: nightly  # Used for concurrency and release naming
+      - name: Security scan
+        uses: Avarko/gh-security-toolkit/actions/security-scan@reactui
+        with:
+          channel: nightly
+          filesystem_path: .
+          docker_image_ref: myapp:${{ github.sha }}
+          publish_to: github-pages
 ```
 
 ### Test reports
 
 ```yaml
-- name: Upload test reports
-  uses: Avarko/gh-security-toolkit/actions/artifacts/test-reports/upload@main
-  with:
-    jacoco-report-path: target/site/jacoco
-    surefire-report-path: target/reports
-    channel: ci  # Embedded in scan-context.json
+      - name: Run tests with coverage
+        run: mvn test jacoco:report surefire-report:report
 
-# Then call publisher directly or via a workflow that downloads the artifact
+      - name: Publish test reports
+        uses: Avarko/gh-security-toolkit/actions/publish-test-reports@reactui
+        with:
+          channel: ci
+          jacoco_report_path: target/site/jacoco
+          surefire_report_path: target/site/surefire-report
 ```
 
 ## Developer Notes
@@ -192,7 +199,7 @@ The builder accepts a single JSON configuration file (created by `create-config.
   "input": {
     "outdir": "./scan-output",
     "pagesRoot": ".",
-    "dashboardBuildDir": "/tmp/dashboard-build"
+    "dashboardBuildDir": "${RUNNER_TEMP}/gh-pages-publisher-<run-id>/dashboard-build"
   },
   "metadata": {
     "timestamp": "2025-11-20-120000Z",
@@ -207,6 +214,8 @@ The builder accepts a single JSON configuration file (created by `create-config.
   }
 }
 ```
+
+Note: The `dashboardBuildDir` path uses `RUNNER_TEMP` with unique identifiers to avoid collisions when multiple actions run in the same workflow.
 
 ### Timestamp Format
 
