@@ -2,7 +2,7 @@ name: Download test reports
 description: |
   Downloads test reports artifact from GitHub Actions.
   Used for deploying test reports to GitHub Pages or other hosting.
-  Supports downloading from different workflow runs.
+  Downloads from the current workflow run (same run where upload happened).
 
 inputs:
   download-path:
@@ -19,12 +19,10 @@ runs:
   using: composite
   steps:
     - name: Download artifact
-      uses: dawidd6/action-download-artifact@v6
+      uses: actions/download-artifact@v4
       with:
         name: __gh_security_toolkit__test_reports__
         path: ${{ inputs.download-path }}
-        search_artifacts: true
-        if_no_artifact_found: fail
 
     - name: Verify download
       shell: bash
