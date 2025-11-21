@@ -104,6 +104,19 @@ export function findTenantByUrlPath(urlPath: string): MultiTenantEntry | undefin
 }
 
 /**
+ * Find tenant by GitHub org and repo (multi-tenant mode only).
+ *
+ * @throws Error if not in multi-tenant mode
+ */
+export function findTenantByGitHub(org: string, repo: string): MultiTenantEntry | undefined {
+    const config = requireMultiTenantConfig();
+    return config.tenants.find(
+        t => t.github_org.toLowerCase() === org.toLowerCase() &&
+             t.github_repo.toLowerCase() === repo.toLowerCase()
+    );
+}
+
+/**
  * Get the data root path for the current tenant mode.
  *
  * Single-tenant: "/data" (no subdirectory)

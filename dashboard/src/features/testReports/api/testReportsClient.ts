@@ -4,39 +4,35 @@
  * Provides separate functions for single-tenant and multi-tenant modes:
  * - fetchTestReportsSingleTenant(): Data at /data/hist/test-report-history.json
  * - fetchTestReportsMultiTenant(tenantId): Data at /data/<uuid>/hist/test-report-history.json
- *
- * Includes comprehensive validation using Zod schemas.
  */
 
-import {
-    testReportHistorySchema,
-    type TestReportHistory,
-    type ValidationResult,
-} from "../model/testReportTypes";
+import { fetchAndValidate, buildDataUrl, type ValidationResult } from "../../../lib/fetchAndValidate";
+import { testReportHistorySchema, type TestReportHistory } from "../model/testReportTypes";
 
 /**
  * Result type for test report history loading.
  */
 export type TestReportsLoadResult = ValidationResult<TestReportHistory>;
 
+// Empty result for 404 responses (no test reports yet)
+const EMPTY_RESULT: TestReportHistory = { version: "1", reports: [] };
+
 /**
  * Fetches and validates test report history for SINGLE-TENANT mode.
- *
- * In single-tenant mode (GitHub Pages):
- * - Data is stored directly at /data/hist/test-report-history.json
- * - No tenant resolution needed
+ * Data is stored at /data/hist/test-report-history.json
  */
 export async function fetchTestReportsSingleTenant(): Promise<TestReportsLoadResult> {
-    const url = "/data/hist/test-report-history.json";
-    return fetchAndValidateTestReports(url);
+    return fetchAndValidate({
+        url: buildDataUrl("hist/test-report-history.json"),
+        schema: testReportHistorySchema,
+        dataDescription: "test report history data",
+        emptyOnNotFound: EMPTY_RESULT,
+    });
 }
 
 /**
  * Fetches and validates test report history for MULTI-TENANT mode.
- *
- * In multi-tenant mode (S3/CDN):
- * - Data is stored at /data/<uuid>/hist/test-report-history.json
- * - Tenant ID (UUID) is resolved from URL path via tenant config
+ * Data is stored at /data/<uuid>/hist/test-report-history.json
  *
  * @param tenantId - The tenant's UUID (from multi-tenant config)
  */
@@ -50,72 +46,10 @@ export async function fetchTestReportsMultiTenant(
         };
     }
 
-    const url = `/data/${tenantId}/hist/test-report-history.json`;
-    return fetchAndValidateTestReports(url);
-}
-
-/**
- * Internal function to fetch and validate test reports from a URL.
- */
-async function fetchAndValidateTestReports(
-    url: string
-): Promise<TestReportsLoadResult> {
-    try {
-        const response = await fetch(url);
-
-        if (!response.ok) {
-            // 404 is not an error - just means no test reports yet
-            if (response.status === 404) {
-                return {
-                    success: true,
-                    data: { version: "1", reports: [] },
-                };
-            }
-            return {
-                success: false,
-                error: `HTTP ${response.status}: Failed to load test report history from ${url}`,
-            };
-        }
-
-        // Parse JSON
-        let jsonData: unknown;
-        try {
-            jsonData = await response.json();
-        } catch (parseError) {
-            return {
-                success: false,
-                error: "Invalid JSON format in test report history data",
-                details: parseError,
-            };
-        }
-
-        // Validate with Zod schema
-        const parseResult = testReportHistorySchema.safeParse(jsonData);
-
-        if (!parseResult.success) {
-            const errorMessages = parseResult.error.issues
-                .map((err) => `${err.path.join(".")}: ${err.message}`)
-                .join("; ");
-
-            return {
-                success: false,
-                error: `Invalid test report history data: ${errorMessages}`,
-                details: parseResult.error,
-            };
-        }
-
-        return {
-            success: true,
-            data: parseResult.data,
-        };
-    } catch (error) {
-        return {
-            success: false,
-            error:
-                error instanceof Error
-                    ? error.message
-                    : "Unknown error occurred while fetching test report history",
-            details: error,
-        };
-    }
+    return fetchAndValidate({
+        url: buildDataUrl("hist/test-report-history.json", tenantId),
+        schema: testReportHistorySchema,
+        dataDescription: "test report history data",
+        emptyOnNotFound: EMPTY_RESULT,
+    });
 }

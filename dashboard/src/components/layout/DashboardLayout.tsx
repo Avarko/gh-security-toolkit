@@ -21,7 +21,7 @@ import {
 } from "@mui/material";
 import { Security as SecurityIcon, Science as ScienceIcon } from "@mui/icons-material";
 import { ReportFooter } from "./ReportFooter";
-import { loadTenantRegistry, findTenantByGitHub, type TenantEntry } from "../../lib/tenantRegistry";
+import { isMultiTenant, findTenantByGitHub, type MultiTenantEntry } from "../../config/tenantMode";
 
 const DRAWER_WIDTH = 240;
 
@@ -55,14 +55,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         repoSlug?: string;
     }>();
 
-    const [tenant, setTenant] = useState<TenantEntry | null>(null);
+    const [tenant, setTenant] = useState<MultiTenantEntry | null>(null);
 
     useEffect(() => {
-        if (orgSlug && repoSlug) {
-            loadTenantRegistry().then((registry) => {
-                const found = findTenantByGitHub(registry, orgSlug, repoSlug);
-                setTenant(found || null);
-            });
+        if (orgSlug && repoSlug && isMultiTenant()) {
+            const found = findTenantByGitHub(orgSlug, repoSlug);
+            setTenant(found || null);
         }
     }, [orgSlug, repoSlug]);
 

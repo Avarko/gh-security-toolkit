@@ -113,8 +113,3 @@ export const scanHistorySchema = z.object({
 // TypeScript types inferred from Zod schemas
 export type ScanMetadata = z.infer<typeof scanMetadataSchema>;
 export type ScanHistory = z.infer<typeof scanHistorySchema>;
-
-// Validation result type for error handling
-export type ValidationResult<T> =
-    | { success: true; data: T }
-    | { success: false; error: string; details?: unknown };
