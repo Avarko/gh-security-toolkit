@@ -267,19 +267,10 @@ Every `actions/deploy-pages@v4` call **replaces the entire site**.
 
 We use **GitHub Actions Artifacts** as a "database" to maintain state between workflow runs:
 
-#### Artifact 1: `__gh_security_toolkit__multi-tenant-config`
-
-- **Purpose**: Maintains tenant UUID mappings (CRITICAL for GUID persistence!)
-- **Contains**: `config/tenant-registry.json`
-- **Size**: ~1 KB (tiny, config-only)
-- **Retention**: 90 days
-- **Scope**: Global (shared across all channels)
-- **Why needed**: Ensures same GitHub org/repo always gets the same tenant UUID
-
-#### Artifact 2: `__gh_security_toolkit__github_pages_site_data`
+#### Artifact: `__gh_security_toolkit__github_pages_site_data`
 
 - **Purpose**: Carries scan data forward between workflow runs
-- **Contains**: `data/<tenant-uuid>/runs/`, `data/<tenant-uuid>/hist/scan-history.json`
+- **Contains**: `data/runs/`, `data/hist/scan-history.json` (single-tenant mode)
 - **Size**: ~400 KB (minimal, data-only)
 - **Retention**: 90 days
 - **Scope**: One per whole GitHub Pages
@@ -364,27 +355,60 @@ public class HistoryEntry {
 - **Scan history artifact**: 90 days (safety margin)
 - **Other artifacts**: 1 day (ephemeral)
 
-## Multi-Tenancy
+## Tenant Modes
 
-### Single-Tenant Mode (current)
+The toolkit supports two deployment modes, configured at **build time**:
+
+### Single-Tenant Mode (GitHub Pages)
+
+**Default mode for GitHub Pages deployments.**
 
 ```
-/data/<tenant-uuid>/
-    └── defaults.json: { "mode": "single-tenant", "defaultOrg": "...", ... }
+/data/                          # No UUID subdirectory
+├── hist/
+│   └── scan-history.json
+└── runs/
+    └── <channel>/<timestamp>/
 ```
 
-Dashboard auto-detects tenant from `defaults.json`.
+- Data stored directly at `/data/` (no UUID subdirectory)
+- No tenant resolution needed
+- URL structure: `/security-scans/channel/:channel/run/:timestamp`
+- Build: `npm run build` (default)
 
-### Multi-Tenant Mode (future)
+### Multi-Tenant Mode (S3/CDN - future)
+
+**For shared hosting with multiple clients.**
 
 ```
 /data/
-    ├── <tenant-uuid-1>/
-    ├── <tenant-uuid-2>/
-    └── <tenant-uuid-3>/
+├── <tenant-uuid-1>/            # Admin-assigned UUID
+│   ├── hist/
+│   └── runs/
+└── <tenant-uuid-2>/
 ```
 
-Dashboard allows tenant selection via URL or dropdown.
+- Data stored at `/data/<uuid>/` per tenant
+- Admin-managed tenant registry (external, not in artifacts)
+- URL structure: `/:tenant-path/security-scans/...` (tenant-path is human-readable, admin-chosen)
+- Build: `TENANT_MODE=multi-tenant MULTI_TENANT_CONFIG_PATH=./config.json npm run build`
+
+### Build-Time Configuration
+
+Tenant mode is determined at **build time** via Vite environment variables:
+
+```typescript
+// vite.config.ts
+define: {
+    __TENANT_MODE__: JSON.stringify(process.env.TENANT_MODE || "single-tenant"),
+    __MULTI_TENANT_CONFIG__: JSON.stringify(multiTenantConfig),
+}
+```
+
+This ensures:
+- Predictable behavior (mode cannot change at runtime)
+- Tree-shaking of unused code paths
+- Security (multi-tenant config bundled, not fetched from untrusted source)
 
 ## GitHub Pages Deployment
 
@@ -483,12 +507,14 @@ No API backend. Pure static site.
 | `actions/publisher/github-pages/scripts/create-config.sh` | Builder config creator (extracts org metadata) |
 | `scripts/github_pages_builder.java` | Scan data processor (entry point) |
 | `src/.../ConfigParser.java` | Builder config parser (includes org metadata) |
-| `src/.../TenantResolver.java` | Tenant resolution with display metadata |
-| `src/.../TenantRegistry.java` | Tenant UUID mappings + org branding |
+| `src/.../GitHubPagesBuilder.java` | Main builder (single-tenant mode) |
+| `src/.../DataProcessor.java` | Processes scan data and writes to data root |
 | `src/.../model/HistoryStats.java` | Java stats model |
+| `dashboard/src/config/tenantMode.ts` | Build-time tenant mode configuration |
+| `dashboard/src/router/singleTenantRouter.tsx` | Single-tenant routing |
+| `dashboard/src/router/multiTenantRouter.tsx` | Multi-tenant routing |
 | `dashboard/src/features/scans/model/historyTypes.ts` | TypeScript schemas |
-| `dashboard/src/features/scans/api/historyClient.ts` | Data fetcher |
-| `dashboard/src/lib/tenantRegistry.ts` | Client-side tenant config reader |
+| `dashboard/src/features/scans/api/historyClient.ts` | Data fetcher (single + multi-tenant)
 
 ## Testing
 

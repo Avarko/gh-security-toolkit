@@ -5,31 +5,40 @@
 //SOURCES transformer/*.java
 //SOURCES ConfigParser.java
 //SOURCES TimestampUtils.java
-//SOURCES TenantResolver.java
-//SOURCES TenantRegistry.java
 //SOURCES DataProcessor.java
 //SOURCES SiteDeploymentPackageBuilder.java
 
 package fi.evolver.secops.githubPages;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
  * GitHub Pages site builder for security scan results and related artifacts.
  *
+ * SINGLE-TENANT MODE (GitHub Pages):
+ * This builder is designed for single-tenant GitHub Pages deployments.
+ * Data is stored directly at /data/ without UUID subdirectories.
+ *
+ * For multi-tenant deployments (e.g., S3), a separate builder with
+ * tenant resolution would be used.
+ *
  * Responsibilities:
  * 1. Load and process various data artifacts (security scan results, test reports, etc.)
  * 2. Transform and normalize data into structured JSON format
  * 3. Build complete GitHub Pages site with dashboard and data
- * 4. Maintain data/<tenant-uuid>/runs/<channel>/<timestamp>/ structure
- * 5. Update data/<tenant-uuid>/hist/scan-history.json with scan metadata
+ * 4. Maintain data/runs/<channel>/<timestamp>/ structure
+ * 5. Update data/hist/scan-history.json with scan metadata
  *
- * Tenant resolution (GUID-based security model):
- * - GitHub org/repo is read from environment variables (GITHUB_REPOSITORY_OWNER, GITHUB_REPOSITORY)
- * - TenantRegistry maps GitHub org/repo to a UUID
- * - Data is stored at /data/<uuid>/ to prevent tenant forgery or path traversal
- *
- * UI rendering is done in a separate React dashboard.
+ * Data Structure (single-tenant):
+ *   /data/
+ *   ├── hist/
+ *   │   └── scan-history.json
+ *   └── runs/
+ *       └── <channel>/
+ *           └── <timestamp>/
+ *               ├── scan-run.json
+ *               └── ... (raw scan files)
  *
  * Usage:
  *   GitHubPagesBuilder <config_json>
@@ -76,24 +85,21 @@ public class GitHubPagesBuilder {
 
         Path pagesPath = Path.of(pagesRoot);
 
-        // 3. Resolve tenant identity from GitHub context (with optional display metadata from client config)
-        TenantResolver.TenantInfo tenantInfo = TenantResolver.resolve(
-                pagesPath,
-                config.metadata.repoDisplayName,
-                config.metadata.orgDisplayName,
-                config.metadata.orgLogoUrl
-        );
+        // 3. Single-tenant mode: data root is directly /data/
+        Path dataRoot = pagesPath.resolve("data");
+        Files.createDirectories(dataRoot);
+        System.out.println("📁 Data root: /data/ (single-tenant mode)");
 
         // 4. Merge dashboard build artifacts
         if (dashboardBuildDir != null && !dashboardBuildDir.isEmpty()) {
             SiteDeploymentPackageBuilder.mergeDashboard(pagesPath, Path.of(dashboardBuildDir));
         }
 
-        // 5. Process scan data and write to tenant data root
+        // 5. Process scan data and write to data root
         DataProcessor.process(
                 ConfigParser.getGson(),
                 outputDir,
-                tenantInfo.dataRoot,
+                dataRoot,
                 channel,
                 timestamp,
                 compactTimestamp,
