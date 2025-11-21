@@ -60,6 +60,33 @@ make sec/scan       # Perform full scan
 
 The security scan runs as a composite action in the same job as your build. No artifact uploads needed - just pass the filesystem path and/or Docker image reference directly.
 
+**Step 1: Create client configuration** (optional but recommended):
+
+```yaml
+# .gh-security-toolkit/config.yaml
+version: "1"
+
+organization:
+  display_name: "My Company"
+  logo_url: "https://example.com/logo.svg"
+
+repository:
+  display_name: "My Application"
+
+scanning:
+  trivy:
+    severity: "MEDIUM,HIGH,CRITICAL"
+  semgrep:
+    configs:
+      - "p/owasp-top-ten"
+      - "p/java"
+
+publishing:
+  retention_keep: 20
+```
+
+**Step 2: Add workflow**:
+
 ```yaml
 name: Build and Scan
 on: [push]
@@ -86,11 +113,12 @@ jobs:
           docker build -t myapp:${{ github.sha }} .
 
       # Run security scan - everything in the same job!
+      # Config from .gh-security-toolkit/config.yaml is automatically loaded
       - name: Security scan
         uses: Avarko/gh-security-toolkit/actions/security-scan@reactui
         with:
           channel: nightly-master
-          filesystem_path: .                        # Scan the checkout directory
+          filesystem_paths: .                       # Scan the checkout directory
           docker_image_ref: myapp:${{ github.sha }} # Scan the built image
           publish_to: github-pages
 ```
@@ -324,12 +352,51 @@ All scan data is organized using a **GUID-based tenant system** for maximum secu
 
 ## Configuration
 
+### Client configuration file
+
+Create `.gh-security-toolkit/config.yaml` in your repository to customize toolkit behavior and organization branding:
+
+```yaml
+# .gh-security-toolkit/config.yaml
+version: "1"
+
+# Organization branding (displayed in dashboard)
+organization:
+  display_name: "Evolver Oy"
+  logo_url: "https://evolver.fi/logo.svg"
+
+# Repository info (displayed in dashboard)
+repository:
+  display_name: "My Application"
+
+# Scanning defaults (can be overridden by action inputs)
+scanning:
+  trivy:
+    severity: "MEDIUM,HIGH,CRITICAL"
+  semgrep:
+    configs:
+      - "p/owasp-top-ten"
+      - "p/java"
+
+# Publishing defaults
+publishing:
+  retention_keep: 20
+  retention_days: 90
+```
+
+**Configuration priority (highest to lowest):**
+
+1. **Action inputs** - Workflow-specific overrides
+2. **`.gh-security-toolkit/config.yaml`** - Repository-level defaults
+3. **Native tool configs** - `.trivy.yaml`, `.trivyignore`, `.semgrepignore`
+4. **Toolkit defaults** - Built-in default values
+
 ### Security scan action inputs
 
 | Input | Description | Default |
 |-------|-------------|---------|
 | `channel` | Channel name for organizing scans | *Required* |
-| `filesystem_path` | Path to filesystem to scan | `""` |
+| `filesystem_paths` | Newline-separated list of paths to scan | `""` |
 | `docker_image_ref` | Docker image reference (name:tag) to scan | `""` |
 | `publish_to` | Where to publish: `github-release`, `github-pages`, or both | `github-pages` |
 | `retention_days` | Days to retain results | `30` |
@@ -337,6 +404,9 @@ All scan data is organized using a **GUID-based tenant system** for maximum secu
 | `trivy_severity` | Minimum severity to report | `MEDIUM,HIGH,CRITICAL` |
 | `trivy_config` | Path to `.trivy.yaml` config | `""` |
 | `semgrep_configs` | Semgrep rule configurations | `p/owasp-top-ten,...` |
+| `org_display_name` | Organization display name (overrides config.yaml) | `""` |
+| `org_logo_url` | Organization logo URL (overrides config.yaml) | `""` |
+| `repo_display_name` | Repository display name (overrides config.yaml) | `""` |
 
 ### Permissions required
 

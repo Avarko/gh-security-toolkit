@@ -53,8 +53,20 @@ public final class ConfigParser {
         /** Type of data: "security-scan" (default), "test-report", etc. */
         public String type;
 
+        // Organization/tenant display metadata (from client config)
+        public String orgDisplayName;
+        public String orgLogoUrl;
+        public String repoDisplayName;
+
         public boolean isSecurityScan() {
             return type == null || type.isEmpty() || "security-scan".equals(type);
+        }
+
+        /** Returns true if any organization display metadata is provided */
+        public boolean hasOrgMetadata() {
+            return (orgDisplayName != null && !orgDisplayName.isEmpty())
+                || (orgLogoUrl != null && !orgLogoUrl.isEmpty())
+                || (repoDisplayName != null && !repoDisplayName.isEmpty());
         }
     }
 

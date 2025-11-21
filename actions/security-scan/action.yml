@@ -11,6 +11,23 @@ description: |
   - Handle concurrency if needed
 
 inputs:
+  # === CLIENT CONFIG (optional, from .gh-security-toolkit/config.yaml) ===
+  # These inputs are typically read from the client's config file, but can be overridden per-workflow
+  org_display_name:
+    description: "Organization display name for dashboard (overrides config.yaml)"
+    required: false
+    default: ""
+
+  org_logo_url:
+    description: "Organization logo URL for dashboard (overrides config.yaml)"
+    required: false
+    default: ""
+
+  repo_display_name:
+    description: "Repository display name for dashboard (overrides config.yaml)"
+    required: false
+    default: ""
+
   # === SCAN TARGETS ===
   filesystem_paths:
     description: |
@@ -153,6 +170,89 @@ runs:
 
         echo "Channel name is valid: '$CHANNEL'"
 
+    - name: Read client config file
+      id: config
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        CONFIG_FILE=".gh-security-toolkit/config.yaml"
+
+        # Initialize outputs with action inputs (highest priority)
+        ORG_DISPLAY_NAME="${{ inputs.org_display_name }}"
+        ORG_LOGO_URL="${{ inputs.org_logo_url }}"
+        REPO_DISPLAY_NAME="${{ inputs.repo_display_name }}"
+        TRIVY_SEVERITY="${{ inputs.trivy_severity }}"
+        SEMGREP_CONFIGS="${{ inputs.semgrep_configs }}"
+        RETENTION_KEEP="${{ inputs.retention_keep }}"
+        RETENTION_DAYS="${{ inputs.retention_days }}"
+
+        # Check for config file
+        if [ -f "$CONFIG_FILE" ]; then
+          echo "📋 Found client config: $CONFIG_FILE"
+
+          # Install yq if needed (Alpine-safe)
+          if ! command -v yq &> /dev/null; then
+            echo "   Installing yq..."
+            wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            chmod +x /usr/local/bin/yq
+          fi
+
+          # Read values from config (only if action input is empty)
+          if [ -z "$ORG_DISPLAY_NAME" ]; then
+            ORG_DISPLAY_NAME=$(yq -r '.organization.display_name // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+          fi
+          if [ -z "$ORG_LOGO_URL" ]; then
+            ORG_LOGO_URL=$(yq -r '.organization.logo_url // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+          fi
+          if [ -z "$REPO_DISPLAY_NAME" ]; then
+            REPO_DISPLAY_NAME=$(yq -r '.repository.display_name // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+          fi
+
+          # Scanning defaults (action inputs take priority)
+          if [ "$TRIVY_SEVERITY" = "MEDIUM,HIGH,CRITICAL" ]; then
+            CONFIG_TRIVY_SEVERITY=$(yq -r '.scanning.trivy.severity // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+            [ -n "$CONFIG_TRIVY_SEVERITY" ] && TRIVY_SEVERITY="$CONFIG_TRIVY_SEVERITY"
+          fi
+          if [ "$SEMGREP_CONFIGS" = "p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets" ]; then
+            CONFIG_SEMGREP=$(yq -r '.scanning.semgrep.configs | join(",") // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+            [ -n "$CONFIG_SEMGREP" ] && SEMGREP_CONFIGS="$CONFIG_SEMGREP"
+          fi
+
+          # Publishing defaults
+          if [ "$RETENTION_KEEP" = "10" ]; then
+            CONFIG_RETENTION_KEEP=$(yq -r '.publishing.retention_keep // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+            [ -n "$CONFIG_RETENTION_KEEP" ] && RETENTION_KEEP="$CONFIG_RETENTION_KEEP"
+          fi
+          if [ "$RETENTION_DAYS" = "30" ]; then
+            CONFIG_RETENTION_DAYS=$(yq -r '.publishing.retention_days // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+            [ -n "$CONFIG_RETENTION_DAYS" ] && RETENTION_DAYS="$CONFIG_RETENTION_DAYS"
+          fi
+
+          echo "   ✅ Config loaded"
+        else
+          echo "ℹ️  No client config file found at $CONFIG_FILE (using defaults)"
+        fi
+
+        # Output resolved values
+        echo "org_display_name=$ORG_DISPLAY_NAME" >> "$GITHUB_OUTPUT"
+        echo "org_logo_url=$ORG_LOGO_URL" >> "$GITHUB_OUTPUT"
+        echo "repo_display_name=$REPO_DISPLAY_NAME" >> "$GITHUB_OUTPUT"
+        echo "trivy_severity=$TRIVY_SEVERITY" >> "$GITHUB_OUTPUT"
+        echo "semgrep_configs=$SEMGREP_CONFIGS" >> "$GITHUB_OUTPUT"
+        echo "retention_keep=$RETENTION_KEEP" >> "$GITHUB_OUTPUT"
+        echo "retention_days=$RETENTION_DAYS" >> "$GITHUB_OUTPUT"
+
+        echo ""
+        echo "📊 Resolved configuration:"
+        echo "   Organization: ${ORG_DISPLAY_NAME:-<not set>}"
+        echo "   Logo URL: ${ORG_LOGO_URL:-<not set>}"
+        echo "   Repository: ${REPO_DISPLAY_NAME:-<not set>}"
+        echo "   Trivy severity: $TRIVY_SEVERITY"
+        echo "   Semgrep configs: $SEMGREP_CONFIGS"
+        echo "   Retention keep: $RETENTION_KEEP"
+        echo "   Retention days: $RETENTION_DAYS"
+
     - name: Create scan context metadata
       shell: bash
       run: |
@@ -166,7 +266,10 @@ runs:
           "scanId": "${GITHUB_RUN_ID:-}",
           "ciJobName": "${GITHUB_WORKFLOW:-}",
           "ciJobUrl": "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}",
-          "actorName": "${GITHUB_ACTOR:-}"
+          "actorName": "${GITHUB_ACTOR:-}",
+          "orgDisplayName": "${{ steps.config.outputs.org_display_name }}",
+          "orgLogoUrl": "${{ steps.config.outputs.org_logo_url }}",
+          "repoDisplayName": "${{ steps.config.outputs.repo_display_name }}"
         }
         EOF
         echo "Created scan-context.json:"
@@ -215,7 +318,7 @@ runs:
           # Security: reject path traversal attempts
           if [[ "$path" =~ \.\. ]]; then
             echo "❌ REJECTED (path traversal not allowed): '$path'"
-            INVALID_COUNT=$(  (INVALID_COUNT + 1))
+            INVALID_COUNT=$((INVALID_COUNT + 1))
             INVALID_PATHS="${INVALID_PATHS}\n  - $path (path traversal)"
             continue
           fi
@@ -308,7 +411,7 @@ runs:
         filesystem_path: ${{ steps.fsroot.outputs.scan_root || '' }}
         docker_image_ref: ${{ inputs.docker_image_ref }}
         trivy_config: ${{ inputs.trivy_config }}
-        trivy_severity: ${{ inputs.trivy_severity }}
+        trivy_severity: ${{ steps.config.outputs.trivy_severity }}
         trivy_output_dir: ${{ steps.setup.outputs.output_dir }}
 
     # === RUN SEMGREP SCAN ===
@@ -319,7 +422,7 @@ runs:
       with:
         filesystem_path: ${{ steps.fsroot.outputs.scan_root }}
         semgrep_output_dir: ${{ steps.setup.outputs.output_dir }}
-        semgrep_configs: ${{ inputs.semgrep_configs }}
+        semgrep_configs: ${{ steps.config.outputs.semgrep_configs }}
 
     # === SUMMARIZE RESULTS ===
     - name: Summarizer
@@ -350,8 +453,8 @@ runs:
         prerelease: "true"
         overwrite_tag: "false"
         channel: "security-scan-${{ inputs.channel }}"
-        retention_keep: ${{ inputs.retention_keep }}
-        retention_days: ${{ inputs.retention_days }}
+        retention_keep: ${{ steps.config.outputs.retention_keep }}
+        retention_days: ${{ steps.config.outputs.retention_days }}
         github_token: ${{ inputs.github_token }}
 
     # === PUBLISH TO GITHUB PAGES ===
