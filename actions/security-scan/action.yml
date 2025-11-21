@@ -173,105 +173,47 @@ runs:
     - name: Read client config file
       id: config
       shell: bash
+      env:
+        INPUT_ORG_DISPLAY_NAME: ${{ inputs.org_display_name }}
+        INPUT_ORG_LOGO_URL: ${{ inputs.org_logo_url }}
+        INPUT_REPO_DISPLAY_NAME: ${{ inputs.repo_display_name }}
+        INPUT_TRIVY_SEVERITY: ${{ inputs.trivy_severity }}
+        INPUT_SEMGREP_CONFIGS: ${{ inputs.semgrep_configs }}
+        INPUT_RETENTION_KEEP: ${{ inputs.retention_keep }}
+        INPUT_RETENTION_DAYS: ${{ inputs.retention_days }}
       run: |
-        set -euo pipefail
-
-        CONFIG_FILE=".gh-security-toolkit/config.yaml"
-
-        # Initialize outputs with action inputs (highest priority)
-        ORG_DISPLAY_NAME="${{ inputs.org_display_name }}"
-        ORG_LOGO_URL="${{ inputs.org_logo_url }}"
-        REPO_DISPLAY_NAME="${{ inputs.repo_display_name }}"
-        TRIVY_SEVERITY="${{ inputs.trivy_severity }}"
-        SEMGREP_CONFIGS="${{ inputs.semgrep_configs }}"
-        RETENTION_KEEP="${{ inputs.retention_keep }}"
-        RETENTION_DAYS="${{ inputs.retention_days }}"
-
-        # Check for config file
-        if [ -f "$CONFIG_FILE" ]; then
-          echo "📋 Found client config: $CONFIG_FILE"
-
-          # Install yq if needed (Alpine-safe)
-          if ! command -v yq &> /dev/null; then
-            echo "   Installing yq..."
-            wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-            chmod +x /usr/local/bin/yq
-          fi
-
-          # Read values from config (only if action input is empty)
-          if [ -z "$ORG_DISPLAY_NAME" ]; then
-            ORG_DISPLAY_NAME=$(yq -r '.organization.display_name // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
-          fi
-          if [ -z "$ORG_LOGO_URL" ]; then
-            ORG_LOGO_URL=$(yq -r '.organization.logo_url // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
-          fi
-          if [ -z "$REPO_DISPLAY_NAME" ]; then
-            REPO_DISPLAY_NAME=$(yq -r '.repository.display_name // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
-          fi
-
-          # Scanning defaults (action inputs take priority)
-          if [ "$TRIVY_SEVERITY" = "MEDIUM,HIGH,CRITICAL" ]; then
-            CONFIG_TRIVY_SEVERITY=$(yq -r '.scanning.trivy.severity // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
-            [ -n "$CONFIG_TRIVY_SEVERITY" ] && TRIVY_SEVERITY="$CONFIG_TRIVY_SEVERITY"
-          fi
-          if [ "$SEMGREP_CONFIGS" = "p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets" ]; then
-            CONFIG_SEMGREP=$(yq -r '.scanning.semgrep.configs | join(",") // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
-            [ -n "$CONFIG_SEMGREP" ] && SEMGREP_CONFIGS="$CONFIG_SEMGREP"
-          fi
-
-          # Publishing defaults
-          if [ "$RETENTION_KEEP" = "10" ]; then
-            CONFIG_RETENTION_KEEP=$(yq -r '.publishing.retention_keep // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
-            [ -n "$CONFIG_RETENTION_KEEP" ] && RETENTION_KEEP="$CONFIG_RETENTION_KEEP"
-          fi
-          if [ "$RETENTION_DAYS" = "30" ]; then
-            CONFIG_RETENTION_DAYS=$(yq -r '.publishing.retention_days // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
-            [ -n "$CONFIG_RETENTION_DAYS" ] && RETENTION_DAYS="$CONFIG_RETENTION_DAYS"
-          fi
-
-          echo "   ✅ Config loaded"
-        else
-          echo "ℹ️  No client config file found at $CONFIG_FILE (using defaults)"
-        fi
-
-        # Output resolved values
-        echo "org_display_name=$ORG_DISPLAY_NAME" >> "$GITHUB_OUTPUT"
-        echo "org_logo_url=$ORG_LOGO_URL" >> "$GITHUB_OUTPUT"
-        echo "repo_display_name=$REPO_DISPLAY_NAME" >> "$GITHUB_OUTPUT"
-        echo "trivy_severity=$TRIVY_SEVERITY" >> "$GITHUB_OUTPUT"
-        echo "semgrep_configs=$SEMGREP_CONFIGS" >> "$GITHUB_OUTPUT"
-        echo "retention_keep=$RETENTION_KEEP" >> "$GITHUB_OUTPUT"
-        echo "retention_days=$RETENTION_DAYS" >> "$GITHUB_OUTPUT"
-
-        echo ""
-        echo "📊 Resolved configuration:"
-        echo "   Organization: ${ORG_DISPLAY_NAME:-<not set>}"
-        echo "   Logo URL: ${ORG_LOGO_URL:-<not set>}"
-        echo "   Repository: ${REPO_DISPLAY_NAME:-<not set>}"
-        echo "   Trivy severity: $TRIVY_SEVERITY"
-        echo "   Semgrep configs: $SEMGREP_CONFIGS"
-        echo "   Retention keep: $RETENTION_KEEP"
-        echo "   Retention days: $RETENTION_DAYS"
+        ${{ github.action_path }}/scripts/read-client-config.sh "$GITHUB_OUTPUT"
 
     - name: Create scan context metadata
       shell: bash
       run: |
-        cat > "${{ steps.setup.outputs.output_dir }}/scan-context.json" << EOF
-        {
-          "channel": "${{ inputs.channel }}",
-          "timestamp": "$(date -u +'%Y-%m-%d-%H%M%SZ')",
-          "branch": "${GITHUB_REF_NAME:-}",
-          "repository": "${GITHUB_REPOSITORY:-}",
-          "commitSha": "${GITHUB_SHA:-}",
-          "scanId": "${GITHUB_RUN_ID:-}",
-          "ciJobName": "${GITHUB_WORKFLOW:-}",
-          "ciJobUrl": "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}",
-          "actorName": "${GITHUB_ACTOR:-}",
-          "orgDisplayName": "${{ steps.config.outputs.org_display_name }}",
-          "orgLogoUrl": "${{ steps.config.outputs.org_logo_url }}",
-          "repoDisplayName": "${{ steps.config.outputs.repo_display_name }}"
-        }
-        EOF
+        jq -n \
+          --arg channel "${{ inputs.channel }}" \
+          --arg timestamp "$(date -u +'%Y-%m-%d-%H%M%SZ')" \
+          --arg branch "${GITHUB_REF_NAME:-}" \
+          --arg repository "${GITHUB_REPOSITORY:-}" \
+          --arg commitSha "${GITHUB_SHA:-}" \
+          --arg scanId "${GITHUB_RUN_ID:-}" \
+          --arg ciJobName "${GITHUB_WORKFLOW:-}" \
+          --arg ciJobUrl "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+          --arg actorName "${GITHUB_ACTOR:-}" \
+          --arg orgDisplayName "${{ steps.config.outputs.org_display_name }}" \
+          --arg orgLogoUrl "${{ steps.config.outputs.org_logo_url }}" \
+          --arg repoDisplayName "${{ steps.config.outputs.repo_display_name }}" \
+          '{
+            channel: $channel,
+            timestamp: $timestamp,
+            branch: $branch,
+            repository: $repository,
+            commitSha: $commitSha,
+            scanId: $scanId,
+            ciJobName: $ciJobName,
+            ciJobUrl: $ciJobUrl,
+            actorName: $actorName,
+            orgDisplayName: $orgDisplayName,
+            orgLogoUrl: $orgLogoUrl,
+            repoDisplayName: $repoDisplayName
+          }' > "${{ steps.setup.outputs.output_dir }}/scan-context.json"
         echo "Created scan-context.json:"
         cat "${{ steps.setup.outputs.output_dir }}/scan-context.json"
 
@@ -280,128 +222,12 @@ runs:
       id: fsroot
       if: ${{ inputs.filesystem_paths != '' }}
       shell: bash
+      env:
+        FILESYSTEM_PATHS: ${{ inputs.filesystem_paths }}
       run: |
-        set -euo pipefail
-
-        ROOT="${RUNNER_TEMP}/trivy-fs-root-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-        mkdir -p "$ROOT"
-
-        PATHS="${{ inputs.filesystem_paths }}"
-
-        echo "📁 Building filesystem scan root at: $ROOT"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-        # Count for summary
-        VALID_COUNT=0
-        INVALID_COUNT=0
-        INVALID_PATHS=""
-
-        # Process newline-separated paths
-        while IFS= read -r path || [ -n "$path" ]; do
-          # Skip empty lines and comments
-          [ -z "$path" ] && continue
-          [[ "$path" =~ ^[[:space:]]*# ]] && continue
-
-          # Trim whitespace
-          path="${path#"${path%%[![:space:]]*}"}"   # trim left
-          path="${path%"${path##*[![:space:]]}"}"   # trim right
-          [ -z "$path" ] && continue
-
-          # Security: reject absolute paths (must be relative to workspace)
-          if [[ "$path" = /* ]]; then
-            echo "❌ REJECTED (absolute path not allowed): '$path'"
-            INVALID_COUNT=$((INVALID_COUNT + 1))
-            INVALID_PATHS="${INVALID_PATHS}\n  - $path (absolute path)"
-            continue
-          fi
-
-          # Security: reject path traversal attempts
-          if [[ "$path" =~ \.\. ]]; then
-            echo "❌ REJECTED (path traversal not allowed): '$path'"
-            INVALID_COUNT=$((INVALID_COUNT + 1))
-            INVALID_PATHS="${INVALID_PATHS}\n  - $path (path traversal)"
-            continue
-          fi
-
-          # Security: reject paths with shell metacharacters
-          if [[ "$path" =~ [\;\|\&\$\`\(\)\{\}\[\]\<\>\!\*\?] ]]; then
-            echo "❌ REJECTED (invalid characters): '$path'"
-            INVALID_COUNT=$((INVALID_COUNT + 1))
-            INVALID_PATHS="${INVALID_PATHS}\n  - $path (invalid characters)"
-            continue
-          fi
-
-          # Validate: check path exists
-          if [ ! -e "$path" ]; then
-            echo "❌ REJECTED (path not found): '$path'"
-            INVALID_COUNT=$((INVALID_COUNT + 1))
-            INVALID_PATHS="${INVALID_PATHS}\n  - $path (not found)"
-            continue
-          fi
-
-          # Copy with rsync preserving relative path structure
-          echo "✅ Adding: '$path'"
-          rsync -a --relative "$path" "$ROOT/"
-          VALID_COUNT=$((VALID_COUNT + 1))
-        done <<< "$PATHS"
-
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "📊 Summary: $VALID_COUNT valid paths, $INVALID_COUNT rejected"
-
-        # Fail fast if any paths were invalid
-        if [ "$INVALID_COUNT" -gt 0 ]; then
-          echo ""
-          echo "❌ ERROR: $INVALID_COUNT path(s) failed validation:${INVALID_PATHS}"
-          echo ""
-          echo "Please fix the filesystem_paths input and retry."
-          exit 1
-        fi
-
-        # Fail if no valid paths were found
-        if [ "$VALID_COUNT" -eq 0 ]; then
-          echo ""
-          echo "❌ ERROR: No valid paths found in filesystem_paths input."
-          echo "   Provided input was:"
-          echo "$PATHS" | head -20
-          exit 1
-        fi
-
-        # Show what was copied
-        echo ""
-        echo "📦 File type summary:"
-        FILE_LIST="$ROOT/.filelist"
-        if ! find "$ROOT" -type f > "$FILE_LIST"; then
-          echo "  (find failed, skipping summary)"
-        else
-          if [ ! -s "$FILE_LIST" ]; then
-            echo "  (no files found)"
-          else
-            declare -A ext_counts=()
-            while IFS= read -r f; do
-              filename=${f##*/}        # basename
-              ext=${filename##*.}
-
-              if [ "$filename" = "$ext" ]; then
-                ext="(none)"
-              fi
-              if [[ -v "ext_counts[$ext]" ]]; then
-                ext_counts["$ext"]=$(( ext_counts["$ext"] + 1 ))
-              else
-                ext_counts["$ext"]=1
-              fi
-            done < "$FILE_LIST"
-            total=0
-            for ext in "${!ext_counts[@]}"; do
-              count=${ext_counts[$ext]}
-              printf "  %-10s %6d files\n" "$ext" "$count"
-              total=$(( total + count ))
-            done
-            echo "  --------------------------"
-            echo "  Total files: $total"
-          fi
-        fi
-        echo "scan_root=$ROOT" >> "$GITHUB_OUTPUT"
-        echo "has_fs_scan=true" >> "$GITHUB_OUTPUT"
+        ${{ github.action_path }}/scripts/build-fsroot.sh \
+          "${RUNNER_TEMP}/trivy-fs-root-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+          "$GITHUB_OUTPUT"
 
     # === RUN TRIVY SCANS ===
     - name: Run Trivy scans
