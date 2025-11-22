@@ -8,19 +8,44 @@ import { existsSync, symlinkSync, unlinkSync, readFileSync } from "node:fs";
 /**
  * Dashboard configuration with build-time tenant mode.
  *
- * Single-tenant (default): TENANT_MODE unset or "single-tenant"
- * Multi-tenant: TENANT_MODE="multi-tenant" + MULTI_TENANT_CONFIG_PATH
+ * Data sources:
+ * - VITE_DATA_SOURCE=localstack: Use LocalStack S3 buckets (development)
+ * - VITE_DATA_SOURCE unset: Use symlinked test-fixtures (default dev mode)
+ *
+ * Tenant modes:
+ * - Single-tenant (default): TENANT_MODE unset or "single-tenant"
+ * - Multi-tenant: TENANT_MODE="multi-tenant" + MULTI_TENANT_CONFIG_PATH
  */
 
 type TenantMode = "single-tenant" | "multi-tenant";
+type DataSource = "symlink" | "localstack";
 
 function getTenantMode(): TenantMode {
     const mode = process.env.TENANT_MODE;
     if (mode === "multi-tenant") return "multi-tenant";
+    // LocalStack mode implies multi-tenant
+    if (process.env.VITE_DATA_SOURCE === "localstack") return "multi-tenant";
     return "single-tenant";
 }
 
+function getDataSource(): DataSource {
+    return process.env.VITE_DATA_SOURCE === "localstack" ? "localstack" : "symlink";
+}
+
 function loadMultiTenantConfig(): object | null {
+    // For LocalStack mode, use localstack-config/tenant-registry.json
+    if (process.env.VITE_DATA_SOURCE === "localstack") {
+        const localstackConfig = resolve(dirname(fileURLToPath(import.meta.url)), "localstack-config/tenant-registry.json");
+        if (existsSync(localstackConfig)) {
+            try {
+                const content = readFileSync(localstackConfig, "utf-8");
+                return JSON.parse(content);
+            } catch (error) {
+                console.error(`Failed to load LocalStack config: ${error}`);
+            }
+        }
+    }
+
     const configPath = process.env.MULTI_TENANT_CONFIG_PATH;
     if (!configPath) return null;
     try {
@@ -53,6 +78,11 @@ function devTestDataPlugin() {
     return {
         name: "dev-test-data",
         configureServer() {
+            // Skip symlinks in LocalStack mode - data comes from S3
+            if (process.env.VITE_DATA_SOURCE === "localstack") {
+                console.log("Dev mode: Using LocalStack S3 for data (no symlinks)");
+                return;
+            }
             createSymlink(
                 resolve(__dirname, "test-fixtures/data"),
                 resolve(__dirname, "public/data"),
@@ -69,9 +99,10 @@ function devTestDataPlugin() {
 
 export default defineConfig(({ command }) => {
     const tenantMode = getTenantMode();
+    const dataSource = getDataSource();
     const multiTenantConfig = tenantMode === "multi-tenant" ? loadMultiTenantConfig() : null;
 
-    console.log(`Building with TENANT_MODE=${tenantMode}`);
+    console.log(`Building with TENANT_MODE=${tenantMode}, DATA_SOURCE=${dataSource}`);
     if (multiTenantConfig) {
         const tenants = (multiTenantConfig as { tenants?: unknown[] }).tenants;
         console.log(`Multi-tenant config: ${tenants?.length ?? 0} tenant(s)`);
@@ -118,6 +149,7 @@ export default defineConfig(({ command }) => {
             // Build-time tenant mode constants
             __TENANT_MODE__: JSON.stringify(tenantMode),
             __MULTI_TENANT_CONFIG__: JSON.stringify(multiTenantConfig),
+            __DATA_SOURCE__: JSON.stringify(dataSource),
         },
     };
 });

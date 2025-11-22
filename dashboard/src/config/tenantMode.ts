@@ -9,6 +9,16 @@
  */
 
 export type TenantMode = "single-tenant" | "multi-tenant";
+export type DataSource = "symlink" | "localstack";
+
+/**
+ * Repository entry within a tenant (for multi-repo organizations).
+ */
+export type RepositoryEntry = {
+    id: string;              // Repository identifier (e.g., "frontend", "backend")
+    display_name: string;    // UI display name
+    data_base_url: string;   // Base URL for this repository's data
+};
 
 /**
  * Multi-tenant configuration entry (admin-managed).
@@ -34,6 +44,12 @@ export type MultiTenantEntry = {
      */
     data_base_url?: string;
 
+    /**
+     * Multiple repositories for this tenant (optional).
+     * When specified, data_base_url from repository is used instead of tenant's.
+     */
+    repositories?: RepositoryEntry[];
+
     org_display_name?: string;
     logo_url?: string;
 };
@@ -45,6 +61,7 @@ export type MultiTenantConfig = {
 // Build-time injected values (see vite.config.ts)
 declare const __TENANT_MODE__: TenantMode;
 declare const __MULTI_TENANT_CONFIG__: MultiTenantConfig | null;
+declare const __DATA_SOURCE__: DataSource;
 
 /** Current tenant mode (build-time constant) */
 export const TENANT_MODE: TenantMode = typeof __TENANT_MODE__ !== "undefined"
@@ -57,12 +74,21 @@ export const MULTI_TENANT_CONFIG: MultiTenantConfig | null =
         ? __MULTI_TENANT_CONFIG__
         : null;
 
+/** Current data source (build-time constant) */
+export const DATA_SOURCE: DataSource = typeof __DATA_SOURCE__ !== "undefined"
+    ? __DATA_SOURCE__
+    : "symlink";
+
 export function isSingleTenant(): boolean {
     return TENANT_MODE === "single-tenant";
 }
 
 export function isMultiTenant(): boolean {
     return TENANT_MODE === "multi-tenant";
+}
+
+export function isLocalStack(): boolean {
+    return DATA_SOURCE === "localstack";
 }
 
 /**
@@ -90,25 +116,6 @@ export function getDataRootForTenant(tenant?: MultiTenantEntry): string {
 }
 
 /**
- * Get data root path (legacy compatibility).
- * @deprecated Use getDataRootForTenant(tenant) instead for full isolation support
- */
-export function getDataRoot(tenantId?: string): string {
-    if (isSingleTenant()) {
-        return "/data";
-    }
-    if (!tenantId) {
-        throw new Error("tenantId required in multi-tenant mode");
-    }
-    // Find tenant and use their data_base_url if available
-    const tenant = MULTI_TENANT_CONFIG?.tenants.find(t => t.id === tenantId);
-    if (tenant?.data_base_url) {
-        return tenant.data_base_url;
-    }
-    return `/data/${tenantId}`;
-}
-
-/**
  * Find tenant by URL path (multi-tenant mode only).
  */
 export function findTenantByUrlPath(urlPath: string): MultiTenantEntry | undefined {
@@ -121,4 +128,23 @@ export function findTenantByUrlPath(urlPath: string): MultiTenantEntry | undefin
  */
 export function getAllTenants(): MultiTenantEntry[] {
     return MULTI_TENANT_CONFIG?.tenants ?? [];
+}
+
+/**
+ * Find repository within a tenant.
+ */
+export function findRepository(tenant: MultiTenantEntry, repoId: string): RepositoryEntry | undefined {
+    return tenant.repositories?.find(r => r.id === repoId);
+}
+
+/**
+ * Get data root for a specific repository within a tenant.
+ */
+export function getDataRootForRepository(tenant: MultiTenantEntry, repoId: string): string {
+    const repo = findRepository(tenant, repoId);
+    if (repo) {
+        return repo.data_base_url;
+    }
+    // Fall back to tenant's data_base_url if no repository-specific URL
+    return getDataRootForTenant(tenant);
 }
