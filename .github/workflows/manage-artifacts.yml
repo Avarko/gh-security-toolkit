@@ -1,0 +1,341 @@
+name: Manage Artifacts
+
+on:
+  workflow_call:
+    inputs:
+      operation:
+        description: 'Operation to perform'
+        required: true
+        type: string
+      artifact_id:
+        description: 'Artifact ID (required for GET/DELETE operations)'
+        required: false
+        type: string
+      file_pattern:
+        description: 'Regex pattern to match files for content preview (GET) or type "approve" to confirm deletion (DELETE)'
+        required: false
+        type: string
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Operation to perform'
+        required: true
+        type: choice
+        options:
+          - LIST
+          - GET
+          - DELETE
+        default: 'LIST'
+      artifact_id:
+        description: 'Artifact ID (required for GET/DELETE operations)'
+        required: false
+        type: string
+      file_pattern:
+        description: 'Regex pattern to match files for content preview (GET) or type "approve" to confirm deletion (DELETE)'
+        required: false
+        type: string
+
+jobs:
+  manage-artifacts:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Validate inputs
+        id: validate
+        run: |
+          OPERATION="${{ inputs.operation }}"
+          ARTIFACT_ID="${{ inputs.artifact_id }}"
+          FILE_PATTERN="${{ inputs.file_pattern }}"
+
+          echo "Operation: $OPERATION"
+          echo "Artifact ID(s): $ARTIFACT_ID"
+          echo "File Pattern: $FILE_PATTERN"
+
+          if [[ "$OPERATION" == "GET" || "$OPERATION" == "DELETE" ]]; then
+            if [[ -z "$ARTIFACT_ID" ]]; then
+              echo "::error::Artifact ID is required for $OPERATION operation"
+              exit 1
+            fi
+            echo "artifact_id=$ARTIFACT_ID" >> $GITHUB_OUTPUT
+          fi
+
+          if [[ "$OPERATION" == "DELETE" ]]; then
+            if [[ "$FILE_PATTERN" != "approve" ]]; then
+              echo "::error::For DELETE operation, you must type 'approve' in the file_pattern field to confirm deletion"
+              exit 1
+            fi
+          fi
+
+          echo "operation=$OPERATION" >> $GITHUB_OUTPUT
+
+      - name: List all artifacts
+        if: inputs.operation == 'LIST'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "📦 Listing all artifacts in ${{ github.repository }}..."
+          echo ""
+
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/actions/artifacts \
+            --jq '.artifacts[] | "ID: \(.id) | Name: \(.name) | Size: \(.size_in_bytes) bytes | Created: \(.created_at) | Expires: \(.expires_at)"'
+
+          echo ""
+          echo "---"
+          echo "Full JSON response:"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/actions/artifacts
+
+      - name: Get artifact details
+        if: inputs.operation == 'GET'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "🔍 Getting details for artifact ID: ${{ steps.validate.outputs.artifact_id }}"
+          echo ""
+
+          # Get artifact metadata
+          echo "📋 Artifact Metadata:"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/actions/artifacts/${{ steps.validate.outputs.artifact_id }} \
+            --jq '{id: .id, name: .name, size_in_bytes: .size_in_bytes, created_at: .created_at, expires_at: .expires_at, workflow_run: .workflow_run.id}'
+
+          echo ""
+          echo "📦 Downloading and inspecting artifact contents..."
+
+          # Download artifact
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{ github.repository }}/actions/artifacts/${{ steps.validate.outputs.artifact_id }}/zip > artifact.zip
+
+          # Check if download was successful
+          if [ -f artifact.zip ] && [ -s artifact.zip ]; then
+            # Get zip file size in bytes
+            ZIP_SIZE=$(stat -c%s artifact.zip 2>/dev/null || stat -f%z artifact.zip 2>/dev/null)
+            ZIP_SIZE_MB=$((ZIP_SIZE / 1024 / 1024))
+
+            echo ""
+            echo "📂 Artifact Contents (Size: ${ZIP_SIZE_MB}MB):"
+            echo ""
+
+            # List zip contents with details
+            unzip -l artifact.zip
+
+            echo ""
+            echo "🌲 File tree structure:"
+            unzip -q artifact.zip -d artifact_contents/
+            tree -h -L 5 artifact_contents/ || find artifact_contents/ -type f -exec ls -lh {} \; | awk '{print $9, "("$5")"}'
+
+            # Check if zip is smaller than 30MB and contains only a tar, tar.gz, or a zip file
+            if [ $ZIP_SIZE_MB -lt 30 ]; then
+              TAR_COUNT=$(find artifact_contents/ -type f -name "*.tar" | wc -l)
+              TAR_GZ_COUNT=$(find artifact_contents/ -type f -name "*.tar.gz" | wc -l)
+              ZIP_COUNT=$(find artifact_contents/ -type f -name "*.zip" | wc -l)
+              TOTAL_FILES=$(find artifact_contents/ -type f | wc -l)
+
+              EXTRACT_DIR=""
+
+              # Check if there's only one file and it's either a tar, tar.gz, or zip
+              if [ $TOTAL_FILES -eq 1 ]; then
+                if [ $TAR_GZ_COUNT -eq 1 ]; then
+                  TAR_GZ_FILE=$(find artifact_contents/ -type f -name "*.tar.gz" | head -n 1)
+                  TAR_GZ_SIZE=$(stat -c%s "$TAR_GZ_FILE" 2>/dev/null || stat -f%z "$TAR_GZ_FILE" 2>/dev/null)
+                  TAR_GZ_SIZE_MB=$((TAR_GZ_SIZE / 1024 / 1024))
+
+                  if [ $TAR_GZ_SIZE_MB -lt 30 ]; then
+                    echo ""
+                    echo "🗜️  Found tar.gz archive inside zip (${TAR_GZ_SIZE_MB}MB), extracting contents..."
+                    echo ""
+                    echo "📦 TAR.GZ Archive Contents:"
+                    tar -tzf "$TAR_GZ_FILE" | head -n 100
+
+                    echo ""
+                    echo "🌲 TAR.GZ File tree structure:"
+                    mkdir -p tar_gz_contents/
+                    tar -xzf "$TAR_GZ_FILE" -C tar_gz_contents/
+                    tree -h -L 5 tar_gz_contents/ || find tar_gz_contents/ -type f -exec ls -lh {} \; | awk '{print $9, "("$5")"}'
+                    EXTRACT_DIR="tar_gz_contents"
+                  else
+                    echo ""
+                    echo "ℹ️  tar.gz archive is larger than 30MB, skipping extraction"
+                  fi
+                elif [ $TAR_COUNT -eq 1 ]; then
+                  TAR_FILE=$(find artifact_contents/ -type f -name "*.tar" | head -n 1)
+                  echo ""
+                  echo "🗜️  Found tar archive inside zip, extracting contents..."
+                  echo ""
+                  echo "📦 TAR Archive Contents:"
+                  tar -tvf "$TAR_FILE"
+
+                  echo ""
+                  echo "🌲 TAR File tree structure:"
+                  mkdir -p tar_contents/
+                  tar -xf "$TAR_FILE" -C tar_contents/
+                  tree -h -L 5 tar_contents/ || find tar_contents/ -type f -exec ls -lh {} \; | awk '{print $9, "("$5")"}'
+                  EXTRACT_DIR="tar_contents"
+                elif [ $ZIP_COUNT -eq 1 ]; then
+                  INNER_ZIP=$(find artifact_contents/ -type f -name "*.zip" | head -n 1)
+                  echo ""
+                  echo "🗜️  Found zip archive inside zip, extracting contents..."
+                  echo ""
+                  echo "📦 Inner ZIP Archive Contents:"
+                  unzip -l "$INNER_ZIP"
+
+                  echo ""
+                  echo "🌲 Inner ZIP File tree structure:"
+                  mkdir -p zip_contents/
+                  unzip -q "$INNER_ZIP" -d zip_contents/
+                  tree -h -L 5 zip_contents/ || find zip_contents/ -type f -exec ls -lh {} \; | awk '{print $9, "("$5")"}'
+                  EXTRACT_DIR="zip_contents"
+                fi
+              fi
+
+              # File pattern matching and preview
+              FILE_PATTERN="${{ inputs.file_pattern }}"
+              if [ -n "$FILE_PATTERN" ]; then
+                echo ""
+                echo "🔍 Searching for files matching pattern: $FILE_PATTERN"
+                echo ""
+
+                # Determine search directory
+                SEARCH_DIR="${EXTRACT_DIR:-artifact_contents}"
+
+                # Find matching files
+                MATCHED_FILES=$(find "$SEARCH_DIR" -type f | grep -E "$FILE_PATTERN" | head -n 5)
+
+                if [ -n "$MATCHED_FILES" ]; then
+                  MATCH_COUNT=$(echo "$MATCHED_FILES" | wc -l)
+                  echo "Found $MATCH_COUNT matching file(s) (showing max 5):"
+                  echo ""
+
+                  echo "$MATCHED_FILES" | while IFS= read -r file; do
+                    if [ -f "$file" ]; then
+                      FILE_SIZE=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
+                      FILE_SIZE_MB=$((FILE_SIZE / 1024 / 1024))
+
+                      # Check if file is smaller than 1MB
+                      if [ $FILE_SIZE_MB -lt 1 ]; then
+                        # Check if file is binary using 'file' command
+                        FILE_TYPE=$(file -b --mime-type "$file")
+                        if [[ "$FILE_TYPE" == text/* ]] || [[ "$FILE_TYPE" == application/json ]] || [[ "$FILE_TYPE" == application/xml ]]; then
+                          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                          echo "📄 File: $file"
+                          echo "   Size: $FILE_SIZE bytes | Type: $FILE_TYPE"
+                          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                          cat "$file"
+                          echo ""
+                          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                          echo ""
+                        else
+                          echo "⏭️  Skipping binary file: $file (Type: $FILE_TYPE)"
+                        fi
+                      else
+                        echo "⏭️  Skipping large file: $file (Size: ${FILE_SIZE_MB}MB)"
+                      fi
+                    fi
+                  done
+                else
+                  echo "No files matching pattern '$FILE_PATTERN' found."
+                fi
+              fi
+
+              # Cleanup extracted directories
+              rm -rf tar_gz_contents/ tar_contents/ zip_contents/
+            else
+              echo ""
+              echo "ℹ️  Artifact is larger than 30MB, skipping nested archive extraction"
+            fi
+
+            # Cleanup
+            rm -rf artifact.zip artifact_contents/
+          else
+            echo "❌ Failed to download artifact"
+            exit 1
+          fi
+
+      - name: Delete artifact(s)
+        if: inputs.operation == 'DELETE'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "🗑️  Deleting artifact(s) matching: ${{ steps.validate.outputs.artifact_id }}"
+          echo "Fetching all artifact IDs from GitHub..."
+          ALL_ARTIFACTS_JSON=$(gh api -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" /repos/${{ github.repository }}/actions/artifacts)
+          ALL_IDS=$(echo "$ALL_ARTIFACTS_JSON" | jq -r '.artifacts[].id')
+
+          # Parse user input for IDs/ranges
+          USER_IDS="${{ steps.validate.outputs.artifact_id }}"
+          TO_DELETE=""
+          IFS=',' read -ra PARTS <<< "$USER_IDS"
+          for PART in "${PARTS[@]}"; do
+            if [[ "$PART" =~ ^[0-9]+-[0-9]+$ ]]; then
+              START=$(echo $PART | cut -d'-' -f1)
+              END=$(echo $PART | cut -d'-' -f2)
+              for ID in $ALL_IDS; do
+                if (( ID >= START && ID <= END )); then
+                  TO_DELETE+="$ID "
+                fi
+              done
+            else
+              for ID in $ALL_IDS; do
+                if [[ "$ID" == "$PART" ]]; then
+                  TO_DELETE+="$ID "
+                fi
+              done
+            fi
+          done
+          TO_DELETE=$(echo $TO_DELETE | xargs -n1 | sort -u | xargs)
+
+          if [[ -z "$TO_DELETE" ]]; then
+            echo "No matching artifact IDs found to delete."
+            exit 0
+          fi
+
+          for ART_ID in $TO_DELETE; do
+            echo "Artifact details before deletion (ID: $ART_ID):"
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              /repos/${{ github.repository }}/actions/artifacts/$ART_ID \
+              --jq '{id: .id, name: .name, size_in_bytes: .size_in_bytes, created_at: .created_at}'
+
+            echo "Deleting artifact $ART_ID..."
+            gh api \
+              --method DELETE \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              /repos/${{ github.repository }}/actions/artifacts/$ART_ID
+
+            if [ $? -eq 0 ]; then
+              echo "✅ Artifact $ART_ID deleted successfully"
+            else
+              echo "❌ Failed to delete artifact $ART_ID"
+              exit 1
+            fi
+            echo "---"
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Artifact Management Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Operation:** ${{ inputs.operation }}" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ inputs.operation }}" != "LIST" ]]; then
+            echo "**Artifact ID:** ${{ inputs.artifact_id }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

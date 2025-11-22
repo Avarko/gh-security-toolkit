@@ -1,0 +1,126 @@
+name: Publish Dashboard Only
+
+on:
+  workflow_call:
+    inputs:
+      channel:
+        description: 'Channel name for the dashboard'
+        type: string
+        required: true
+
+      # Allow using existing scan data or creating minimal placeholder
+      use_existing_scans:
+        description: 'Use existing scan history (true) or create minimal placeholder (false)'
+        type: boolean
+        required: false
+        default: true
+
+      dashboard_mode:
+        description: 'Dashboard mode for GitHub Pages (e.g., "single-tenant")'
+        type: string
+        required: false
+        default: 'single-tenant'
+
+      # Tenant configuration
+      dashboard_org_display_name:
+        description: 'Organization display name (e.g., "VR FleetCare")'
+        type: string
+        required: false
+        default: ''
+
+      dashboard_repo_display_name:
+        description: 'Repository display name (e.g., "FC CIAM Backend")'
+        type: string
+        required: false
+        default: ''
+
+      dashboard_logo_url:
+        description: 'Organization logo URL (absolute path like /assets/logo.png or external URL)'
+        type: string
+        required: false
+        default: ''
+
+jobs:
+  publish-dashboard:
+    name: Publish Dashboard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+      actions: read  # For downloading artifacts
+
+    steps:
+      - name: Checkout client repository
+        uses: actions/checkout@v4
+
+      - name: Setup JBang
+        uses: jbangdev/setup-jbang@main
+
+      - name: Generate timestamp
+        id: ts
+        run: echo "ts=$(date -u +'%Y-%m-%d-%H%M%SZ')" >> "$GITHUB_OUTPUT"
+
+      - name: Create minimal scan data with context
+        id: setup
+        run: |
+          mkdir -p scan-output
+
+          # Create scan-context.json (required by publisher)
+          cat > scan-output/scan-context.json << EOF
+          {
+            "channel": "${{ inputs.channel }}",
+            "timestamp": "${{ steps.ts.outputs.ts }}",
+            "branch": "${GITHUB_REF_NAME:-}",
+            "repository": "${GITHUB_REPOSITORY:-}",
+            "commitSha": "${GITHUB_SHA:-}",
+            "scanId": "${GITHUB_RUN_ID:-}",
+            "ciJobName": "${GITHUB_WORKFLOW:-}",
+            "ciJobUrl": "${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}",
+            "actorName": "${GITHUB_ACTOR:-}"
+          }
+          EOF
+
+          if [ "${{ inputs.use_existing_scans }}" = "true" ]; then
+            echo "ℹ️  Using existing scan history - no new scan data added"
+            # Create empty placeholder files (publisher won't add them to history if empty)
+            echo '{"Results":[]}' > scan-output/trivy-fs-results.json
+            echo '{"results":[]}' > scan-output/semgrep-results.json
+          else
+            echo "ℹ️  Creating minimal placeholder scan"
+            # Create minimal valid scan data
+            cat > scan-output/trivy-fs-results.json << 'EOF'
+          {
+            "SchemaVersion": 2,
+            "ArtifactName": "dashboard-rebuild",
+            "ArtifactType": "filesystem",
+            "Results": []
+          }
+          EOF
+
+            cat > scan-output/semgrep-results.json << 'EOF'
+          {
+            "results": [],
+            "errors": [],
+            "version": "1.0.0"
+          }
+          EOF
+          fi
+
+          echo "output_dir=scan-output" >> "$GITHUB_OUTPUT"
+
+      - name: Publish Dashboard to GitHub Pages
+        id: pages
+        uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@reactui
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          outdir: ${{ steps.setup.outputs.output_dir }}
+          config_overrides: |
+            {
+              "branding": {
+                "displayName": "${{ inputs.dashboard_repo_display_name }}",
+                "orgDisplayName": "${{ inputs.dashboard_org_display_name }}",
+                "logoUrl": "${{ inputs.dashboard_logo_url }}"
+              }
+            }
+

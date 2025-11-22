@@ -1,0 +1,7 @@
+[env]
+MISE_EXPERIMENTAL = "1"
+
+[tools]
+java = "temurin-21"
+node = "24"
+jbang = "latest"

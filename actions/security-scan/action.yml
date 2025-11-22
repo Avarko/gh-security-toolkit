@@ -1,0 +1,202 @@
+name: "Security scan"
+description: |
+  Composite action for running security scans on filesystem and/or Docker images.
+  Unlike the previous reusable workflow, this action runs in the same job as the caller,
+  eliminating the need for artifact uploads/downloads.
+
+  The caller workflow must:
+  - Build the Docker image (if scanning images)
+  - Have the filesystem available (if scanning filesystem)
+  - Set appropriate permissions (contents: write, pages: write, id-token: write, actions: read)
+  - Handle concurrency if needed
+
+inputs:
+  # === CONFIG OVERRIDES (optional) ===
+  config_overrides:
+    description: |
+      Optional YAML string to override values from .gh-security-toolkit/config.yaml.
+      Example:
+        config_overrides: |
+          org_display_name: My Organization
+          trivy_severity: HIGH,CRITICAL
+          retention_keep: 5
+      Supported keys: org_display_name, org_logo_url, repo_display_name,
+                      trivy_config, trivy_severity, semgrep_configs, retention_keep, retention_days
+    required: false
+    default: ""
+
+  # === SCAN TARGETS ===
+  scan_filesystem_paths:
+    description: |
+      Newline-separated list of paths to scan (optional).
+      Each path can be a file or directory. Paths are copied to a temporary
+      scan root preserving directory structure.
+      Example:
+        scan_filesystem_paths: |
+          backend/target/
+          backend/pom.xml
+          frontend/package.json
+          Dockerfile
+    required: false
+    default: ""
+
+  scan_docker_image_ref:
+    description: "Docker image reference (name:tag) to scan (optional). The image must already exist in the local Docker daemon."
+    required: false
+    default: ""
+
+  # === PUBLISHING ===
+  publish_to:
+    description: 'Where to publish results: "github-release", "github-pages", or "github-release,github-pages" for both'
+    required: false
+    default: "github-pages"
+
+  # === METADATA FOR REPORTING ===
+  channel:
+    description: "Channel name for release grouping (tag-friendly, e.g., 'master', 'dev', 'prod'). Used in tags and release retention."
+    required: true
+
+  # === GITHUB TOKEN ===
+  github_token:
+    description: "GitHub token for API operations (defaults to github.token)"
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  trivy_fs_json:
+    description: "Path to Trivy filesystem scan JSON results"
+    value: ${{ steps.trivy.outputs.fs_json }}
+  trivy_image_json:
+    description: "Path to Trivy image scan JSON results"
+    value: ${{ steps.trivy.outputs.image_json }}
+  semgrep_summary:
+    description: "Path to Semgrep summary"
+    value: ${{ steps.semgrep.outputs.semgrep_summary }}
+  release_body_markdown:
+    description: "Path to release body markdown file"
+    value: ${{ steps.sum.outputs.release_body_markdown }}
+  output_dir:
+    description: "Directory containing all scan outputs"
+    value: ${{ steps.setup.outputs.output_dir }}
+  filesystem_scan_root:
+    description: "Directory containing merged filesystem paths for scanning (if scan_filesystem_paths was provided)"
+    value: ${{ steps.fsroot.outputs.scan_root }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup directories
+      id: setup
+      shell: bash
+      run: |
+        # Use unique directory to avoid collisions when action is called multiple times
+        OUTPUT_DIR="${RUNNER_TEMP}/security-scan-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+        mkdir -p "$OUTPUT_DIR"
+        echo "output_dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
+
+    - name: Timestamp
+      id: ts
+      shell: bash
+      run: |
+        # ISO 8601 timestamp for scan identification
+        echo "ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+    - name: Validate channel name
+      shell: bash
+      env:
+        INPUT_CHANNEL: ${{ inputs.channel }}
+      run: |
+        ${{ github.action_path }}/scripts/validate-channel.sh
+
+    - name: Read client config file
+      id: config
+      shell: bash
+      env:
+        INPUT_CONFIG_OVERRIDES: ${{ inputs.config_overrides }}
+      run: |
+        ${{ github.action_path }}/scripts/read-client-config.sh
+
+    - name: Create scan context metadata
+      shell: bash
+      env:
+        INPUT_OUTPUT_FILE: ${{ steps.setup.outputs.output_dir }}/scan-context.json
+        INPUT_CHANNEL: ${{ inputs.channel }}
+        INPUT_ORG_DISPLAY_NAME: ${{ steps.config.outputs.org_display_name }}
+        INPUT_ORG_LOGO_URL: ${{ steps.config.outputs.org_logo_url }}
+        INPUT_REPO_DISPLAY_NAME: ${{ steps.config.outputs.repo_display_name }}
+      run: |
+        ${{ github.action_path }}/scripts/create-scan-context.sh
+
+    # === BUILD FILESYSTEM SCAN ROOT ===
+    - name: Build filesystem scan root
+      id: fsroot
+      if: ${{ inputs.scan_filesystem_paths != '' }}
+      shell: bash
+      env:
+        INPUT_TARGET_ROOT: ${{ runner.temp }}/trivy-fs-root-${{ github.run_id }}-${{ github.run_attempt }}
+        FILESYSTEM_PATHS: ${{ inputs.scan_filesystem_paths }}
+      run: |
+        ${{ github.action_path }}/scripts/build-fsroot.sh
+
+    # === RUN TRIVY SCANS ===
+    - name: Run Trivy scans
+      id: trivy
+      uses: Avarko/gh-security-toolkit/actions/scanner/trivy@reactui
+      with:
+        filesystem_path: ${{ steps.fsroot.outputs.scan_root || '' }}
+        docker_image_ref: ${{ inputs.scan_docker_image_ref }}
+        trivy_config: ${{ steps.config.outputs.trivy_config }}
+        trivy_severity: ${{ steps.config.outputs.trivy_severity }}
+        trivy_output_dir: ${{ steps.setup.outputs.output_dir }}
+
+    # === RUN SEMGREP SCAN ===
+    - name: Run Semgrep scan
+      id: semgrep
+      if: ${{ steps.fsroot.outputs.has_fs_scan == 'true' }}
+      uses: Avarko/gh-security-toolkit/actions/scanner/semgrep@reactui
+      with:
+        filesystem_path: ${{ steps.fsroot.outputs.scan_root }}
+        semgrep_output_dir: ${{ steps.setup.outputs.output_dir }}
+        semgrep_configs: ${{ steps.config.outputs.semgrep_configs }}
+
+    # === SUMMARIZE RESULTS ===
+    - name: Summarizer
+      id: sum
+      uses: Avarko/gh-security-toolkit/actions/summarizer@reactui
+      with:
+        fs_json: ${{ steps.trivy.outputs.fs_json || '' }}
+        image_json: ${{ steps.trivy.outputs.image_json || '' }}
+        semgrep_summary: ${{ steps.semgrep.outputs.semgrep_summary || '' }}
+        dependabot_summary: ""
+        outdir: ${{ steps.setup.outputs.output_dir }}
+        maxlength: ${{ inputs.release_notes_maxlength }}
+        title_vuln_fs: "Trivy (filesystem) vulnerability summary"
+        title_mis_fs: "Trivy (filesystem) misconfiguration summary"
+        title_vuln_img: "Trivy (image) vulnerability summary"
+        title_mis_img: "Trivy (image) misconfiguration summary"
+
+    # === PUBLISH TO GITHUB RELEASE ===
+    - name: Publish to GitHub Release
+      if: ${{ contains(inputs.publish_to, 'github-release') }}
+      uses: Avarko/gh-security-toolkit/actions/publisher/github-release@reactui
+      with:
+        outdir: ${{ steps.setup.outputs.output_dir }}
+        release_name: "Security scan ${{ inputs.channel }} ${{ steps.ts.outputs.ts }}"
+        tag_name: "security-scan-${{ inputs.channel }}-${{ steps.ts.outputs.ts }}"
+        body_file: ${{ steps.sum.outputs.release_body_markdown }}
+        draft: "false"
+        prerelease: "true"
+        overwrite_tag: "false"
+        channel: "security-scan-${{ inputs.channel }}"
+        retention_keep: ${{ steps.config.outputs.retention_keep }}
+        retention_days: ${{ steps.config.outputs.retention_days }}
+        github_token: ${{ inputs.github_token }}
+
+    # === PUBLISH TO GITHUB PAGES ===
+    - name: Publish to GitHub Pages
+      if: ${{ contains(inputs.publish_to, 'github-pages') }}
+      id: pages
+      uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@reactui
+      with:
+        github_token: ${{ inputs.github_token }}
+        outdir: ${{ steps.setup.outputs.output_dir }}

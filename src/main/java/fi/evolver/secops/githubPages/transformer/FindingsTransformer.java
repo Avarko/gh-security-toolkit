@@ -15,7 +15,7 @@ import java.util.List;
  */
 public class FindingsTransformer {
 
-    public TransformedScanData transform(RawScanData raw) {
+    public TransformedScanData transform(RawScanData raw, String timestamp) {
         TransformedScanData result = new TransformedScanData();
 
         // Transform Trivy findings
@@ -28,7 +28,7 @@ public class FindingsTransformer {
         result.semgrepFindings = extractSemgrepFindings(raw.semgrep);
 
         // Extract metadata
-        result.metadata = extractMetadata(raw.metadata, "");
+        result.metadata = extractMetadata(raw.metadata, timestamp);
 
         // Copy summaries as-is
         result.trivySummary = raw.trivySummary;
@@ -163,26 +163,11 @@ public class FindingsTransformer {
             return ScanMetadata.empty(timestamp);
         }
 
-        // Extract footer metadata if present
-        ScanMetadata.FooterMetadata footer = ScanMetadata.FooterMetadata.empty();
-        if (metadataJson.has("footer") && metadataJson.get("footer").isJsonObject()) {
-            JsonObject footerJson = metadataJson.getAsJsonObject("footer");
-            footer = new ScanMetadata.FooterMetadata(
-                    getString(footerJson, "app_docs_url", ""),
-                    getString(footerJson, "app_issues_url", ""),
-                    getString(footerJson, "ci_job_name", ""),
-                    getString(footerJson, "ci_job_url", ""),
-                    getString(footerJson, "trivy_version", ""),
-                    getString(footerJson, "semgrep_version", ""),
-                    getString(footerJson, "toolkit_version", ""));
-        }
-
         return new ScanMetadata(
                 getString(metadataJson, "branch", null),
-                getString(metadataJson, "commit_sha", null),
+                getString(metadataJson, "commit", null),
                 getString(metadataJson, "repository", null),
-                timestamp,
-                footer);
+                timestamp);
     }
 
     public ScanStats extractStats(JsonObject trivyFs, JsonObject trivyImage, JsonObject semgrep,

@@ -1,0 +1,39 @@
+{
+    "name": "gh-security-toolkit-dashboard",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "engines": {
+        "node": ">=24"
+    },
+    "scripts": {
+        "predev": "node scripts/setup-dev-symlinks.js",
+        "dev": "vite",
+        "build": "vite build",
+        "postbuild": "cp dist/index.html dist/404.html",
+        "preview": "vite preview",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@emotion/react": "^11.14.0",
+        "@emotion/styled": "^11.14.1",
+        "@mui/icons-material": "^7.3.5",
+        "@mui/material": "^7.3.5",
+        "echarts": "^6.0.0",
+        "echarts-for-react": "^3.0.5",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "react-router-dom": "^7.0.0",
+        "zod": "^4.1.12"
+    },
+    "devDependencies": {
+        "@types/node": "^24.10.1",
+        "@types/react": "^18.3.12",
+        "@types/react-dom": "^18.3.1",
+        "@vitejs/plugin-react": "^5.1.1",
+        "typescript": "^5.7.2",
+        "vite": "^7.2.2",
+        "vitest": "^4.0.12"
+    }
+}

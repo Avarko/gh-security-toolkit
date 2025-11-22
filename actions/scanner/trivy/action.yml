@@ -5,8 +5,8 @@ inputs:
     description: "Path to filesystem to scan (optional)"
     required: false
     default: ""
-  docker_image_tar:
-    description: "Path to Docker image tar file (optional)"
+  docker_image_ref:
+    description: "Docker image reference (name:tag or ID) to scan (optional). The image must already exist in the local Docker daemon."
     required: false
     default: ""
   trivy_config:
@@ -27,17 +27,6 @@ runs:
       shell: bash
       run: mkdir -p "${{ inputs.trivy_output_dir }}"
 
-    - name: Load Docker image (if provided)
-      id: load_image
-      if: ${{ inputs.docker_image_tar != '' }}
-      shell: bash
-      run: |
-        echo "Loading Docker image from ${{ inputs.docker_image_tar }}"
-        docker load -i "${{ inputs.docker_image_tar }}"
-        IMAGE_ID=$(docker images --format "{{.ID}}" | head -n1)
-        echo "image_id=$IMAGE_ID" >> "$GITHUB_OUTPUT"
-        echo "Loaded image: $IMAGE_ID"
-
     - name: Trivy cache
       continue-on-error: true
       uses: yogeshlonkar/trivy-cache-action@v0
@@ -45,7 +34,9 @@ runs:
         gh-token: ${{ github.token }}
 
     - name: Trivy - Filesystem scan
+      id: fs_scan
       if: ${{ inputs.filesystem_path != '' }}
+      continue-on-error: true
       uses: aquasecurity/trivy-action@master
       with:
         version: 'latest'
@@ -61,17 +52,69 @@ runs:
         scanners: vuln,misconfig
 
     - name: Trivy - Image scan
-      if: ${{ inputs.docker_image_tar != '' }}
+      id: image_scan
+      if: ${{ inputs.docker_image_ref != '' }}
+      continue-on-error: true
       uses: aquasecurity/trivy-action@master
       with:
         version: 'latest'
-        image-ref: ${{ steps.load_image.outputs.image_id }}
+        image-ref: ${{ inputs.docker_image_ref }}
         format: json
         output: ${{ inputs.trivy_output_dir }}/trivy-image-results.json
         exit-code: 0
         severity: ${{ inputs.trivy_severity }}
         trivy-config: ${{ inputs.trivy_config }}
         cache-dir: .trivy
+        timeout: 15m
+        scanners: vuln
+
+    - name: Report scan status
+      shell: bash
+      run: |
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "📊 Trivy scan status report"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+        FS_REQUESTED="${{ inputs.filesystem_path != '' }}"
+        IMAGE_REQUESTED="${{ inputs.docker_image_ref != '' }}"
+        FS_OUTCOME="${{ steps.fs_scan.outcome }}"
+        IMAGE_OUTCOME="${{ steps.image_scan.outcome }}"
+
+        # Filesystem scan status
+        if [ "$FS_REQUESTED" = "true" ]; then
+          if [ -f "${{ inputs.trivy_output_dir }}/trivy-fs-results.json" ]; then
+            echo "✅ Filesystem scan: completed successfully"
+          elif [ "$FS_OUTCOME" = "failure" ]; then
+            echo "❌ Filesystem scan: FAILED (check logs above for details)"
+            echo "   Path: ${{ inputs.filesystem_path }}"
+          elif [ "$FS_OUTCOME" = "skipped" ]; then
+            echo "⏭️  Filesystem scan: skipped"
+          else
+            echo "⚠️  Filesystem scan: unknown status ($FS_OUTCOME)"
+          fi
+        else
+          echo "⏭️  Filesystem scan: not requested"
+        fi
+
+        # Image scan status
+        if [ "$IMAGE_REQUESTED" = "true" ]; then
+          if [ -f "${{ inputs.trivy_output_dir }}/trivy-image-results.json" ]; then
+            echo "✅ Image scan: completed successfully"
+          elif [ "$IMAGE_OUTCOME" = "failure" ]; then
+            echo "❌ Image scan: FAILED (check logs above for details)"
+            echo "   Image: ${{ inputs.docker_image_ref }}"
+          elif [ "$IMAGE_OUTCOME" = "skipped" ]; then
+            echo "⏭️  Image scan: skipped"
+          else
+            echo "⚠️  Image scan: unknown status ($IMAGE_OUTCOME)"
+          fi
+        else
+          echo "⏭️  Image scan: not requested"
+        fi
+
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
 
     - name: Set outputs
       id: outputs
@@ -88,9 +131,14 @@ runs:
       id: version
       shell: bash
       run: |
-        VERSION=$(trivy --version | head -n1 | awk '{print $2}')
-        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-        echo "Trivy version: $VERSION"
+        if [ -n "${{ inputs.filesystem_path }}" ] || [ -n "${{ inputs.docker_image_ref }}" ]; then
+          TRIVY_VERSION=$(trivy --version | head -n1 | awk '{print $2}')
+          echo "trivy_version=$TRIVY_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Trivy version: $TRIVY_VERSION"
+        else
+          echo "trivy_version=not_installed" >> "$GITHUB_OUTPUT"
+          echo "Trivy version: Not installed; no scan performed, because no filesystem or Docker image input provided"
+        fi
 
 outputs:
   fs_json:
@@ -99,9 +147,6 @@ outputs:
   image_json:
     description: "Image scan JSON path (if performed)"
     value: ${{ steps.outputs.outputs.image_json }}
-  image_id:
-    description: "Loaded Docker image ID (if image scan performed)"
-    value: ${{ steps.load_image.outputs.image_id }}
-  version:
+  trivy_version:
     description: "Trivy version"
-    value: ${{ steps.version.outputs.version }}
+    value: ${{ steps.version.outputs.trivy_version }}
