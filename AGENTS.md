@@ -336,6 +336,32 @@ public class HistoryEntry {
 
 **Critical**: `HistoryStats.from(ScanStats)` handles the Java -> TypeScript transformation.
 
+### test-report-history.json Schema
+
+**Java produces** (`TestReportHistory.java`):
+```java
+public class TestReportEntry {
+    public String channel;
+    public String timestamp;
+    public HistoryMetadata metadata;
+    public boolean hasJacoco;
+    public boolean hasSurefire;
+    public String dataPath;  // Path to report data directory
+}
+```
+
+**TypeScript expects** (`testReportTypes.ts`):
+```typescript
+{
+  channel: string;
+  timestamp: string;
+  metadata: { branch: string; commit: string; repository: string };
+  hasJacoco: boolean;
+  hasSurefire: boolean;
+  dataPath?: string;  // e.g., "data/runs/main/20251122-085346"
+}
+```
+
 ## Retention Policies
 
 ### 1. `retention_keep` (Pages data retention)

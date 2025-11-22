@@ -120,7 +120,8 @@ public final class DataProcessor {
             // Check which reports are available by looking at copied directories
             boolean hasJacoco = Files.isDirectory(dataRunsPath.resolve("coverage"));
             boolean hasSurefire = Files.isDirectory(dataRunsPath.resolve("tests"));
-            appendTestReportHistory(gson, dataRoot, channel, compactTimestamp, metadata, hasJacoco, hasSurefire);
+            String dataPath = "data/runs/" + channel + "/" + compactTimestamp;
+            appendTestReportHistory(gson, dataRoot, channel, compactTimestamp, metadata, hasJacoco, hasSurefire, dataPath);
         } else {
             System.out.println("   ℹ️  Skipping history update (unknown type: " + configMetadata.type + ")");
         }
@@ -273,7 +274,8 @@ public final class DataProcessor {
             String timestamp,
             ScanMetadata metadata,
             boolean hasJacoco,
-            boolean hasSurefire) {
+            boolean hasSurefire,
+            String dataPath) {
         try {
             Path histDir = dataRoot.resolve("hist");
             Files.createDirectories(histDir);
@@ -286,7 +288,7 @@ public final class DataProcessor {
                     && timestamp.equals(entry.timestamp));
 
             TestReportHistory.TestReportEntry entry = TestReportHistory.TestReportEntry.from(
-                    channel, timestamp, metadata, hasJacoco, hasSurefire);
+                    channel, timestamp, metadata, hasJacoco, hasSurefire, dataPath);
             history.reports.add(entry);
             history.reports.sort(Comparator.comparing(e -> e.timestamp));
 

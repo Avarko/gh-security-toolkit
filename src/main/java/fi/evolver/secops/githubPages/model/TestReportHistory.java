@@ -28,14 +28,17 @@ public class TestReportHistory {
         public boolean hasJacoco;
         /** Whether Surefire test report is available */
         public boolean hasSurefire;
+        /** Path to the test report data directory (relative to data root) */
+        public String dataPath;
 
         public static TestReportEntry from(String channel, String timestamp,
-                ScanMetadata scanMetadata, boolean hasJacoco, boolean hasSurefire) {
+                ScanMetadata scanMetadata, boolean hasJacoco, boolean hasSurefire, String dataPath) {
             TestReportEntry entry = new TestReportEntry();
             entry.channel = channel;
             entry.timestamp = timestamp;
             entry.hasJacoco = hasJacoco;
             entry.hasSurefire = hasSurefire;
+            entry.dataPath = dataPath;
 
             if (scanMetadata != null) {
                 HistoryMetadata m = new HistoryMetadata();
