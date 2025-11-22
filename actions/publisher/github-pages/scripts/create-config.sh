@@ -76,6 +76,10 @@ CI_JOB_URL="${CI_JOB_URL:-${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPO
 ACTOR_NAME=$(jq -r '.actorName // empty' "$SCAN_CONTEXT")
 ACTOR_NAME="${ACTOR_NAME:-${GITHUB_ACTOR:-}}"
 
+# Type: "security-scan" (default) or "test-report"
+TYPE=$(jq -r '.type // empty' "$SCAN_CONTEXT")
+TYPE="${TYPE:-security-scan}"
+
 # Organization/tenant display metadata (from client config)
 ORG_DISPLAY_NAME=$(jq -r '.orgDisplayName // empty' "$SCAN_CONTEXT")
 ORG_LOGO_URL=$(jq -r '.orgLogoUrl // empty' "$SCAN_CONTEXT")
@@ -102,6 +106,7 @@ CONFIG=$(jq -n \
   --arg ciJobName "$CI_JOB_NAME" \
   --arg ciJobUrl "$CI_JOB_URL" \
   --arg actorName "$ACTOR_NAME" \
+  --arg type "$TYPE" \
   --arg orgDisplayName "$ORG_DISPLAY_NAME" \
   --arg orgLogoUrl "$ORG_LOGO_URL" \
   --arg repoDisplayName "$REPO_DISPLAY_NAME" \
@@ -112,6 +117,7 @@ CONFIG=$(jq -n \
       dashboardBuildDir: $dashboardBuildDir
     },
     metadata: {
+      type: $type,
       timestamp: $timestamp,
       channel: $channel,
       branch: $branch,
