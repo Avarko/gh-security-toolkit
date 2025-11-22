@@ -1,7 +1,6 @@
-// src/routes/singleTenant/TestReportsIndexRoute.tsx
+// src/routes/TestReportsIndexRoute.tsx
 /**
  * Test reports index route.
- *
  * URL: /test-reports
  */
 import type { LoaderFunctionArgs } from "react-router-dom";
@@ -11,23 +10,21 @@ import { Container } from "@mui/material";
 import {
     fetchTestReports,
     type TestReportsLoadResult,
-} from "../../features/testReports/api/testReportsClient";
-import { TestReportsOverviewPage } from "../../features/testReports/components/TestReportsOverviewPage";
-import { ValidationErrorDisplay } from "../../features/scans/components/ValidationErrorDisplay";
+} from "../features/testReports/api/testReportsClient";
+import { TestReportsOverviewPage } from "../features/testReports/components/TestReportsOverviewPage";
+import { ValidationErrorDisplay } from "../features/scans/components/ValidationErrorDisplay";
+import { getDataRootFromParams } from "./loaderHelpers";
 
 type LoaderData = {
     result: TestReportsLoadResult;
 };
 
-export async function loader(_args: LoaderFunctionArgs): Promise<LoaderData> {
-    const result = await fetchTestReports();
+export async function loader({ params }: LoaderFunctionArgs): Promise<LoaderData> {
+    const dataRoot = getDataRootFromParams(params);
+    const result = await fetchTestReports(dataRoot);
 
     if (!result.success) {
-        console.error(
-            "Failed to load test reports:",
-            result.error,
-            result.details
-        );
+        console.error("Failed to load test reports:", result.error, result.details);
     }
 
     return { result };

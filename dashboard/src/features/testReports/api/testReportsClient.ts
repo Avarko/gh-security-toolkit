@@ -1,9 +1,8 @@
 /**
  * Client API for fetching test report history data.
  *
- * Single-tenant mode: Data at /data/hist/test-report-history.json
- *
- * Includes comprehensive validation using Zod schemas.
+ * Supports both single-tenant (/data) and multi-tenant (/data/<uuid>) modes
+ * via the dataRoot parameter.
  */
 
 import {
@@ -12,18 +11,15 @@ import {
     type ValidationResult,
 } from "../model/testReportTypes";
 
-/**
- * Result type for test report history loading.
- */
 export type TestReportsLoadResult = ValidationResult<TestReportHistory>;
 
 /**
  * Fetches and validates test report history.
  *
- * Data is stored at /data/hist/test-report-history.json
+ * @param dataRoot - Data root path (e.g., "/data" or "/data/<uuid>")
  */
-export async function fetchTestReports(): Promise<TestReportsLoadResult> {
-    const url = "/data/hist/test-report-history.json";
+export async function fetchTestReports(dataRoot: string): Promise<TestReportsLoadResult> {
+    const url = `${dataRoot}/hist/test-report-history.json`;
 
     try {
         const response = await fetch(url);
@@ -42,7 +38,6 @@ export async function fetchTestReports(): Promise<TestReportsLoadResult> {
             };
         }
 
-        // Parse JSON
         let jsonData: unknown;
         try {
             jsonData = await response.json();
@@ -54,7 +49,6 @@ export async function fetchTestReports(): Promise<TestReportsLoadResult> {
             };
         }
 
-        // Validate with Zod schema
         const parseResult = testReportHistorySchema.safeParse(jsonData);
 
         if (!parseResult.success) {
