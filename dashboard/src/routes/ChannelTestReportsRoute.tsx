@@ -43,7 +43,11 @@ export default function ChannelTestReportsRoute() {
     }
 
     if (result.success && "data" in result) {
-        return <ChannelTestReportsPage reports={result.data} channel={channel} />;
+        // Filter reports for this specific channel
+        const channelReports = result.data.reports.filter(
+            (report) => report.channel === channel
+        );
+        return <ChannelTestReportsPage reports={channelReports} channel={channel} />;
     }
 
     return (

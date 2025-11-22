@@ -20,10 +20,9 @@ import { parseTimestamp } from "../../../lib/formatTimestamp";
 
 interface TestReportsOverviewPageProps {
     history: TestReportHistory;
-    tenantId: string;
 }
 
-export function TestReportsOverviewPage({ history, tenantId }: TestReportsOverviewPageProps) {
+export function TestReportsOverviewPage({ history }: TestReportsOverviewPageProps) {
     const { orgSlug, repoSlug } = useParams<{
         orgSlug: string;
         repoSlug: string;
@@ -96,7 +95,6 @@ export function TestReportsOverviewPage({ history, tenantId }: TestReportsOvervi
                         key={channel}
                         channel={channel}
                         reports={reports}
-                        tenantId={tenantId}
                         testReportsBasePath={testReportsBasePath}
                         maxRows={5}
                         viewAllLink={`${testReportsBasePath}/channel/${channel}`}
