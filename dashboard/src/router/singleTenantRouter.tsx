@@ -1,11 +1,8 @@
 // src/router/singleTenantRouter.tsx
 /**
- * Router configuration for single-tenant mode (GitHub Pages deployment).
+ * Router configuration for GitHub Pages deployment.
  *
- * In single-tenant mode:
- * - No /org/:org/repo/:repo/ prefix in URLs
- * - Data is stored directly at /data/ (no UUID subdirectory)
- * - Root path "/" redirects directly to /security-scans
+ * Data is stored at /data/ (no UUID subdirectory)
  *
  * URL structure:
  *   /                                    → Redirect to /security-scans

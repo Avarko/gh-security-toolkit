@@ -1,6 +1,6 @@
 // src/routes/singleTenant/ChannelScansRoute.tsx
 /**
- * Channel scans route for single-tenant mode.
+ * Channel scans route.
  *
  * URL: /security-scans/channel/:channel
  */
@@ -9,7 +9,7 @@ import { useLoaderData, useParams } from "react-router-dom";
 import { Container, Typography } from "@mui/material";
 
 import {
-    fetchScanHistorySingleTenant,
+    fetchScanHistory,
     type ScanHistoryLoadResult,
 } from "../../features/scans/api/historyClient";
 import { ChannelScansPage } from "../../features/scans/components/ChannelScansPage";
@@ -20,7 +20,7 @@ type LoaderData = {
 };
 
 export async function loader(_args: LoaderFunctionArgs): Promise<LoaderData> {
-    const result = await fetchScanHistorySingleTenant();
+    const result = await fetchScanHistory();
 
     if (!result.success) {
         console.error(

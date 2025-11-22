@@ -1,6 +1,6 @@
 // src/routes/singleTenant/TestReportsIndexRoute.tsx
 /**
- * Test reports index route for single-tenant mode.
+ * Test reports index route.
  *
  * URL: /test-reports
  */
@@ -9,7 +9,7 @@ import { useLoaderData } from "react-router-dom";
 import { Container } from "@mui/material";
 
 import {
-    fetchTestReportsSingleTenant,
+    fetchTestReports,
     type TestReportsLoadResult,
 } from "../../features/testReports/api/testReportsClient";
 import { TestReportsOverviewPage } from "../../features/testReports/components/TestReportsOverviewPage";
@@ -20,7 +20,7 @@ type LoaderData = {
 };
 
 export async function loader(_args: LoaderFunctionArgs): Promise<LoaderData> {
-    const result = await fetchTestReportsSingleTenant();
+    const result = await fetchTestReports();
 
     if (!result.success) {
         console.error(

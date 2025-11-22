@@ -1,18 +1,16 @@
 // src/routes/singleTenant/SecurityScansIndexRoute.tsx
 /**
- * Security scans index route for single-tenant mode.
+ * Security scans index route.
  *
- * In single-tenant mode:
- * - No tenant resolution needed
- * - Data is fetched directly from /data/hist/scan-history.json
- * - URL: /security-scans
+ * Data is fetched from /data/hist/scan-history.json
+ * URL: /security-scans
  */
 import type { LoaderFunctionArgs } from "react-router-dom";
 import { useLoaderData } from "react-router-dom";
 import { Box, Container, Typography } from "@mui/material";
 
 import {
-    fetchScanHistorySingleTenant,
+    fetchScanHistory,
     type ScanHistoryLoadResult,
 } from "../../features/scans/api/historyClient";
 import { ScanOverviewPage } from "../../features/scans/components/ScanOverviewPage";
@@ -23,7 +21,7 @@ type LoaderData = {
 };
 
 export async function loader(_args: LoaderFunctionArgs): Promise<LoaderData> {
-    const result = await fetchScanHistorySingleTenant();
+    const result = await fetchScanHistory();
 
     if (!result.success) {
         console.error(

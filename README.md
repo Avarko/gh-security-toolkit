@@ -312,65 +312,36 @@ publish_to: "github-release,github-pages"  # Both
 
 ## Data structure
 
-The toolkit supports two deployment modes with different data structures:
-
-### Single-tenant mode (GitHub Pages)
-
-GitHub Pages deployment is **always single-tenant** by design: each repository has its own private Pages site with its own scan data.
+GitHub Pages deployment: each repository has its own private Pages site with its own scan data.
 
 ```
 ./                              # GitHub Pages root
 ├── index.html                  # Dashboard SPA entry point
 ├── assets/                     # Dashboard static files (JS, CSS)
-└── data/                       # Scan data (no UUID subdirectory)
+└── data/
     ├── hist/
-    │   └── scan-history.json   # All scans
+    │   ├── scan-history.json       # Security scans history
+    │   └── test-report-history.json # Test reports history (optional)
     └── runs/
-        └── <channel>/          # e.g., "nightly", "main"
-            └── <timestamp>/    # e.g., "2025-01-15T12:00:00Z"
-                ├── scan-run.json
-                ├── trivy-fs.json
-                ├── trivy-image.json
-                └── semgrep.json
+        └── <channel>/              # e.g., "nightly", "main", "manual"
+            └── <timestamp>/        # e.g., "20251121-161415"
+                ├── scan-run.json           # Scan metadata
+                ├── trivy-fs-results.json   # Trivy filesystem results
+                ├── trivy-image-results.json # Trivy image results
+                └── semgrep-results.json    # Semgrep results
 ```
 
-**URL structure** (single-tenant):
+**URL structure**:
 - `/security-scans` - Main dashboard
 - `/security-scans/channel/:channel` - Channel scan history
 - `/security-scans/channel/:channel/run/:timestamp` - Individual scan details
+- `/test-reports` - Test reports overview
+- `/test-reports/channel/:channel` - Channel test reports
 
-### Multi-tenant mode (S3/CDN - future)
-
-For shared hosting (e.g., S3 bucket serving multiple clients), data is organized by tenant UUID:
-
-```
-./                              # CDN root
-├── index.html                  # Dashboard SPA (multi-tenant build)
-├── assets/
-└── data/
-    └── <tenant-uuid>/          # UUID per tenant
-        ├── hist/
-        │   └── scan-history.json
-        └── runs/
-            └── <channel>/<timestamp>/...
-```
-
-**URL structure** (multi-tenant):
-- `/:tenant-path/security-scans` - Tenant dashboard (tenant-path is admin-defined, human-readable)
-- `/:tenant-path/security-scans/channel/:channel/run/:timestamp` - Scan details
-
-### Security model
-
-**Single-tenant (GitHub Pages)**:
+**Security model**:
 - Isolation by repository: each repo has its own private Pages
-- No tenant resolution needed - data stored directly at `/data/`
+- Data stored directly at `/data/`
 - Private Pages enforced (deployment fails if Pages is public)
-
-**Multi-tenant (S3/CDN)**:
-- Admin-managed tenant registry (stored separately, not in public data)
-- UUIDs for data paths prevent tenant forgery (admin assigns, not derived from client input)
-- URL paths are human-readable (admin-chosen, e.g., `/fr-ciam/`)
-- Tenant identity verified by admin control plane, not client-provided data
 
 ---
 
@@ -580,36 +551,19 @@ The GitHub Pages UI is built with **React + Vite** as a single-page application:
 - **Charts**: Apache ECharts via `echarts-for-react`
 - **UI Components**: Material-UI (MUI)
 
-**Tenant Mode (Build-time)**:
-
-The dashboard supports two modes, selected at **build time** via environment variables:
-
-| Mode | Build Command | Data Path | URL Structure |
-|------|--------------|-----------|---------------|
-| Single-tenant | `npm run build` | `/data/` | `/security-scans/...` |
-| Multi-tenant | `TENANT_MODE=multi-tenant npm run build` | `/data/<uuid>/` | `/:tenant-path/security-scans/...` |
-
-**Routes (single-tenant)**:
+**Routes**:
 - `/` - Redirects to `/security-scans`
 - `/security-scans` - Scan overview
 - `/security-scans/channel/:channel` - Channel scan history
 - `/security-scans/channel/:channel/run/:timestamp` - Scan details
-
-**Routes (multi-tenant)**:
-- `/` - Tenant selector
-- `/:tenantPath/security-scans` - Tenant scan overview
-- `/:tenantPath/security-scans/channel/:channel/run/:timestamp` - Scan details
+- `/test-reports` - Test reports overview
+- `/test-reports/channel/:channel` - Channel test reports
 
 **Development**:
 ```bash
 cd dashboard
 npm install
-
-# Single-tenant mode (default)
 npm run dev
-
-# Multi-tenant mode (requires MULTI_TENANT_CONFIG_PATH)
-TENANT_MODE=multi-tenant MULTI_TENANT_CONFIG_PATH=./tenant-config.json npm run dev
 ```
 
 ---
