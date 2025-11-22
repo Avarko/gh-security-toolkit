@@ -2,8 +2,8 @@
 /**
  * Main router entry point.
  *
- * Single-tenant mode only - GitHub Pages deployment.
+ * Creates router based on build-time tenant mode configuration.
  */
-import { createSingleTenantRouter } from "./router/singleTenantRouter";
+import { createRouter } from "./router/createRouter";
 
-export const router = createSingleTenantRouter();
+export const router = createRouter();

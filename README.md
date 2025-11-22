@@ -551,7 +551,14 @@ The GitHub Pages UI is built with **React + Vite** as a single-page application:
 - **Charts**: Apache ECharts via `echarts-for-react`
 - **UI Components**: Material-UI (MUI)
 
-**Routes**:
+**Tenant Modes** (build-time):
+
+| Mode | Build Command | Data Path | URL Structure |
+|------|--------------|-----------|---------------|
+| Single-tenant | `npm run build` | `/data/` | `/security-scans/...` |
+| Multi-tenant | `TENANT_MODE=multi-tenant npm run build` | `/data/<uuid>/` | `/:tenantPath/security-scans/...` |
+
+**Routes** (single-tenant):
 - `/` - Redirects to `/security-scans`
 - `/security-scans` - Scan overview
 - `/security-scans/channel/:channel` - Channel scan history
@@ -559,11 +566,19 @@ The GitHub Pages UI is built with **React + Vite** as a single-page application:
 - `/test-reports` - Test reports overview
 - `/test-reports/channel/:channel` - Channel test reports
 
+**Routes** (multi-tenant):
+- `/` - Tenant selector
+- `/:tenantPath/security-scans` - Tenant scan overview
+- `/:tenantPath/security-scans/channel/:channel/run/:timestamp` - Scan details
+
 **Development**:
 ```bash
 cd dashboard
 npm install
-npm run dev
+npm run dev                    # Single-tenant mode (default)
+
+# Multi-tenant mode:
+TENANT_MODE=multi-tenant MULTI_TENANT_CONFIG_PATH=./config.json npm run dev
 ```
 
 ---

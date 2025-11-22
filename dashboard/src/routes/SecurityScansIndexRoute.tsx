@@ -1,9 +1,7 @@
-// src/routes/singleTenant/SecurityScansIndexRoute.tsx
+// src/routes/SecurityScansIndexRoute.tsx
 /**
  * Security scans index route.
- *
- * Data is fetched from /data/hist/scan-history.json
- * URL: /security-scans
+ * URL: /security-scans (single) or /:tenantPath/security-scans (multi)
  */
 import type { LoaderFunctionArgs } from "react-router-dom";
 import { useLoaderData } from "react-router-dom";
@@ -12,23 +10,21 @@ import { Box, Container, Typography } from "@mui/material";
 import {
     fetchScanHistory,
     type ScanHistoryLoadResult,
-} from "../../features/scans/api/historyClient";
-import { ScanOverviewPage } from "../../features/scans/components/ScanOverviewPage";
-import { ValidationErrorDisplay } from "../../features/scans/components/ValidationErrorDisplay";
+} from "../features/scans/api/historyClient";
+import { ScanOverviewPage } from "../features/scans/components/ScanOverviewPage";
+import { ValidationErrorDisplay } from "../features/scans/components/ValidationErrorDisplay";
+import { getDataRootFromParams } from "./loaderHelpers";
 
 type LoaderData = {
     result: ScanHistoryLoadResult;
 };
 
-export async function loader(_args: LoaderFunctionArgs): Promise<LoaderData> {
-    const result = await fetchScanHistory();
+export async function loader({ params }: LoaderFunctionArgs): Promise<LoaderData> {
+    const dataRoot = getDataRootFromParams(params);
+    const result = await fetchScanHistory(dataRoot);
 
     if (!result.success) {
-        console.error(
-            "Failed to load scan history:",
-            result.error,
-            result.details
-        );
+        console.error("Failed to load scan history:", result.error, result.details);
     }
 
     return { result };

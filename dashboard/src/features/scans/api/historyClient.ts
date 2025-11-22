@@ -1,9 +1,8 @@
 /**
  * Client API for fetching scan history data.
  *
- * Single-tenant mode: Data at /data/hist/scan-history.json
- *
- * Includes comprehensive validation using Zod schemas.
+ * Supports both single-tenant (/data) and multi-tenant (/data/<uuid>) modes
+ * via the dataRoot parameter.
  */
 
 import {
@@ -12,19 +11,15 @@ import {
     type ValidationResult,
 } from "../model/historyTypes";
 
-/**
- * Result type for scan history loading.
- * Either successful with validated data, or failed with error details.
- */
 export type ScanHistoryLoadResult = ValidationResult<ScanHistory>;
 
 /**
  * Fetches and validates scan history data.
  *
- * Data is stored at /data/hist/scan-history.json
+ * @param dataRoot - Data root path (e.g., "/data" or "/data/<uuid>")
  */
-export async function fetchScanHistory(): Promise<ScanHistoryLoadResult> {
-    const url = "/data/hist/scan-history.json";
+export async function fetchScanHistory(dataRoot: string): Promise<ScanHistoryLoadResult> {
+    const url = `${dataRoot}/hist/scan-history.json`;
 
     try {
         const response = await fetch(url);
@@ -36,7 +31,6 @@ export async function fetchScanHistory(): Promise<ScanHistoryLoadResult> {
             };
         }
 
-        // Parse JSON
         let jsonData: unknown;
         try {
             jsonData = await response.json();
@@ -48,7 +42,6 @@ export async function fetchScanHistory(): Promise<ScanHistoryLoadResult> {
             };
         }
 
-        // Validate with Zod schema
         const parseResult = scanHistorySchema.safeParse(jsonData);
 
         if (!parseResult.success) {

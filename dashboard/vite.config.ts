@@ -3,37 +3,49 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { existsSync, symlinkSync, unlinkSync } from "node:fs";
+import { existsSync, symlinkSync, unlinkSync, readFileSync } from "node:fs";
 
 /**
- * Single-tenant dashboard configuration.
+ * Dashboard configuration with build-time tenant mode.
  *
- * Data stored at /data/ (no subdirectories)
- * URLs: /security-scans/channel/...
+ * Single-tenant (default): TENANT_MODE unset or "single-tenant"
+ * Multi-tenant: TENANT_MODE="multi-tenant" + MULTI_TENANT_CONFIG_PATH
  */
+
+type TenantMode = "single-tenant" | "multi-tenant";
+
+function getTenantMode(): TenantMode {
+    const mode = process.env.TENANT_MODE;
+    if (mode === "multi-tenant") return "multi-tenant";
+    return "single-tenant";
+}
+
+function loadMultiTenantConfig(): object | null {
+    const configPath = process.env.MULTI_TENANT_CONFIG_PATH;
+    if (!configPath) return null;
+    try {
+        const content = readFileSync(configPath, "utf-8");
+        return JSON.parse(content);
+    } catch (error) {
+        console.error(`Failed to load multi-tenant config: ${error}`);
+        return null;
+    }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// In dev mode, create symlinks for test data and config
-// This allows the dev server to serve test data without including it in production builds
 function devTestDataPlugin() {
     function createSymlink(target: string, link: string, description: string) {
         if (existsSync(target)) {
-            // Remove existing symlink/directory if present
             if (existsSync(link)) {
-                try {
-                    unlinkSync(link);
-                } catch {
-                    // Directory might exist, ignore
-                }
+                try { unlinkSync(link); } catch { /* ignore */ }
             }
-
             try {
                 symlinkSync(target, link, "dir");
                 console.log(`Dev mode: Linked ${description}`);
             } catch {
-                console.log(`Dev mode: ${description} symlink already exists or cannot be created`);
+                console.log(`Dev mode: ${description} symlink already exists`);
             }
         }
     }
@@ -41,14 +53,11 @@ function devTestDataPlugin() {
     return {
         name: "dev-test-data",
         configureServer() {
-            // Link test-fixtures/data -> public/data
             createSymlink(
                 resolve(__dirname, "test-fixtures/data"),
                 resolve(__dirname, "public/data"),
                 "test-fixtures/data -> public/data"
             );
-
-            // Link test-fixtures/config -> public/config
             createSymlink(
                 resolve(__dirname, "test-fixtures/config"),
                 resolve(__dirname, "public/config"),
@@ -59,12 +68,26 @@ function devTestDataPlugin() {
 }
 
 export default defineConfig(({ command }) => {
+    const tenantMode = getTenantMode();
+    const multiTenantConfig = tenantMode === "multi-tenant" ? loadMultiTenantConfig() : null;
+
+    console.log(`Building with TENANT_MODE=${tenantMode}`);
+    if (multiTenantConfig) {
+        const tenants = (multiTenantConfig as { tenants?: unknown[] }).tenants;
+        console.log(`Multi-tenant config: ${tenants?.length ?? 0} tenant(s)`);
+    }
+
     return {
         plugins: [react(), ...(command === "serve" ? [devTestDataPlugin()] : [])],
         base: "/",
         build: {
             outDir: "dist",
             emptyOutDir: true,
+        },
+        define: {
+            // Build-time tenant mode constants
+            __TENANT_MODE__: JSON.stringify(tenantMode),
+            __MULTI_TENANT_CONFIG__: JSON.stringify(multiTenantConfig),
         },
     };
 });

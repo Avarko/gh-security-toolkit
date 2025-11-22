@@ -1,16 +1,16 @@
-// src/routes/singleTenant/ChannelScanRunDetailRoute.tsx
+// src/routes/ChannelScanRunDetailRoute.tsx
 /**
- * Scan run detail route for single-tenant mode.
- *
+ * Scan run detail route.
  * URL: /security-scans/channel/:channel/run/:timestamp
  */
 import type { LoaderFunctionArgs } from "react-router-dom";
 import { useLoaderData, useParams } from "react-router-dom";
 import { Container, Typography } from "@mui/material";
 
-import { ScanRunDetailPage } from "../../features/scans/components/ScanRunDetailPage";
-import { ValidationErrorDisplay } from "../../features/scans/components/ValidationErrorDisplay";
-import type { ScanRunMetadata, TrivyScan, SemgrepScan } from "../../features/scans/types/scanRun";
+import { ScanRunDetailPage } from "../features/scans/components/ScanRunDetailPage";
+import { ValidationErrorDisplay } from "../features/scans/components/ValidationErrorDisplay";
+import type { ScanRunMetadata, TrivyScan, SemgrepScan } from "../features/scans/types/scanRun";
+import { getDataRootFromParams } from "./loaderHelpers";
 
 type LoaderData =
     | {
@@ -23,8 +23,8 @@ type LoaderData =
       }
     | { success: false; error: string; details?: unknown };
 
-export async function loader(args: LoaderFunctionArgs): Promise<LoaderData> {
-    const { channel, timestamp } = args.params;
+export async function loader({ params }: LoaderFunctionArgs): Promise<LoaderData> {
+    const { channel, timestamp } = params;
 
     if (!channel || !timestamp) {
         return {
@@ -33,8 +33,8 @@ export async function loader(args: LoaderFunctionArgs): Promise<LoaderData> {
         };
     }
 
-    // In single-tenant mode, data is at /data/runs/<channel>/<timestamp>/
-    const dataBasePath = `/data/runs/${channel}/${timestamp}`;
+    const dataRoot = getDataRootFromParams(params);
+    const dataBasePath = `${dataRoot}/runs/${channel}/${timestamp}`;
 
     try {
         // Load all scan data files in parallel
