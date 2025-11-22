@@ -31,43 +31,39 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
         return !s.trivyFsResults && !s.trivyImageResults && !s.semgrepResults;
     }
 
+    // Aggregate data: combine Trivy Critical + Semgrep Errors, Trivy High + Semgrep Warnings
     const aggregatedData: {
-        critical: number[];
-        high: number[];
-        medium: number[];
-        low: number[];
-        errors: number[];
-        warnings: number[];
+        criticalErrors: number[];  // Trivy Critical + Semgrep Errors
+        highWarnings: number[];    // Trivy High + Semgrep Warnings
+        medium: number[];          // Trivy Medium only
     } = {
-        critical: [],
-        high: [],
+        criticalErrors: [],
+        highWarnings: [],
         medium: [],
-        low: [],
-        errors: [],
-        warnings: []
     };
 
-    scans.forEach(scan => {
+    sortedScans.forEach(scan => {
         const { trivyFsResults, trivyImageResults, semgrepResults } = scan;
 
-        aggregatedData.critical.push(
+        // Critical + Errors (red line)
+        aggregatedData.criticalErrors.push(
             (trivyFsResults?.totalVulnerabilities?.CRITICAL || 0) +
-            (trivyImageResults?.totalVulnerabilities?.CRITICAL || 0)
+            (trivyImageResults?.totalVulnerabilities?.CRITICAL || 0) +
+            (semgrepResults?.totalErrors || 0)
         );
-        aggregatedData.high.push(
+
+        // High + Warnings (orange line)
+        aggregatedData.highWarnings.push(
             (trivyFsResults?.totalVulnerabilities?.HIGH || 0) +
-            (trivyImageResults?.totalVulnerabilities?.HIGH || 0)
+            (trivyImageResults?.totalVulnerabilities?.HIGH || 0) +
+            (semgrepResults?.totalWarnings || 0)
         );
+
+        // Medium (yellow line)
         aggregatedData.medium.push(
             (trivyFsResults?.totalVulnerabilities?.MEDIUM || 0) +
             (trivyImageResults?.totalVulnerabilities?.MEDIUM || 0)
         );
-        aggregatedData.low.push(
-            (trivyFsResults?.totalVulnerabilities?.LOW || 0) +
-            (trivyImageResults?.totalVulnerabilities?.LOW || 0)
-        );
-        aggregatedData.errors.push(semgrepResults?.totalErrors || 0);
-        aggregatedData.warnings.push(semgrepResults?.totalWarnings || 0);
     });
 
     // X-axis labels: show only date
@@ -114,15 +110,13 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
             },
         },
         legend: {
-            data: ["Critical", "High", "Medium", "Low", "Errors", "Warnings"],
-            textStyle: { color: "#000000" },
-            top: 10,
+            show: false,
         },
         grid: {
             left: "3%",
             right: "4%",
             bottom: "3%",
-            top: 60,
+            top: 20,
             containLabel: true,
         },
         xAxis: {
@@ -146,18 +140,18 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
         },
         series: [
             {
-                name: "Critical",
+                name: "Critical + Errors",
                 type: "line",
-                data: aggregatedData.critical,
+                data: aggregatedData.criticalErrors,
                 smooth: true,
                 lineStyle: { color: "#cf222e", width: 2 },
                 itemStyle: { color: "#cf222e" },
                 markPoint: { data: markPoints },
             },
             {
-                name: "High",
+                name: "High + Warnings",
                 type: "line",
-                data: aggregatedData.high,
+                data: aggregatedData.highWarnings,
                 smooth: true,
                 lineStyle: { color: "#FF6A00", width: 2 },
                 itemStyle: { color: "#FF6A00" },
@@ -169,30 +163,6 @@ export function buildChannelChartOption(scans: ScanMetadata[]) {
                 smooth: true,
                 lineStyle: { color: "#FFDE5E", width: 2 },
                 itemStyle: { color: "#FFDE5E" },
-            },
-            {
-                name: "Low",
-                type: "line",
-                data: aggregatedData.low,
-                smooth: true,
-                lineStyle: { color: "#B7B2AA", width: 2 },
-                itemStyle: { color: "#B7B2AA" },
-            },
-            {
-                name: "Errors",
-                type: "line",
-                data: aggregatedData.errors,
-                smooth: true,
-                lineStyle: { color: "#cf222e", width: 2 },
-                itemStyle: { color: "#cf222e" },
-            },
-            {
-                name: "Warnings",
-                type: "line",
-                data: aggregatedData.warnings,
-                smooth: true,
-                lineStyle: { color: "#FF6A00", width: 2 },
-                itemStyle: { color: "#FF6A00" },
             },
         ],
     };
