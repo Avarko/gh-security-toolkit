@@ -67,6 +67,7 @@ export const testReportEntrySchema = z.object({
     metadata: metadataSchema,
     hasJacoco: z.boolean().catch(false),
     hasSurefire: z.boolean().catch(false),
+    dataPath: z.string().max(MAX_STRING_LENGTH).optional(),
 }).strict();
 
 // Test report history schema (top-level structure)
