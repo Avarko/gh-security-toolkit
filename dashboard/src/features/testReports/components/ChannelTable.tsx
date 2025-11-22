@@ -28,8 +28,6 @@ export interface ChannelTableProps {
     channel: string;
     /** Array of test report entries for this channel */
     reports: TestReportEntry[];
-    /** Tenant ID (UUID) for building report URLs */
-    tenantId: string;
     /** Base path for test reports routing (e.g., /org/foo/repo/bar/test-reports) */
     testReportsBasePath: string;
     /** Maximum number of rows to display in table. If undefined, shows all rows. */
@@ -41,7 +39,6 @@ export interface ChannelTableProps {
 export function ChannelTable({
     channel,
     reports,
-    tenantId,
     testReportsBasePath,
     maxRows,
     viewAllLink,
@@ -49,9 +46,13 @@ export function ChannelTable({
     // Display the most recent reports (limited by maxRows if specified)
     const displayReports = maxRows ? reports.slice(0, maxRows) : reports;
 
-    // Build the base URL for report files
-    const getReportUrl = (timestamp: string, reportType: "coverage" | "tests") => {
-        return `/data/${tenantId}/runs/${channel}/${timestamp}/${reportType}/index.html`;
+    // Build URL for report files using dataPath from the entry
+    const getReportUrl = (report: TestReportEntry, reportType: "coverage" | "tests") => {
+        if (report.dataPath) {
+            return `/${report.dataPath}/${reportType}/index.html`;
+        }
+        // Fallback: construct from channel and timestamp
+        return `/data/runs/${channel}/${report.timestamp}/${reportType}/index.html`;
     };
 
     return (
@@ -174,7 +175,7 @@ export function ChannelTable({
                                                 color="primary"
                                                 startIcon={<BarChartIcon />}
                                                 endIcon={<OpenInNewIcon fontSize="small" />}
-                                                href={getReportUrl(report.timestamp, "coverage")}
+                                                href={getReportUrl(report, "coverage")}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 sx={{ textTransform: "none" }}
@@ -197,7 +198,7 @@ export function ChannelTable({
                                                 color="success"
                                                 startIcon={<ScienceIcon />}
                                                 endIcon={<OpenInNewIcon fontSize="small" />}
-                                                href={getReportUrl(report.timestamp, "tests")}
+                                                href={getReportUrl(report, "tests")}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 sx={{ textTransform: "none" }}

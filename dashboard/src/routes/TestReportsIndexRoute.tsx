@@ -34,7 +34,7 @@ export default function TestReportsIndexRoute() {
     const { result } = useLoaderData() as LoaderData;
 
     if (result.success && "data" in result) {
-        return <TestReportsOverviewPage reports={result.data} />;
+        return <TestReportsOverviewPage history={result.data} />;
     }
 
     return (

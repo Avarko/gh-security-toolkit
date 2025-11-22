@@ -19,10 +19,9 @@ import { parseTimestamp } from "../../../lib/formatTimestamp";
 type ChannelTestReportsPageProps = {
     channel: string;
     reports: TestReportEntry[];
-    tenantId: string;
 };
 
-export function ChannelTestReportsPage({ channel, reports, tenantId }: ChannelTestReportsPageProps) {
+export function ChannelTestReportsPage({ channel, reports }: ChannelTestReportsPageProps) {
     const { orgSlug, repoSlug } = useParams<{
         orgSlug: string;
         repoSlug: string;
@@ -77,10 +76,7 @@ export function ChannelTestReportsPage({ channel, reports, tenantId }: ChannelTe
             <ChannelTable
                 channel={channel}
                 reports={sorted}
-                tenantId={tenantId}
                 testReportsBasePath={testReportsBasePath}
-                // No maxRows - show all reports
-                // No viewAllLink - we're already on the detail page
             />
         </Box>
     );

@@ -316,7 +316,7 @@ Example:
 ```java
 public class HistoryEntry {
     public String channel;
-    public String timestamp;  // "2025-11-18-173823Z"
+    public String timestamp;  // "20251118-173823" (YYYYMMDD-HHMMSS format)
     public HistoryStats stats;
     public HistoryMetadata metadata;
 }
