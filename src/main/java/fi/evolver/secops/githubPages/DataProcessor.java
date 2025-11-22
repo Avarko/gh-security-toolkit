@@ -14,9 +14,12 @@ import fi.evolver.secops.githubPages.transformer.FindingsTransformer.Transformed
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -133,10 +136,12 @@ public final class DataProcessor {
     }
 
     /**
-     * Copies scan result JSON files from source directory to target directory.
+     * Copies scan result files and directories from source directory to target directory.
      */
     private static void copyJsonFiles(String sourceDir, Path targetDir) throws IOException {
         Path source = Path.of(sourceDir);
+
+        // Copy individual files
         String[] files = {
                 "trivy-fs-results.json",
                 "trivy-image-results.json",
@@ -151,6 +156,37 @@ public final class DataProcessor {
                 System.out.println("   ✅ Copied " + filename);
             }
         }
+
+        // Copy directories (for test reports: coverage/, tests/)
+        String[] dirs = {"coverage", "tests"};
+        for (String dirname : dirs) {
+            Path srcDir = source.resolve(dirname);
+            if (Files.isDirectory(srcDir)) {
+                Path destDir = targetDir.resolve(dirname);
+                copyDirectory(srcDir, destDir);
+                System.out.println("   ✅ Copied " + dirname + "/");
+            }
+        }
+    }
+
+    /**
+     * Recursively copies a directory.
+     */
+    private static void copyDirectory(Path source, Path target) throws IOException {
+        Files.walkFileTree(source, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                Path targetDir = target.resolve(source.relativize(dir));
+                Files.createDirectories(targetDir);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Files.copy(file, target.resolve(source.relativize(file)), StandardCopyOption.REPLACE_EXISTING);
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     /**

@@ -27,6 +27,11 @@ mkdir -p "$ARCHIVE_DIR"
 
 # Archive entire /data directory (contains all tenant UUIDs)
 if [ -d "$PAGES_ROOT/data" ]; then
+    # Debug: show what's in hist directory
+    if [ -d "$PAGES_ROOT/data/hist" ]; then
+        echo "   📋 Contents of data/hist:"
+        ls -la "$PAGES_ROOT/data/hist/" || true
+    fi
     tar -czf "$ARCHIVE_DIR/scan-history.tar.gz" -C "$PAGES_ROOT" data
     SIZE=$(du -h "$ARCHIVE_DIR/scan-history.tar.gz" | cut -f1)
     RUN_COUNT=$(find "$PAGES_ROOT/data" -path "*/runs/*/*" -type d 2>/dev/null | wc -l)

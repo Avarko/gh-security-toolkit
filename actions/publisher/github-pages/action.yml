@@ -133,6 +133,10 @@ runs:
         jbang "${{ github.action_path }}/../../../scripts/github_pages_builder.java" \
           "${{ steps.temp.outputs.builder_config }}"
 
+        # Debug: show hist contents after Java builder
+        echo "📋 Contents of data/hist after Java builder:"
+        ls -la ./data/hist/ 2>/dev/null || echo "   (directory not found or empty)"
+
         # Archive the updated data for persistence across runs
         ${{ github.action_path }}/scripts/archive-scan-history.sh \
           "." \
@@ -142,10 +146,18 @@ runs:
         SITE_DIR="${{ steps.temp.outputs.site_dir }}"
         mkdir -p "$SITE_DIR"
 
+        # Debug: show hist contents before move
+        echo "📋 Contents of data/hist before move:"
+        ls -la ./data/hist/ 2>/dev/null || echo "   (directory not found or empty)"
+
         # Move all site content to deployment directory
         for item in data index.html assets favicon.ico 404.html config; do
           [ -e "./$item" ] && mv "./$item" "$SITE_DIR/" || true
         done
+
+        # Debug: show hist contents after move
+        echo "📋 Contents of $SITE_DIR/data/hist after move:"
+        ls -la "$SITE_DIR/data/hist/" 2>/dev/null || echo "   (directory not found or empty)"
 
         echo "Site prepared for deployment at $SITE_DIR"
 
