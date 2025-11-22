@@ -238,18 +238,16 @@ Deployed to `https://<org>.github.io/<repo>/` (Private Pages):
 ├── favicon.ico
 ├── 404.html
 └── data/
-    ├── defaults.json            # Tenant config (single-tenant mode)
-    └── <tenant-uuid>/           # Tenant data root
-        ├── runs/
-        │   └── <channel>/
-        │       └── <timestamp>/
-        │           ├── trivy-fs-results.json      (~285 KB)
-        │           ├── trivy-image-results.json   (~1.8 MB)
-        │           ├── semgrep-results.json       (~4 KB)
-        │           └── scan-run.json              (~75 bytes)
-        ├── hist/
-        │   └── scan-history.json  # ALL scans stats (compact, grows ~1 KB per scan)
-        └── channels/              # Reserved for future use
+    ├── hist/
+    │   ├── scan-history.json        # ALL scans stats (compact, grows ~1 KB per scan)
+    │   └── test-report-history.json # Test reports (optional)
+    └── runs/
+        └── <channel>/
+            └── <timestamp>/
+                ├── scan-run.json              (~75 bytes)
+                ├── trivy-fs-results.json      (~285 KB)
+                ├── trivy-image-results.json   (~1.8 MB)
+                └── semgrep-results.json       (~4 KB)
 ```
 
 ## Critical Architecture Pattern: GitHub Artifacts as Persistence
@@ -270,10 +268,10 @@ We use **GitHub Actions Artifacts** as a "database" to maintain state between wo
 #### Artifact: `__gh_security_toolkit__github_pages_site_data`
 
 - **Purpose**: Carries scan data forward between workflow runs
-- **Contains**: `data/runs/`, `data/hist/scan-history.json` (single-tenant mode)
+- **Contains**: `data/runs/`, `data/hist/scan-history.json`
 - **Size**: ~400 KB (minimal, data-only)
 - **Retention**: 90 days
-- **Scope**: One per whole GitHub Pages
+- **Scope**: One per repository's GitHub Pages
 - **Why needed**: GitHub Pages cannot be "downloaded" for incremental updates
 
 **Workflow**:
@@ -342,7 +340,7 @@ public class HistoryEntry {
 
 ### 1. `retention_keep` (Pages data retention)
 
-- **What**: Limits full scan results in `/data/<tenant-uuid>/runs/<channel>/`
+- **What**: Limits full scan results in `/data/runs/<channel>/`
 - **Default**: 10 scans per channel
 - **Why**: Each scan = ~2 MB. Prevents GitHub Pages from growing indefinitely.
 - **Note**: `scan-history.json` retains **all** scans (compact stats only).
@@ -355,60 +353,23 @@ public class HistoryEntry {
 - **Scan history artifact**: 90 days (safety margin)
 - **Other artifacts**: 1 day (ephemeral)
 
-## Tenant Modes
-
-The toolkit supports two deployment modes, configured at **build time**:
-
-### Single-Tenant Mode (GitHub Pages)
-
-**Default mode for GitHub Pages deployments.**
-
-```
-/data/                          # No UUID subdirectory
-├── hist/
-│   └── scan-history.json
-└── runs/
-    └── <channel>/<timestamp>/
-```
-
-- Data stored directly at `/data/` (no UUID subdirectory)
-- No tenant resolution needed
-- URL structure: `/security-scans/channel/:channel/run/:timestamp`
-- Build: `npm run build` (default)
-
-### Multi-Tenant Mode (S3/CDN - future)
-
-**For shared hosting with multiple clients.**
+## Data Structure (GitHub Pages)
 
 ```
 /data/
-├── <tenant-uuid-1>/            # Admin-assigned UUID
-│   ├── hist/
-│   └── runs/
-└── <tenant-uuid-2>/
+├── hist/
+│   ├── scan-history.json       # Security scans history
+│   └── test-report-history.json # Test reports history (optional)
+└── runs/
+    └── <channel>/<timestamp>/  # e.g., manual/20251121-161415
+        ├── scan-run.json
+        ├── trivy-fs-results.json
+        ├── trivy-image-results.json
+        └── semgrep-results.json
 ```
 
-- Data stored at `/data/<uuid>/` per tenant
-- Admin-managed tenant registry (external, not in artifacts)
-- URL structure: `/:tenant-path/security-scans/...` (tenant-path is human-readable, admin-chosen)
-- Build: `TENANT_MODE=multi-tenant MULTI_TENANT_CONFIG_PATH=./config.json npm run build`
-
-### Build-Time Configuration
-
-Tenant mode is determined at **build time** via Vite environment variables:
-
-```typescript
-// vite.config.ts
-define: {
-    __TENANT_MODE__: JSON.stringify(process.env.TENANT_MODE || "single-tenant"),
-    __MULTI_TENANT_CONFIG__: JSON.stringify(multiTenantConfig),
-}
-```
-
-This ensures:
-- Predictable behavior (mode cannot change at runtime)
-- Tree-shaking of unused code paths
-- Security (multi-tenant config bundled, not fetched from untrusted source)
+- Data stored directly at `/data/`
+- URL structure: `/security-scans/channel/:channel/run/:timestamp`
 
 ## GitHub Pages Deployment
 
@@ -455,7 +416,7 @@ npm run build  # Output: dashboard/dist/
 Dashboard fetches data from **same origin**:
 ```typescript
 // dashboard/src/features/scans/api/historyClient.ts
-const url = `/data/${tenantUuid}/hist/scan-history.json`;
+const url = `/data/hist/scan-history.json`;
 const response = await fetch(url);
 ```
 
@@ -510,11 +471,10 @@ No API backend. Pure static site.
 | `src/.../GitHubPagesBuilder.java` | Main builder (single-tenant mode) |
 | `src/.../DataProcessor.java` | Processes scan data and writes to data root |
 | `src/.../model/HistoryStats.java` | Java stats model |
-| `dashboard/src/config/tenantMode.ts` | Build-time tenant mode configuration |
-| `dashboard/src/router/singleTenantRouter.tsx` | Single-tenant routing |
-| `dashboard/src/router/multiTenantRouter.tsx` | Multi-tenant routing |
+| `dashboard/src/config/tenantMode.ts` | Data path configuration |
+| `dashboard/src/router/singleTenantRouter.tsx` | Router configuration |
 | `dashboard/src/features/scans/model/historyTypes.ts` | TypeScript schemas |
-| `dashboard/src/features/scans/api/historyClient.ts` | Data fetcher (single + multi-tenant)
+| `dashboard/src/features/scans/api/historyClient.ts` | Data fetcher
 
 ## Testing
 

@@ -69,11 +69,30 @@ if [ -f "$SITE_DATA_ARCHIVE" ]; then
     mkdir -p "$PAGES_ROOT"
     tar -xzf "$SITE_DATA_ARCHIVE" -C "$PAGES_ROOT" 2>/dev/null || echo "⚠️  Archive extraction had warnings (may be legacy format)"
 
-    # Count existing scans across all channels and tenants
+    # Clean up legacy GUID directories (from old multi-tenant mode)
+    # These are directories in data/ that match UUID-4 pattern: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
     if [ -d "$PAGES_ROOT/data" ]; then
+        UUID_PATTERN='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        GUID_DIRS_DELETED=0
+
+        for dir in "$PAGES_ROOT/data"/*; do
+            if [ -d "$dir" ]; then
+                dirname=$(basename "$dir")
+                if echo "$dirname" | grep -qiE "$UUID_PATTERN"; then
+                    echo "   🗑️  Removing legacy GUID directory: $dirname"
+                    rm -rf "$dir"
+                    GUID_DIRS_DELETED=$((GUID_DIRS_DELETED + 1))
+                fi
+            fi
+        done
+
+        if [ $GUID_DIRS_DELETED -gt 0 ]; then
+            echo "   ✅ Removed $GUID_DIRS_DELETED legacy GUID director(y/ies)"
+        fi
+
+        # Count existing scans
         TOTAL_SCANS=$(find "$PAGES_ROOT/data" -path "*/runs/*/*" -type d 2>/dev/null | wc -l)
-        TENANTS=$(find "$PAGES_ROOT/data" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-        echo "   ✅ Restored $TOTAL_SCANS runs across $TENANTS tenant(s) (all channels)"
+        echo "   ✅ Restored $TOTAL_SCANS scan run(s)"
     fi
 else
     echo "⚠️  Archive file not found in artifact, creating fresh data directory"

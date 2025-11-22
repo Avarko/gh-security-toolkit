@@ -1,9 +1,7 @@
 /**
  * Client API for fetching scan history data.
  *
- * Provides separate functions for single-tenant and multi-tenant modes:
- * - fetchScanHistorySingleTenant(): Data at /data/hist/scan-history.json
- * - fetchScanHistoryMultiTenant(tenantId): Data at /data/<uuid>/hist/scan-history.json
+ * Single-tenant mode: Data at /data/hist/scan-history.json
  *
  * Includes comprehensive validation using Zod schemas.
  */
@@ -21,47 +19,13 @@ import {
 export type ScanHistoryLoadResult = ValidationResult<ScanHistory>;
 
 /**
- * Fetches and validates scan history data for SINGLE-TENANT mode.
+ * Fetches and validates scan history data.
  *
- * In single-tenant mode (GitHub Pages):
- * - Data is stored directly at /data/hist/scan-history.json
- * - No tenant resolution needed
- * - No UUID in path
+ * Data is stored at /data/hist/scan-history.json
  */
-export async function fetchScanHistorySingleTenant(): Promise<ScanHistoryLoadResult> {
+export async function fetchScanHistory(): Promise<ScanHistoryLoadResult> {
     const url = "/data/hist/scan-history.json";
-    return fetchAndValidateScanHistory(url);
-}
 
-/**
- * Fetches and validates scan history data for MULTI-TENANT mode.
- *
- * In multi-tenant mode (S3/CDN):
- * - Data is stored at /data/<uuid>/hist/scan-history.json
- * - Tenant ID (UUID) is resolved from URL path via tenant config
- *
- * @param tenantId - The tenant's UUID (from multi-tenant config)
- */
-export async function fetchScanHistoryMultiTenant(
-    tenantId: string
-): Promise<ScanHistoryLoadResult> {
-    if (!tenantId) {
-        return {
-            success: false,
-            error: "Tenant ID is required in multi-tenant mode",
-        };
-    }
-
-    const url = `/data/${tenantId}/hist/scan-history.json`;
-    return fetchAndValidateScanHistory(url);
-}
-
-/**
- * Internal function to fetch and validate scan history from a URL.
- */
-async function fetchAndValidateScanHistory(
-    url: string
-): Promise<ScanHistoryLoadResult> {
     try {
         const response = await fetch(url);
 

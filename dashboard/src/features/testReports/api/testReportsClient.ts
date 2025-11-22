@@ -1,9 +1,7 @@
 /**
  * Client API for fetching test report history data.
  *
- * Provides separate functions for single-tenant and multi-tenant modes:
- * - fetchTestReportsSingleTenant(): Data at /data/hist/test-report-history.json
- * - fetchTestReportsMultiTenant(tenantId): Data at /data/<uuid>/hist/test-report-history.json
+ * Single-tenant mode: Data at /data/hist/test-report-history.json
  *
  * Includes comprehensive validation using Zod schemas.
  */
@@ -20,46 +18,13 @@ import {
 export type TestReportsLoadResult = ValidationResult<TestReportHistory>;
 
 /**
- * Fetches and validates test report history for SINGLE-TENANT mode.
+ * Fetches and validates test report history.
  *
- * In single-tenant mode (GitHub Pages):
- * - Data is stored directly at /data/hist/test-report-history.json
- * - No tenant resolution needed
+ * Data is stored at /data/hist/test-report-history.json
  */
-export async function fetchTestReportsSingleTenant(): Promise<TestReportsLoadResult> {
+export async function fetchTestReports(): Promise<TestReportsLoadResult> {
     const url = "/data/hist/test-report-history.json";
-    return fetchAndValidateTestReports(url);
-}
 
-/**
- * Fetches and validates test report history for MULTI-TENANT mode.
- *
- * In multi-tenant mode (S3/CDN):
- * - Data is stored at /data/<uuid>/hist/test-report-history.json
- * - Tenant ID (UUID) is resolved from URL path via tenant config
- *
- * @param tenantId - The tenant's UUID (from multi-tenant config)
- */
-export async function fetchTestReportsMultiTenant(
-    tenantId: string
-): Promise<TestReportsLoadResult> {
-    if (!tenantId) {
-        return {
-            success: false,
-            error: "Tenant ID is required in multi-tenant mode",
-        };
-    }
-
-    const url = `/data/${tenantId}/hist/test-report-history.json`;
-    return fetchAndValidateTestReports(url);
-}
-
-/**
- * Internal function to fetch and validate test reports from a URL.
- */
-async function fetchAndValidateTestReports(
-    url: string
-): Promise<TestReportsLoadResult> {
     try {
         const response = await fetch(url);
 

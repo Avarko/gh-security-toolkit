@@ -1,6 +1,6 @@
 // src/routes/singleTenant/ChannelTestReportsRoute.tsx
 /**
- * Channel test reports route for single-tenant mode.
+ * Channel test reports route.
  *
  * URL: /test-reports/channel/:channel
  */
@@ -9,7 +9,7 @@ import { useLoaderData, useParams } from "react-router-dom";
 import { Container, Typography } from "@mui/material";
 
 import {
-    fetchTestReportsSingleTenant,
+    fetchTestReports,
     type TestReportsLoadResult,
 } from "../../features/testReports/api/testReportsClient";
 import { ChannelTestReportsPage } from "../../features/testReports/components/ChannelTestReportsPage";
@@ -20,7 +20,7 @@ type LoaderData = {
 };
 
 export async function loader(_args: LoaderFunctionArgs): Promise<LoaderData> {
-    const result = await fetchTestReportsSingleTenant();
+    const result = await fetchTestReports();
 
     if (!result.success) {
         console.error(
