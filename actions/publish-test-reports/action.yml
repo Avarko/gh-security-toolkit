@@ -1,0 +1,129 @@
+name: "Publish test reports"
+description: |
+  Composite action for publishing JaCoCo coverage and Surefire test reports to GitHub Pages.
+  Unlike the previous reusable workflow, this action runs in the same job as the caller,
+  eliminating the need for artifact uploads/downloads.
+
+  The caller workflow must:
+  - Have built and generated the test reports
+  - Set appropriate permissions (contents: write, pages: write, id-token: write, actions: write)
+
+inputs:
+  # === TEST REPORT PATHS ===
+  jacoco_report_path:
+    description: "Path to JaCoCo HTML report directory (e.g., target/site/jacoco)"
+    required: false
+    default: ""
+
+  surefire_report_path:
+    description: "Path to Surefire HTML report directory (e.g., target/site/surefire-report)"
+    required: false
+    default: ""
+
+  # === METADATA ===
+  channel:
+    description: "Channel name for organizing reports (e.g., 'nightly', 'pr-123')"
+    required: true
+
+  custom_index_html:
+    description: "Optional path to custom index.html for landing page"
+    required: false
+    default: ""
+
+  # === PUBLISHING ===
+  publish_to:
+    description: 'Where to publish results: "github-release", "github-pages", or "github-release,github-pages" for both'
+    required: false
+    default: "github-pages"
+
+  # === GITHUB TOKEN ===
+  github_token:
+    description: "GitHub token for API operations (defaults to github.token)"
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  has_jacoco:
+    description: "Whether JaCoCo report was included"
+    value: ${{ steps.check-reports.outputs.has_jacoco }}
+  has_surefire:
+    description: "Whether Surefire report was included"
+    value: ${{ steps.check-reports.outputs.has_surefire }}
+  output_dir:
+    description: "Directory containing prepared test reports"
+    value: ${{ steps.setup.outputs.output_dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup directories
+      id: setup
+      shell: bash
+      run: |
+        # Use unique directory to avoid collisions when action is called multiple times
+        OUTPUT_DIR="${RUNNER_TEMP}/test-reports-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+        mkdir -p "$OUTPUT_DIR"
+        echo "output_dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
+
+    - name: Check which reports exist
+      id: check-reports
+      shell: bash
+      env:
+        INPUT_JACOCO_REPORT_PATH: ${{ inputs.jacoco_report_path }}
+        INPUT_SUREFIRE_REPORT_PATH: ${{ inputs.surefire_report_path }}
+      run: |
+        ${{ github.action_path }}/scripts/check-reports.sh
+
+    - name: Create scan context metadata
+      shell: bash
+      env:
+        INPUT_OUTPUT_FILE: ${{ steps.setup.outputs.output_dir }}/scan-context.json
+        INPUT_CHANNEL: ${{ inputs.channel }}
+        INPUT_TYPE: test-report
+        INPUT_ORG_DISPLAY_NAME: ""
+        INPUT_ORG_LOGO_URL: ""
+        INPUT_REPO_DISPLAY_NAME: ""
+      run: |
+        # Reuse create-scan-context.sh from security-scan action
+        ${{ github.action_path }}/../security-scan/scripts/create-scan-context.sh
+
+    - name: Copy test reports
+      shell: bash
+      env:
+        INPUT_OUTPUT_DIR: ${{ steps.setup.outputs.output_dir }}
+        INPUT_JACOCO_REPORT_PATH: ${{ inputs.jacoco_report_path }}
+        INPUT_SUREFIRE_REPORT_PATH: ${{ inputs.surefire_report_path }}
+        INPUT_HAS_JACOCO: ${{ steps.check-reports.outputs.has_jacoco }}
+        INPUT_HAS_SUREFIRE: ${{ steps.check-reports.outputs.has_surefire }}
+      run: |
+        ${{ github.action_path }}/scripts/copy-reports.sh
+
+    - name: Create landing page
+      shell: bash
+      env:
+        INPUT_OUTPUT_DIR: ${{ steps.setup.outputs.output_dir }}
+        INPUT_CUSTOM_INDEX: ${{ inputs.custom_index_html }}
+      run: |
+        ${{ github.action_path }}/scripts/create-landing-page.sh
+
+    # === PUBLISH TO GITHUB PAGES ===
+    - name: Publish to GitHub Pages
+      if: ${{ contains(inputs.publish_to, 'github-pages') }}
+      id: pages
+      uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@reactui
+      with:
+        github_token: ${{ inputs.github_token }}
+        outdir: ${{ steps.setup.outputs.output_dir }}
+
+    - name: Summary
+      shell: bash
+      run: |
+        echo "## Test Reports Published" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Included Reports:" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ steps.check-reports.outputs.has_jacoco }}" = "true" ]; then
+          echo "- JaCoCo Coverage Report" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ "${{ steps.check-reports.outputs.has_surefire }}" = "true" ]; then
+          echo "- Surefire Test Report" >> $GITHUB_STEP_SUMMARY
+        fi

@@ -1,0 +1,55 @@
+name: 'Build Security Dashboard'
+description: 'Builds the React security dashboard SPA'
+
+inputs:
+  node-version:
+    description: 'Node.js version to use'
+    required: false
+    default: '24'
+
+outputs:
+  artifact-name:
+    description: 'Name of the uploaded dashboard artifact'
+    value: __gh_security_toolkit__security-dashboard-build
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout toolkit repository
+      uses: actions/checkout@v4
+      with:
+        repository: Avarko/gh-security-toolkit
+        ref: reactui
+        path: _toolkit
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      continue-on-error: true
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+        cache-dependency-path: _toolkit/dashboard/package-lock.json
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd _toolkit/dashboard
+        npm ci
+
+    - name: Build dashboard
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd _toolkit/dashboard
+        npm run build
+        echo "✅ Dashboard build complete"
+        # Vite build output
+        ls -lh dist/
+
+    - name: Upload dashboard artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: __gh_security_toolkit__security-dashboard-build
+        path: _toolkit/dashboard/dist
+        retention-days: 1

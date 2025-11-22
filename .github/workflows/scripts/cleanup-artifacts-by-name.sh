@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+#
+# Cleans up old GitHub Actions artifacts, keeping only N newest.
+#
+# Usage: cleanup-artifacts-by-name.sh <artifact_name> <keep_count> <repository>
+#
+# Arguments:
+#   artifact_name - Exact name of the artifact to clean (e.g., "__gh_security_toolkit__github_pages_site_data")
+#   keep_count    - Number of newest artifacts to keep (e.g., 3)
+#   repository    - GitHub repository in format "owner/repo"
+#
+# Environment:
+#   GH_TOKEN - GitHub token for artifact operations (required)
+
+set -euo pipefail
+
+if [ $# -lt 3 ]; then
+    echo "Usage: $0 <artifact_name> <keep_count> <repository>"
+    exit 1
+fi
+
+ARTIFACT_NAME="$1"
+KEEP="$2"
+REPO="$3"
+
+echo "🧹 Cleaning $ARTIFACT_NAME artifacts (keeping $KEEP newest)"
+
+# Get all artifacts with this name, sorted by creation date (newest first)
+ARTIFACT_IDS=$(gh api \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  "/repos/$REPO/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" \
+  --jq '[.artifacts | sort_by(.created_at) | reverse | .[].id] | @json' | jq -r '.[]')
+
+if [ -z "$ARTIFACT_IDS" ]; then
+  echo "   ℹ️  No artifacts found"
+  exit 0
+fi
+
+# Convert to array
+mapfile -t IDS <<< "$ARTIFACT_IDS"
+TOTAL=${#IDS[@]}
+
+echo "   Found $TOTAL artifact(s)"
+
+if [ "$TOTAL" -le "$KEEP" ]; then
+  echo "   ✅ No cleanup needed (total=$TOTAL, keep=$KEEP)"
+  exit 0
+fi
+
+# Delete old artifacts (keep only the first $KEEP)
+DELETED=0
+for ((i=KEEP; i<TOTAL; i++)); do
+  ARTIFACT_ID="${IDS[$i]}"
+  echo "   🗑️  Deleting artifact ID: $ARTIFACT_ID"
+  gh api \
+    --method DELETE \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "/repos/$REPO/actions/artifacts/$ARTIFACT_ID" || echo "   ⚠️  Failed to delete (may already be deleted)"
+  DELETED=$((DELETED + 1))
+done
+
+echo "   ✅ Deleted $DELETED artifact(s), kept $KEEP newest"

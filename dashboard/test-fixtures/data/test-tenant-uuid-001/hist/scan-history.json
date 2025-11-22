@@ -1,0 +1,109 @@
+{
+    "version": "2",
+    "scans": [
+        {
+            "channel": "nightly-master",
+            "timestamp": "2025-11-15T02:00:00Z",
+            "metadata": {
+                "branch": "main",
+                "commit": "00000000000000000000000000000136e41d6f8e",
+                "repository": "contoso/contoso-testapp"
+            },
+            "trivyFsResults": {
+                "totalVulnerabilities": {
+                    "CRITICAL": 0,
+                    "HIGH": 0,
+                    "MEDIUM": 11,
+                    "LOW": 23
+                }
+            },
+            "trivyImageResults": {
+                "totalVulnerabilities": {
+                    "CRITICAL": 0,
+                    "HIGH": 0,
+                    "MEDIUM": 0,
+                    "LOW": 0
+                }
+            },
+            "semgrepResults": {
+                "totalErrors": 0,
+                "totalWarnings": 1,
+                "totalInfos": 9
+            }
+        },
+        {
+            "channel": "nightly-master",
+            "timestamp": "2025-11-14T02:00:00Z",
+            "metadata": {
+                "branch": "main",
+                "commit": "000000000000000000000000000001f49e1ac810",
+                "repository": "contoso/contoso-testapp"
+            },
+            "trivyFsResults": {
+                "totalVulnerabilities": {
+                    "CRITICAL": 0,
+                    "HIGH": 1,
+                    "MEDIUM": 8,
+                    "LOW": 28
+                }
+            },
+            "trivyImageResults": {
+                "totalVulnerabilities": {
+                    "CRITICAL": 0,
+                    "HIGH": 0,
+                    "MEDIUM": 0,
+                    "LOW": 0
+                }
+            },
+            "semgrepResults": {
+                "totalErrors": 2,
+                "totalWarnings": 0,
+                "totalInfos": 11
+            }
+        },
+        {
+            "channel": "nightly-master",
+            "timestamp": "2025-11-13T02:00:00Z",
+            "metadata": {
+                "branch": "main",
+                "commit": "000000000000000000000000000000393618ab3c",
+                "repository": "contoso/contoso-testapp"
+            },
+            "trivyFsResults": {
+                "totalVulnerabilities": {
+                    "CRITICAL": 1,
+                    "HIGH": 0,
+                    "MEDIUM": 14,
+                    "LOW": 15
+                }
+            },
+            "semgrepResults": {
+                "totalErrors": 2,
+                "totalWarnings": 3,
+                "totalInfos": 12
+            }
+        },
+        {
+            "channel": "prod-release",
+            "timestamp": "2025-11-12T10:30:00Z",
+            "metadata": {
+                "branch": "release/v2.1",
+                "commit": "000000000000000000000000000003f069a4d4b0",
+                "repository": "contoso/contoso-testapp"
+            },
+            "trivyFsResults": {
+                "totalVulnerabilities": {
+                    "CRITICAL": 0,
+                    "HIGH": 1,
+                    "MEDIUM": 13,
+                    "LOW": 27
+                }
+            },
+            "semgrepResults": {
+                "totalErrors": 1,
+                "totalWarnings": 2,
+                "totalInfos": 7
+            }
+        }
+    ]
+}

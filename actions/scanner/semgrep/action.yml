@@ -224,14 +224,14 @@ runs:
       id: version
       shell: bash
       run: |
-        VERSION=$(semgrep --version | head -n1 | awk '{print $1}')
-        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-        echo "Semgrep version: $VERSION"
+        SEMGREP_VERSION=$(semgrep --version | head -n1 | awk '{print $1}')
+        echo "semgrep_version=$SEMGREP_VERSION" >> "$GITHUB_OUTPUT"
+        echo "Semgrep version: $SEMGREP_VERSION"
 
 outputs:
   semgrep_summary:
     description: "Semgrep summary markdown file path"
     value: ${{ steps.summary.outputs.semgrep_summary }}
-  version:
+  semgrep_version:
     description: "Semgrep version"
-    value: ${{ steps.version.outputs.version }}
+    value: ${{ steps.version.outputs.semgrep_version }}

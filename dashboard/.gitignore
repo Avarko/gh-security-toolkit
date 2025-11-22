@@ -1,0 +1,9 @@
+node_modules
+build
+dist
+.cache
+.env
+
+# Local development symlinks (created by npm run dev)
+public/data
+public/config
