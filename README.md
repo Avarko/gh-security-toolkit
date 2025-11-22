@@ -115,7 +115,7 @@ jobs:
       # Run security scan - everything in the same job!
       # Config from .gh-security-toolkit/config.yaml is automatically loaded
       - name: Security scan
-        uses: Avarko/gh-security-toolkit/actions/security-scan@reactui
+        uses: Avarko/gh-security-toolkit/actions/security-scan@main
         with:
           channel: nightly-master
           filesystem_paths: .                       # Scan the checkout directory
@@ -130,7 +130,7 @@ jobs:
         run: mvn test jacoco:report surefire-report:report
 
       - name: Publish test reports
-        uses: Avarko/gh-security-toolkit/actions/publish-test-reports@reactui
+        uses: Avarko/gh-security-toolkit/actions/publish-test-reports@main
         with:
           channel: main
           jacoco_report_path: target/site/jacoco

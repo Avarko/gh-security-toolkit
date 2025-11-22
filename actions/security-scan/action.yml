@@ -141,7 +141,7 @@ runs:
     # === RUN TRIVY SCANS ===
     - name: Run Trivy scans
       id: trivy
-      uses: Avarko/gh-security-toolkit/actions/scanner/trivy@reactui
+      uses: Avarko/gh-security-toolkit/actions/scanner/trivy@main
       with:
         filesystem_path: ${{ steps.fsroot.outputs.scan_root || '' }}
         docker_image_ref: ${{ inputs.scan_docker_image_ref }}
@@ -153,7 +153,7 @@ runs:
     - name: Run Semgrep scan
       id: semgrep
       if: ${{ steps.fsroot.outputs.has_fs_scan == 'true' }}
-      uses: Avarko/gh-security-toolkit/actions/scanner/semgrep@reactui
+      uses: Avarko/gh-security-toolkit/actions/scanner/semgrep@main
       with:
         filesystem_path: ${{ steps.fsroot.outputs.scan_root }}
         semgrep_output_dir: ${{ steps.setup.outputs.output_dir }}
@@ -162,7 +162,7 @@ runs:
     # === SUMMARIZE RESULTS ===
     - name: Summarizer
       id: sum
-      uses: Avarko/gh-security-toolkit/actions/summarizer@reactui
+      uses: Avarko/gh-security-toolkit/actions/summarizer@main
       with:
         fs_json: ${{ steps.trivy.outputs.fs_json || '' }}
         image_json: ${{ steps.trivy.outputs.image_json || '' }}
@@ -178,7 +178,7 @@ runs:
     # === PUBLISH TO GITHUB RELEASE ===
     - name: Publish to GitHub Release
       if: ${{ contains(inputs.publish_to, 'github-release') }}
-      uses: Avarko/gh-security-toolkit/actions/publisher/github-release@reactui
+      uses: Avarko/gh-security-toolkit/actions/publisher/github-release@main
       with:
         outdir: ${{ steps.setup.outputs.output_dir }}
         release_name: "Security scan ${{ inputs.channel }} ${{ steps.ts.outputs.ts }}"
@@ -196,7 +196,7 @@ runs:
     - name: Publish to GitHub Pages
       if: ${{ contains(inputs.publish_to, 'github-pages') }}
       id: pages
-      uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@reactui
+      uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@main
       with:
         github_token: ${{ inputs.github_token }}
         outdir: ${{ steps.setup.outputs.output_dir }}

@@ -1,0 +1,70 @@
+name: Publish Test Reports
+
+on:
+  workflow_call:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+  actions: read
+
+concurrency:
+  group: "publish-test-reports"
+  cancel-in-progress: false
+
+jobs:
+  publish-test-reports:
+    name: Publish Test Reports
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup directories
+        id: setup
+        run: |
+          OUTPUT_DIR="${RUNNER_TEMP}/test-reports-output-${{ github.run_id }}"
+          WORK_DIR="${RUNNER_TEMP}/test-reports-workspace-${{ github.run_id }}"
+          mkdir -p "$OUTPUT_DIR" "$WORK_DIR"
+          echo "output_dir=$OUTPUT_DIR" >> "$GITHUB_OUTPUT"
+          echo "work_dir=$WORK_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Download test reports artifact
+        id: download
+        uses: Avarko/gh-security-toolkit/actions/artifacts/test-reports/download@main
+        with:
+          download-path: ${{ steps.setup.outputs.work_dir }}/test-reports
+
+      - name: Prepare scan output
+        id: prepare
+        run: |
+          OUTDIR="${{ steps.setup.outputs.output_dir }}"
+
+          # Copy scan-context.json from downloaded artifact
+          if [ -f "${{ steps.setup.outputs.work_dir }}/test-reports/scan-context.json" ]; then
+            cp "${{ steps.setup.outputs.work_dir }}/test-reports/scan-context.json" "$OUTDIR/scan-context.json"
+            echo "📋 Found scan-context.json in artifact"
+            cat "$OUTDIR/scan-context.json"
+          else
+            echo "❌ ERROR: scan-context.json not found in test-reports artifact"
+            exit 1
+          fi
+
+          # Copy test report files
+          if [ -d "${{ steps.setup.outputs.work_dir }}/test-reports/coverage" ]; then
+            cp -r "${{ steps.setup.outputs.work_dir }}/test-reports/coverage" "$OUTDIR/"
+            echo "✅ Copied coverage reports"
+          fi
+
+          if [ -d "${{ steps.setup.outputs.work_dir }}/test-reports/tests" ]; then
+            cp -r "${{ steps.setup.outputs.work_dir }}/test-reports/tests" "$OUTDIR/"
+            echo "✅ Copied test reports"
+          fi
+
+          echo "output_dir=$OUTDIR" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to GitHub Pages
+        id: pages
+        uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@main
+        with:
+          github_token: ${{ secrets.GH_TOKEN || github.token }}
+          outdir: ${{ steps.prepare.outputs.output_dir }}

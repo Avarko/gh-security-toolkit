@@ -161,7 +161,7 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Security scan
-        uses: Avarko/gh-security-toolkit/actions/security-scan@reactui
+        uses: Avarko/gh-security-toolkit/actions/security-scan@main
         with:
           channel: nightly
           filesystem_path: .
@@ -176,7 +176,7 @@ jobs:
         run: mvn test jacoco:report surefire-report:report
 
       - name: Publish test reports
-        uses: Avarko/gh-security-toolkit/actions/publish-test-reports@reactui
+        uses: Avarko/gh-security-toolkit/actions/publish-test-reports@main
         with:
           channel: ci
           jacoco_report_path: target/site/jacoco

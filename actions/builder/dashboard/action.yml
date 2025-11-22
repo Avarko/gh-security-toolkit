@@ -19,7 +19,7 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: Avarko/gh-security-toolkit
-        ref: reactui
+        ref: main
         path: _toolkit
 
     - name: Setup Node.js
