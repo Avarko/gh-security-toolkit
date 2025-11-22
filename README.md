@@ -581,6 +581,78 @@ npm run dev                    # Single-tenant mode (default)
 TENANT_MODE=multi-tenant MULTI_TENANT_CONFIG_PATH=./config.json npm run dev
 ```
 
+### LocalStack S3 development
+
+For local development with realistic multi-tenant data from S3, use LocalStack:
+
+**Prerequisites:**
+- Docker (for LocalStack container)
+- AWS CLI (installed via `mise install`)
+
+**Quick start:**
+```bash
+# One-command setup: starts LocalStack, creates buckets, uploads test data, starts dev server
+make localstack-dev
+
+# Or step by step:
+make localstack-start          # Start LocalStack container
+make localstack-setup          # Create S3 buckets with test data
+cd dashboard && npm run dev:localstack  # Start dev server with S3 data
+```
+
+**Test data structure:**
+
+LocalStack creates two S3 buckets with test data for two organizations:
+
+| Bucket | Organization | Repositories |
+|--------|--------------|--------------|
+| `contoso-security-reports` | Contoso Corporation | frontend, backend |
+| `acme-security-reports` | Acme Inc | frontend, backend |
+
+Each repository contains:
+- Security scan history (`hist/scan-history.json`)
+- Test report history (`hist/test-report-history.json`)
+- Individual scan runs with Trivy/Semgrep results
+- JaCoCo and Surefire HTML test reports
+
+**NPM scripts (in dashboard/):**
+```bash
+npm run localstack:start       # Start LocalStack container
+npm run localstack:stop        # Stop LocalStack container
+npm run localstack:setup       # Initialize buckets with test data
+npm run localstack:logs        # View LocalStack logs
+npm run dev:localstack         # Start Vite with LocalStack S3 data
+```
+
+**Makefile commands (from root or dashboard/):**
+```bash
+make localstack-start          # Start LocalStack
+make localstack-stop           # Stop LocalStack
+make localstack-setup          # Initialize S3 buckets
+make localstack-dev            # Full workflow: start + setup + dev server
+```
+
+**Configuration:**
+
+LocalStack tenant configuration is in `dashboard/localstack-config/tenant-registry.json`:
+```json
+{
+  "tenants": [
+    {
+      "id": "contoso-uuid-001",
+      "url_path": "contoso",
+      "display_name": "Contoso Dashboard",
+      "repositories": [
+        {
+          "id": "frontend",
+          "data_base_url": "http://localhost:4566/contoso-security-reports/data/frontend"
+        }
+      ]
+    }
+  ]
+}
+```
+
 ---
 
 ## Examples

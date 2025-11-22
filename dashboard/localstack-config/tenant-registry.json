@@ -1,0 +1,40 @@
+{
+  "tenants": [
+    {
+      "id": "contoso-uuid-001",
+      "url_path": "contoso",
+      "display_name": "Contoso Dashboard",
+      "org_display_name": "Contoso Corporation",
+      "repositories": [
+        {
+          "id": "frontend",
+          "display_name": "Frontend App",
+          "data_base_url": "http://localhost:4566/contoso-security-reports/data/frontend"
+        },
+        {
+          "id": "backend",
+          "display_name": "Backend API",
+          "data_base_url": "http://localhost:4566/contoso-security-reports/data/backend"
+        }
+      ]
+    },
+    {
+      "id": "acme-uuid-002",
+      "url_path": "acme",
+      "display_name": "Acme Dashboard",
+      "org_display_name": "Acme Inc",
+      "repositories": [
+        {
+          "id": "frontend",
+          "display_name": "Frontend App",
+          "data_base_url": "http://localhost:4566/acme-security-reports/data/frontend"
+        },
+        {
+          "id": "backend",
+          "display_name": "Backend API",
+          "data_base_url": "http://localhost:4566/acme-security-reports/data/backend"
+        }
+      ]
+    }
+  ]
+}
