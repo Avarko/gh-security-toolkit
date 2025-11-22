@@ -11,26 +11,10 @@ const MAX_COMMIT_SHA_LENGTH = 40;
 const MAX_BRANCH_LENGTH = 200;
 const MAX_CHANNEL_LENGTH = 100;
 
-// Timestamp validation (same as scans)
+// Timestamp validation: YYYYMMDD-HHMMSS format (e.g., "20251122-145232")
 const timestampSchema = z.string()
     .max(MAX_STRING_LENGTH)
-    .refine(
-        (val) => {
-            // Try standard ISO 8601 first
-            if (!isNaN(Date.parse(val))) {
-                return true;
-            }
-            // Try compact UTC format: YYYYMMDD-HHMMSS
-            const compactFormat = /^\d{8}-\d{6}$/;
-            if (compactFormat.test(val)) {
-                return true;
-            }
-            // Try legacy format: YYYY-MM-DD-HHMMSSZ
-            const legacyFormat = /^\d{4}-\d{2}-\d{2}-\d{6}Z$/;
-            return legacyFormat.test(val);
-        },
-        { message: "Invalid timestamp format" }
-    );
+    .regex(/^\d{8}-\d{6}$/, "Invalid timestamp format (expected YYYYMMDD-HHMMSS)");
 
 // Git commit SHA validation
 const commitSchema = z.string()
