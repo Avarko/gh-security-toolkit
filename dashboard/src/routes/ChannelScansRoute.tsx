@@ -43,7 +43,11 @@ export default function ChannelScansRoute() {
     }
 
     if (result.success && "data" in result) {
-        return <ChannelScansPage history={result.data} channel={channel} />;
+        // Filter scans for this specific channel
+        const channelScans = result.data.scans.filter(
+            (scan) => scan.channel === channel
+        );
+        return <ChannelScansPage scans={channelScans} channel={channel} />;
     }
 
     return (
