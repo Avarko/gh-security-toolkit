@@ -53,6 +53,10 @@ export type TrivyScan = z.infer<typeof trivyScanSchema>;
 export const semgrepFindingSchema = z.object({
     check_id: z.string(),
     path: z.string(),
+    start: z.object({
+        line: z.number(),
+        col: z.number().optional(),
+    }).optional(),
     extra: z.object({
         severity: z.string(),
         message: z.string(),

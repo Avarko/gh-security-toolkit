@@ -234,7 +234,7 @@ export function ScanRunDetailPage({
                                 <TableHead>
                                     <TableRow>
                                         <TableCell sx={{ fontWeight: 600 }}>Rule</TableCell>
-                                        <TableCell sx={{ fontWeight: 600 }}>Path</TableCell>
+                                        <TableCell sx={{ fontWeight: 600 }}>Location</TableCell>
                                         <TableCell sx={{ fontWeight: 600 }}>Severity</TableCell>
                                         <TableCell sx={{ fontWeight: 600 }}>Message</TableCell>
                                     </TableRow>
@@ -256,7 +256,7 @@ export function ScanRunDetailPage({
                                                     fontSize: "0.85rem",
                                                 }}
                                             >
-                                                {f.path}
+                                                {f.path}{f.start?.line ? `:${f.start.line}` : ""}
                                             </TableCell>
                                             <TableCell>
                                                 <Chip
