@@ -1,0 +1,89 @@
+name: Deploy Test Reports to GitHub Pages
+
+on:
+  workflow_call:
+    inputs:
+      channel:
+        description: "Channel name for organizing deployments (e.g., 'ci', 'nightly')"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: read
+
+# Allow only one concurrent deployment per channel
+concurrency:
+  group: "pages-test-reports-${{ inputs.channel }}"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download test reports artifact
+        uses: ./actions/artifacts/test-reports/download
+        with:
+          download-path: ./test-reports-download
+
+      - name: Create empty scan output (for publisher compatibility)
+        shell: bash
+        run: |
+          mkdir -p scan-output
+          # Create minimal empty scan files
+          echo '{"Results":[]}' > scan-output/trivy-fs-results.json
+          echo '{"results":[]}' > scan-output/semgrep-results.json
+
+      - name: Initialize GitHub Pages structure
+        uses: ./actions/publisher/github-pages
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          outdir: ./scan-output
+          channel: ${{ inputs.channel }}
+
+      - name: Copy test reports to GitHub Pages
+        shell: bash
+        run: |
+          echo "📋 Integrating test reports into GitHub Pages structure..."
+
+          # Find the tenant data directory
+          TENANT_DIR=$(find ./data -mindepth 1 -maxdepth 1 -type d | head -1)
+
+          if [ -z "$TENANT_DIR" ]; then
+            echo "❌ ERROR: Could not find tenant directory"
+            exit 1
+          fi
+
+          echo "   Tenant directory: $TENANT_DIR"
+
+          # Create tests directory structure
+          mkdir -p "$TENANT_DIR/tests"
+
+          # Copy test reports
+          cp -r ./test-reports-download/* "$TENANT_DIR/tests/"
+
+          echo "   ✅ Test reports copied to $TENANT_DIR/tests/"
+          ls -lh "$TENANT_DIR/tests/"
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          outdir: ./scan-output
+          channel: ${{ inputs.channel }}
+
+      - name: Summary
+        shell: bash
+        run: |
+          echo "## 🚀 Test Reports Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Pages URL:** ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Channel:** ${{ inputs.channel }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test reports are available in the tenant directory" >> $GITHUB_STEP_SUMMARY

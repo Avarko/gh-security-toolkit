@@ -110,7 +110,7 @@ runs:
 
 
     - name: Build Dashboard
-      uses: Avarko/gh-security-toolkit/actions/builder/dashboard@reactui
+      uses: Avarko/gh-security-toolkit/actions/builder/dashboard@main
       with:
         node-version: '24'
 

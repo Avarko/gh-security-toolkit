@@ -18,7 +18,7 @@ on:
 
 jobs:
   test-dashboard:
-    uses: Avarko/gh-security-toolkit/.github/workflows/publish-dashboard.yml@reactui
+    uses: Avarko/gh-security-toolkit/.github/workflows/publish-dashboard.yml@main
     permissions:
       contents: write
       pages: write
@@ -82,7 +82,7 @@ on:
 
 jobs:
   test:
-    uses: Avarko/gh-security-toolkit/.github/workflows/publish-dashboard.yml@reactui
+    uses: Avarko/gh-security-toolkit/.github/workflows/publish-dashboard.yml@main
     permissions:
       contents: write
       pages: write
@@ -103,7 +103,7 @@ jobs:
 Use `rebuild-dashboard.yml` for quick iterations:
 
 1. Make changes to `dashboard/app/routes/*.tsx`
-2. Commit and push to `reactui` branch
+2. Commit and push to `main` branch
 3. Go to Actions → Rebuild Dashboard (Test)
 4. Run workflow
 5. Check results
@@ -144,7 +144,7 @@ on:
 jobs:
   rebuild-dashboard:
     name: Rebuild Dashboard UI
-    uses: Avarko/gh-security-toolkit/.github/workflows/publish-dashboard.yml@reactui
+    uses: Avarko/gh-security-toolkit/.github/workflows/publish-dashboard.yml@main
     permissions:
       contents: write
       pages: write

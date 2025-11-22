@@ -155,7 +155,7 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Security scan
-        uses: Avarko/gh-security-toolkit/actions/security-scan@reactui
+        uses: Avarko/gh-security-toolkit/actions/security-scan@main
         with:
           channel: "manual"
           filesystem_path: .
@@ -303,7 +303,7 @@ Example:
   run: docker build -t myapp:latest .
 
 - name: Security scan
-  uses: Avarko/gh-security-toolkit/actions/security-scan@reactui
+  uses: Avarko/gh-security-toolkit/actions/security-scan@main
   with:
     docker_image_ref: myapp:latest  # Trivy scans this directly
 ```
@@ -407,7 +407,7 @@ npm run build  # Output: dashboard/dist/
 ### Production Build (in workflow)
 
 ```yaml
-- uses: Avarko/gh-security-toolkit/actions/builder/dashboard@reactui
+- uses: Avarko/gh-security-toolkit/actions/builder/dashboard@main
   # Outputs artifact: security-dashboard-build
 ```
 

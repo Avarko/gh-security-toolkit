@@ -110,7 +110,7 @@ runs:
     - name: Publish to GitHub Pages
       if: ${{ contains(inputs.publish_to, 'github-pages') }}
       id: pages
-      uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@reactui
+      uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@main
       with:
         github_token: ${{ inputs.github_token }}
         outdir: ${{ steps.setup.outputs.output_dir }}
