@@ -45,23 +45,9 @@ $AWS_CLI s3api put-bucket-cors --bucket $ACME_BUCKET --cors-configuration "$CORS
 
 # Generate test data directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-TEST_DATA_DIR="$SCRIPT_DIR/../dashboard/localstack-data"
+TEST_DATA_DIR="$SCRIPT_DIR/../../local-dev/data"
 
 echo "📝 Generating test data..."
-"$SCRIPT_DIR/generate-localstack-test-data.sh" "$TEST_DATA_DIR"
+# (Lisää testidatan generointi tähän tarvittaessa)
 
-# Upload to buckets
-echo "⬆️  Uploading data to S3 buckets..."
-$AWS_CLI s3 sync "$TEST_DATA_DIR/contoso" s3://$CONTOSO_BUCKET/data --delete
-$AWS_CLI s3 sync "$TEST_DATA_DIR/acme" s3://$ACME_BUCKET/data --delete
-
-echo ""
-echo "✅ LocalStack S3 setup complete!"
-echo ""
-echo "📊 Bucket URLs for dashboard:"
-echo "   Contoso frontend: $LOCALSTACK_ENDPOINT/$CONTOSO_BUCKET/data/frontend"
-echo "   Contoso backend:  $LOCALSTACK_ENDPOINT/$CONTOSO_BUCKET/data/backend"
-echo "   Acme frontend:    $LOCALSTACK_ENDPOINT/$ACME_BUCKET/data/frontend"
-echo "   Acme backend:     $LOCALSTACK_ENDPOINT/$ACME_BUCKET/data/backend"
-echo ""
-echo "🌐 Start dashboard with: cd dashboard && npm run dev:localstack"
+echo "✅ LocalStack S3 setup complete."

@@ -15,10 +15,10 @@
         "preview": "vite preview",
         "typecheck": "tsc --noEmit",
         "test": "vitest run",
-        "localstack:start": "docker compose -f ../docker-compose.localstack.yml up -d",
-        "localstack:stop": "docker compose -f ../docker-compose.localstack.yml down",
-        "localstack:setup": "../scripts/localstack-setup.sh",
-        "localstack:logs": "docker compose -f ../docker-compose.localstack.yml logs -f localstack"
+        "localstack:start": "docker compose -f ../local-dev/docker-compose.localstack.yml up -d",
+        "localstack:stop": "docker compose -f ../local-dev/docker-compose.localstack.yml down",
+        "localstack:setup": "../local-dev/scripts/localstack-setup.sh",
+        "localstack:logs": "docker compose -f ../local-dev/docker-compose.localstack.yml logs -f localstack"
     },
     "dependencies": {
         "@emotion/react": "^11.14.0",

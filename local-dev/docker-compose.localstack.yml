@@ -1,0 +1,11 @@
+## version attribute removed (obsolete)
+services:
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3
+      - DEBUG=1
+    volumes:
+      - ./local-dev/data:/data
