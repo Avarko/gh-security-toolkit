@@ -534,10 +534,14 @@ No API backend. Pure static site.
 | `src/.../GitHubPagesBuilder.java` | Main builder (single-tenant mode) |
 | `src/.../DataProcessor.java` | Processes scan data and writes to data root |
 | `src/.../model/HistoryStats.java` | Java stats model |
-| `dashboard/src/config/tenantMode.ts` | Data path configuration |
-| `dashboard/src/router/singleTenantRouter.tsx` | Router configuration |
+| `dashboard/src/config/tenantMode.ts` | Data path + data source configuration |
+| `dashboard/src/router/createRouter.tsx` | Unified router factory |
 | `dashboard/src/features/scans/model/historyTypes.ts` | TypeScript schemas |
-| `dashboard/src/features/scans/api/historyClient.ts` | Data fetcher
+| `dashboard/src/features/scans/api/historyClient.ts` | Data fetcher |
+| `docker-compose.localstack.yml` | LocalStack container definition |
+| `scripts/localstack-setup.sh` | S3 bucket setup script |
+| `scripts/generate-localstack-test-data.sh` | Test data generator |
+| `dashboard/localstack-config/tenant-registry.json` | LocalStack tenant config
 
 ## Testing
 
@@ -551,6 +555,59 @@ No API backend. Pure static site.
 cd dashboard && npm run dev
 
 # Navigate to http://localhost:5173
+```
+
+### LocalStack S3 Development
+
+For testing multi-tenant functionality with realistic S3 data, use LocalStack:
+
+```bash
+# One-command: start LocalStack + setup S3 buckets + start dev server
+make localstack-dev
+
+# Or step by step:
+make localstack-start    # Start LocalStack container
+make localstack-setup    # Create buckets with test data
+cd dashboard && npm run dev:localstack  # Start with S3 data source
+```
+
+**LocalStack test data structure:**
+
+```
+contoso-security-reports (S3 bucket)
+└── data/
+    ├── frontend/          # Contoso frontend repo
+    │   ├── hist/
+    │   │   ├── scan-history.json
+    │   │   └── test-report-history.json
+    │   ├── runs/nightly-main/<timestamp>/
+    │   │   ├── scan-run.json
+    │   │   ├── trivy-fs-results.json
+    │   │   └── semgrep-results.json
+    │   └── test-reports/nightly-main/<timestamp>/
+    │       ├── jacoco.html
+    │       └── surefire.html
+    └── backend/           # Contoso backend repo
+        └── (same structure)
+
+acme-security-reports (S3 bucket)
+└── data/
+    ├── frontend/          # Acme frontend repo
+    └── backend/           # Acme backend repo
+```
+
+**Key files:**
+- `docker-compose.localstack.yml` - LocalStack container definition
+- `scripts/localstack-setup.sh` - S3 bucket creation and data upload
+- `scripts/generate-localstack-test-data.sh` - Test data generator
+- `dashboard/localstack-config/tenant-registry.json` - Multi-tenant config for LocalStack
+
+**Environment variables (set in .mise.toml):**
+```bash
+AWS_ENDPOINT_URL=http://localhost:4566
+AWS_ACCESS_KEY_ID=test
+AWS_SECRET_ACCESS_KEY=test
+AWS_DEFAULT_REGION=us-east-1
 ```
 
 ### Workflow Test
@@ -597,7 +654,7 @@ npm run test -- historyTypes.test.ts
 
 ---
 
-**Last updated**: 2025-11-23
-**Version**: Added bundle optimization and ECharts tree-shaking
+**Last updated**: 2025-11-22
+**Version**: Added LocalStack S3 development environment
 **Maintainers**: evolver
 **Questions**: See GitHub Issues or README.md
