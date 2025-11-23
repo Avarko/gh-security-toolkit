@@ -451,11 +451,22 @@ The dashboard uses several optimizations to keep bundle sizes manageable:
 
 #### Current Bundle Sizes (optimized)
 ```
-index-*.js:     34.38 kB  (main app - fast initial load)
+index-*.js:     36.25 kB  (main app - fast initial load)
 mui-*.js:      164.64 kB  (Material-UI components)
 vendor-*.js:   543.13 kB  (React ecosystem)
 echarts-*.js:  912.18 kB  (charts - lazy loaded)
 ```
+
+#### Single-Tenant Branding
+
+In single-tenant mode, the dashboard displays organization branding from the client repository's `.gh-security-toolkit/config.yaml`:
+
+- **Organization display name**: Shows custom org name with GitHub org link
+- **Repository display name**: Shows custom repo name with GitHub repo link
+- **Logo**: Displays organization logo if configured
+- **Format**: `Org Name (github-org) / Repo Name (github-repo) – Security dashboard`
+
+The branding data flows from `.gh-security-toolkit/config.yaml` → `tenant-registry.json` → DashboardLayout component.
 
 #### Adding New ECharts Chart Types
 
@@ -469,7 +480,7 @@ echarts-*.js:  912.18 kB  (charts - lazy loaded)
 **Current chart usage**: Only `line` charts are used, which keeps ECharts bundle optimized.
 
 #### Performance Notes
-- Initial app load: ~34KB (very fast)
+- Initial app load: ~36KB (very fast)
 - Charts load on-demand when viewing scan data
 - Each library chunk cached separately for optimal cache reuse
 - Gzipped sizes are ~60% smaller than raw bundle sizes
@@ -654,7 +665,7 @@ npm run test -- historyTypes.test.ts
 
 ---
 
-**Last updated**: 2025-11-22
-**Version**: Added LocalStack S3 development environment
+**Last updated**: 2025-11-23
+**Version**: Added bundle optimization, ECharts tree-shaking, and single-tenant branding
 **Maintainers**: evolver
 **Questions**: See GitHub Issues or README.md

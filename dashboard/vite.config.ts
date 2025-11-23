@@ -142,6 +142,8 @@ export default defineConfig(({ command }) => {
                     }
                 }
             },
+            // Copy tenant registry for development
+            copyPublicDir: true,
             // Increase chunk size warning limit
             chunkSizeWarningLimit: 1000,
         },
