@@ -234,7 +234,7 @@ Deployed to `https://<org>.github.io/<repo>/` (Private Pages):
 /
 ├── index.html                   # Dashboard SPA entry point
 ├── assets/
-│   └── index-*.js               # Dashboard bundle (~1.6 MB)
+│   └── index-*.js               # Dashboard bundle (optimized: ~1.1 MB total across chunks)
 ├── favicon.ico
 ├── 404.html
 └── data/
@@ -437,6 +437,43 @@ npm run build  # Output: dashboard/dist/
   # Outputs artifact: security-dashboard-build
 ```
 
+### Bundle Optimization
+
+The dashboard uses several optimizations to keep bundle sizes manageable:
+
+#### Code Splitting Strategy
+- **Manual chunks**: Separates large libraries into dedicated chunks for better caching
+  - `vendor`: React, React DOM, React Router
+  - `mui`: Material-UI core and icons
+  - `echarts`: Apache ECharts (lazy-loaded)
+- **Lazy loading**: ECharts components load on-demand with Suspense fallbacks
+- **Tree shaking**: Enabled for all dependencies, especially ECharts
+
+#### Current Bundle Sizes (optimized)
+```
+index-*.js:     34.38 kB  (main app - fast initial load)
+mui-*.js:      164.64 kB  (Material-UI components)
+vendor-*.js:   543.13 kB  (React ecosystem)
+echarts-*.js:  912.18 kB  (charts - lazy loaded)
+```
+
+#### Adding New ECharts Chart Types
+
+⚠️ **Important**: When adding new chart types to `dashboard/src/features/scans/charts/channelHistoryOptions.ts`:
+
+1. **Update Vite config**: The current setup automatically tree-shakes ECharts, but if you add new chart types (bar, pie, etc.), verify bundle size doesn't grow excessively
+2. **Test lazy loading**: Charts are lazy-loaded, so new chart types will automatically benefit from on-demand loading
+3. **Monitor bundle**: Run `npm run build` and check that no chunk exceeds 1000KB (current warning limit)
+4. **Consider alternatives**: For very large new chart libraries, consider lazy-loading them separately
+
+**Current chart usage**: Only `line` charts are used, which keeps ECharts bundle optimized.
+
+#### Performance Notes
+- Initial app load: ~34KB (very fast)
+- Charts load on-demand when viewing scan data
+- Each library chunk cached separately for optimal cache reuse
+- Gzipped sizes are ~60% smaller than raw bundle sizes
+
 ### Data Loading
 
 Dashboard fetches data from **same origin**:
@@ -547,7 +584,7 @@ npm run test -- historyTypes.test.ts
 ## Performance Considerations
 
 - Each scan: ~2 MB (mostly trivy-image-results.json)
-- Dashboard bundle: ~1.6 MB (includes ECharts)
+- Dashboard bundle: ~1.1 MB total (code-split: 34KB main + 912KB charts + 165KB MUI + 543KB vendor)
 - GitHub Pages soft limit: ~1 GB (performance degrades beyond)
 - Recommendation: `retention_keep <= 10` per channel
 
@@ -560,7 +597,7 @@ npm run test -- historyTypes.test.ts
 
 ---
 
-**Last updated**: 2025-11-21
-**Version**: Added client configuration system (.gh-security-toolkit/config.yaml)
+**Last updated**: 2025-11-23
+**Version**: Added bundle optimization and ECharts tree-shaking
 **Maintainers**: evolver
 **Questions**: See GitHub Issues or README.md
