@@ -1,7 +1,14 @@
 [env]
 MISE_EXPERIMENTAL = "1"
+# LocalStack development settings
+AWS_ENDPOINT_URL = "http://localhost:4566"
+AWS_ACCESS_KEY_ID = "test"
+AWS_SECRET_ACCESS_KEY = "test"
+AWS_DEFAULT_REGION = "us-east-1"
 
 [tools]
 java = "temurin-21"
 node = "24"
 jbang = "latest"
+# AWS CLI for LocalStack S3 operations
+awscli = "latest"

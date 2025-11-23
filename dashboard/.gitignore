@@ -7,3 +7,6 @@ dist
 # Local development symlinks (created by npm run dev)
 public/data
 public/config
+
+# LocalStack generated test data
+localstack-data
