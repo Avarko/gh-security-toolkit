@@ -80,9 +80,39 @@ export default defineConfig(({ command }) => {
     return {
         plugins: [react(), ...(command === "serve" ? [devTestDataPlugin()] : [])],
         base: "/",
+        optimizeDeps: {
+            include: [
+                // Pre-bundle ECharts for better tree-shaking
+                'echarts-for-react'
+            ]
+        },
+        esbuild: {
+            // Enable tree-shaking for better bundle optimization
+            treeShaking: true,
+        },
         build: {
             outDir: "dist",
             emptyOutDir: true,
+            rollupOptions: {
+                output: {
+                    manualChunks: (id) => {
+                        // Separate ECharts into its own chunk for better caching
+                        if (id.includes('echarts')) {
+                            return 'echarts';
+                        }
+                        // MUI in its own chunk
+                        if (id.includes('@mui')) {
+                            return 'mui';
+                        }
+                        // React ecosystem in vendor chunk
+                        if (id.includes('node_modules')) {
+                            return 'vendor';
+                        }
+                    }
+                }
+            },
+            // Increase chunk size warning limit
+            chunkSizeWarningLimit: 1000,
         },
         define: {
             // Build-time tenant mode constants

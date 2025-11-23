@@ -4,6 +4,7 @@
  * and channel detail page (single channel with all rows).
  */
 
+import { Suspense, lazy } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import {
     Box,
@@ -17,12 +18,15 @@ import {
     TableRow,
     Chip,
     Link,
+    CircularProgress,
 } from "@mui/material";
-import ReactECharts from "echarts-for-react";
 import type { ScanMetadata } from "../model/historyTypes";
 import { buildChannelChartOption } from "../charts/channelHistoryOptions";
 import { severityToChipStyle } from "./severity";
 import { formatTimestamp } from "../../../lib/formatTimestamp";
+
+// Lazy load ECharts - Vite will handle tree-shaking
+const ReactECharts = lazy(() => import("echarts-for-react"));
 
 export interface ChannelTableProps {
     /** Channel name for display */
@@ -92,11 +96,13 @@ export function ChannelTable({
             {/* Chart */}
             {showChart && scans.length > 0 && (
                 <Box sx={{ mb: 3 }}>
-                    <ReactECharts
-                        option={buildChannelChartOption(scans)}
-                        style={{ height: 300 }}
-                        theme="dark"
-                    />
+                    <Suspense fallback={<Box sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CircularProgress /></Box>}>
+                        <ReactECharts
+                            option={buildChannelChartOption(scans)}
+                            style={{ height: 300 }}
+                            theme="dark"
+                        />
+                    </Suspense>
                 </Box>
             )}
 
