@@ -6,7 +6,8 @@
       "github_repo": "contoso-testapp",
       "created_at": "2024-01-01T00:00:00Z",
       "display_name": "Contoso Test App",
-      "org_display_name": "Contoso"
+      "org_display_name": "Contoso",
+      "logo_url": "https://via.placeholder.com/100x32/0066cc/white?text=Contoso"
     }
   ]
 }
