@@ -33,9 +33,9 @@ function getDataSource(): DataSource {
 }
 
 function loadMultiTenantConfig(): object | null {
-    // For LocalStack mode, use localstack-config/tenant-registry.json
+    // For LocalStack mode, use local-dev/config/tenant-registry.json
     if (process.env.VITE_DATA_SOURCE === "localstack") {
-        const localstackConfig = resolve(dirname(fileURLToPath(import.meta.url)), "localstack-config/tenant-registry.json");
+        const localstackConfig = resolve(dirname(fileURLToPath(import.meta.url)), "../local-dev/config/tenant-registry.json");
         if (existsSync(localstackConfig)) {
             try {
                 const content = readFileSync(localstackConfig, "utf-8");

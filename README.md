@@ -518,140 +518,35 @@ channel: nightly-production  # Same history!
 
 ## Local development of gh-security-toolkit
 
-### Run JBang scripts
+All local development, simulation, and test data is now under `local-dev/`.
 
-```bash
-# Trivy summary
-jbang scripts/trivy_summarize.java \
-  trivy-results.json \
-  50 \
-  output-dir
+**Key directories:**
+- `local-dev/data/` — Sample tenants, scan histories, run outputs
+- `local-dev/config/` — LocalStack and dashboard config files (e.g. tenant-registry.json)
+- `local-dev/scripts/` — Local simulation and setup scripts
+- `local-dev/docker-compose.localstack.yml` — LocalStack S3 container definition
 
-# Semgrep summary
-jbang scripts/semgrep_summarize.java \
-  semgrep-results.json \
-  output-dir
+**Makefile targets:**
+- `make local-dev/bootstrap` — Create scaffolding and copy template fixtures
+- `make local-dev/scan-sim` — Simulate security scan (static fixtures)
+- `make local-dev/test-report-sim` — Simulate test report publishing
+- `make local-dev/dashboard` — Start dashboard dev server with local data
+- `make local-dev/clean` — Remove generated runs
+- `make localstack-start` — Start LocalStack S3 container
+- `make localstack-setup` — Initialize S3 buckets and test data
 
-# GitHub Pages builder
-jbang scripts/github_pages_builder.java \
-  scan-output/ \
-  ./ \
-  2025-11-09-120000Z \
-  my-channel
-```
+**Workflow:**
+1. Käynnistä LocalStack: `make localstack-start`
+2. Generoi testidata: `make localstack-setup`
+3. Käynnistä dashboard: `make local-dev/dashboard` (local data) tai `npm run dev:localstack` (S3 data)
+4. Simuloi skannit ja testiraportit: `make local-dev/scan-sim` ja `make local-dev/test-report-sim`
+5. Siivoa testidata: `make local-dev/clean`
 
-### Dashboard architecture
+**Konfiguraatio:**
+- Tenant registry ja testidata löytyvät nyt `local-dev/config/tenant-registry.json` ja `local-dev/data/`
+- Kaikki local-kehityksen infra ja testidata on erillään tuotantokoodista
 
-The GitHub Pages UI is built with **React + Vite** as a single-page application:
-
-- **Data Processing** (Java): `GitHubPagesBuilder.java` generates JSON files in `data/` directory
-- **UI Rendering** (React): Dashboard reads `/data/*.json` files client-side using `fetch()`
-- **Deployment**: Dashboard build artifact merged with data during GitHub Pages publishing
-- **Routing**: `react-router-dom` for client-side navigation
-- **Charts**: Apache ECharts via `echarts-for-react`
-- **UI Components**: Material-UI (MUI)
-
-**Tenant Modes** (build-time):
-
-| Mode | Build Command | Data Path | URL Structure |
-|------|--------------|-----------|---------------|
-| Single-tenant | `npm run build` | `/data/` | `/security-scans/...` |
-| Multi-tenant | `TENANT_MODE=multi-tenant npm run build` | `/data/<uuid>/` | `/:tenantPath/security-scans/...` |
-
-**Routes** (single-tenant):
-- `/` - Redirects to `/security-scans`
-- `/security-scans` - Scan overview
-- `/security-scans/channel/:channel` - Channel scan history
-- `/security-scans/channel/:channel/run/:timestamp` - Scan details
-- `/test-reports` - Test reports overview
-- `/test-reports/channel/:channel` - Channel test reports
-
-**Routes** (multi-tenant):
-- `/` - Tenant selector
-- `/:tenantPath/security-scans` - Tenant scan overview
-- `/:tenantPath/security-scans/channel/:channel/run/:timestamp` - Scan details
-
-**Development**:
-```bash
-cd dashboard
-npm install
-npm run dev                    # Single-tenant mode (default)
-
-# Multi-tenant mode:
-TENANT_MODE=multi-tenant MULTI_TENANT_CONFIG_PATH=./config.json npm run dev
-```
-
-### LocalStack S3 development
-
-For local development with realistic multi-tenant data from S3, use LocalStack:
-
-**Prerequisites:**
-- Docker (for LocalStack container)
-- AWS CLI (installed via `mise install`)
-
-**Quick start:**
-```bash
-# One-command setup: starts LocalStack, creates buckets, uploads test data, starts dev server
-make localstack-dev
-
-# Or step by step:
-make localstack-start          # Start LocalStack container
-make localstack-setup          # Create S3 buckets with test data
-cd dashboard && npm run dev:localstack  # Start dev server with S3 data
-```
-
-**Test data structure:**
-
-LocalStack creates two S3 buckets with test data for two organizations:
-
-| Bucket | Organization | Repositories |
-|--------|--------------|--------------|
-| `contoso-security-reports` | Contoso Corporation | frontend, backend |
-| `acme-security-reports` | Acme Inc | frontend, backend |
-
-Each repository contains:
-- Security scan history (`hist/scan-history.json`)
-- Test report history (`hist/test-report-history.json`)
-- Individual scan runs with Trivy/Semgrep results
-- JaCoCo and Surefire HTML test reports
-
-**NPM scripts (in dashboard/):**
-```bash
-npm run localstack:start       # Start LocalStack container
-npm run localstack:stop        # Stop LocalStack container
-npm run localstack:setup       # Initialize buckets with test data
-npm run localstack:logs        # View LocalStack logs
-npm run dev:localstack         # Start Vite with LocalStack S3 data
-```
-
-**Makefile commands (from root or dashboard/):**
-```bash
-make localstack-start          # Start LocalStack
-make localstack-stop           # Stop LocalStack
-make localstack-setup          # Initialize S3 buckets
-make localstack-dev            # Full workflow: start + setup + dev server
-```
-
-**Configuration:**
-
-LocalStack tenant configuration is in `dashboard/localstack-config/tenant-registry.json`:
-```json
-{
-  "tenants": [
-    {
-      "id": "contoso-uuid-001",
-      "url_path": "contoso",
-      "display_name": "Contoso Dashboard",
-      "repositories": [
-        {
-          "id": "frontend",
-          "data_base_url": "http://localhost:4566/contoso-security-reports/data/frontend"
-        }
-      ]
-    }
-  ]
-}
-```
+**Huom:** Dashboardin ja datavirtojen local testaus ei vaikuta tuotantoon eikä CI/CD-pipelineen.
 
 ---
 
