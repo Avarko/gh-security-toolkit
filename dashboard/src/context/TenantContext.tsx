@@ -1,22 +1,28 @@
 // src/context/TenantContext.tsx
 /**
- * Tenant context for unified single/multi-tenant routing.
+ * Tenant context for unified single/multi-tenant routing and branding.
  *
- * Provides dataRoot path to all child components:
- * - Single-tenant: "/data"
- * - Multi-tenant: "/data/<uuid>"
+ * Provides dataRoot path and organization branding to all child components:
+ * - Single-tenant: "/data" + org branding from tenant-registry.json
+ * - Multi-tenant: "/data/<uuid>" + tenant branding from config
  */
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
+import { isSingleTenant } from "../config/tenantMode";
+import { getSingleTenantInfo, type TenantRegistryEntry } from "../lib/tenantRegistry";
 
 export type TenantInfo = {
     /** Data root path (e.g., "/data" or "/data/<uuid>") */
     dataRoot: string;
     /** Tenant display name (multi-tenant only) */
     displayName?: string;
-    /** Organization display name (multi-tenant only) */
+    /** Organization display name */
     orgDisplayName?: string;
-    /** Logo URL (multi-tenant only) */
+    /** Logo URL */
     logoUrl?: string;
+    /** GitHub organization */
+    githubOrg?: string;
+    /** GitHub repository */
+    githubRepo?: string;
 };
 
 const TenantContext = createContext<TenantInfo | null>(null);
@@ -27,11 +33,31 @@ type TenantProviderProps = {
 };
 
 /**
- * Provider for tenant context.
- * In single-tenant mode, wrap at router level with dataRoot="/data".
- * In multi-tenant mode, wrap after tenant resolution with dataRoot="/data/<uuid>".
+ * Provider for tenant context with async organization branding loading.
+ * In single-tenant mode, loads additional branding from tenant-registry.json.
+ * In multi-tenant mode, uses provided tenant branding.
  */
-export function TenantProvider({ tenant, children }: TenantProviderProps) {
+export function TenantProvider({ tenant: initialTenant, children }: TenantProviderProps) {
+    const [tenant, setTenant] = useState<TenantInfo>(initialTenant);
+
+    // Load single-tenant organization branding
+    useEffect(() => {
+        if (isSingleTenant()) {
+            getSingleTenantInfo().then((registryInfo) => {
+                if (registryInfo) {
+                    setTenant(prev => ({
+                        ...prev,
+                        orgDisplayName: registryInfo.org_display_name,
+                        logoUrl: registryInfo.logo_url,
+                        githubOrg: registryInfo.github_org,
+                        githubRepo: registryInfo.github_repo,
+                        displayName: registryInfo.display_name,
+                    }));
+                }
+            });
+        }
+    }, []);
+
     return (
         <TenantContext.Provider value={tenant}>
             {children}
