@@ -68,14 +68,43 @@ export function ScanRunDetailPage({
         'UNKNOWN': 4,
     };
 
-    // Get and sort Trivy vulnerabilities by severity
-    const trivyVulns: TrivyVulnerability[] =
-        (trivyData.Results?.flatMap((r) => r.Vulnerabilities ?? []) ?? [])
-            .sort((a, b) => {
-                const severityA = severityOrder[a.Severity?.toUpperCase() ?? 'UNKNOWN'] ?? 999;
-                const severityB = severityOrder[b.Severity?.toUpperCase() ?? 'UNKNOWN'] ?? 999;
-                return severityA - severityB;
-            });
+    // Collect Trivy FS and Image vulnerabilities
+    const trivyFsVulns: TrivyVulnerability[] = (trivyData.Results?.filter(r => r.Target === 'filesystem' || r.Type === 'fs' || r.Target?.includes('fs'))
+        .flatMap(r => r.Vulnerabilities ?? []) ?? []);
+    const trivyImgVulns: TrivyVulnerability[] = (trivyData.Results?.filter(r => r.Target === 'image' || r.Type === 'img' || r.Target?.includes('img'))
+        .flatMap(r => r.Vulnerabilities ?? []) ?? []);
+    // Fallback: if Target/Type not set, treat all as both
+    const allVulns: TrivyVulnerability[] = (trivyData.Results?.flatMap(r => r.Vulnerabilities ?? []) ?? []);
+    // Build a map of VulnerabilityID to locs
+    const vulnMap: Record<string, { vuln: TrivyVulnerability, loc: string }> = {};
+    for (const v of trivyFsVulns) {
+        if (!vulnMap[v.VulnerabilityID]) {
+            vulnMap[v.VulnerabilityID] = { vuln: v, loc: 'fs' };
+        } else {
+            vulnMap[v.VulnerabilityID].loc += ',fs';
+        }
+    }
+    for (const v of trivyImgVulns) {
+        if (!vulnMap[v.VulnerabilityID]) {
+            vulnMap[v.VulnerabilityID] = { vuln: v, loc: 'img' };
+        } else if (!vulnMap[v.VulnerabilityID].loc.includes('img')) {
+            vulnMap[v.VulnerabilityID].loc += ',img';
+        }
+    }
+    // If both arrays are empty, fallback to allVulns and mark loc as ''
+    if (Object.keys(vulnMap).length === 0) {
+        for (const v of allVulns) {
+            vulnMap[v.VulnerabilityID] = { vuln: v, loc: '' };
+        }
+    }
+    // Build deduped, sorted array
+    const trivyVulns = Object.values(vulnMap)
+        .map(({ vuln, loc }) => ({ ...vuln, loc }))
+        .sort((a, b) => {
+            const severityA = severityOrder[a.Severity?.toUpperCase() ?? 'UNKNOWN'] ?? 999;
+            const severityB = severityOrder[b.Severity?.toUpperCase() ?? 'UNKNOWN'] ?? 999;
+            return severityA - severityB;
+        });
 
     // Get and sort Semgrep findings by severity (ERROR, WARNING, INFO)
     const semgrepSeverityOrder: { [key: string]: number } = {
@@ -179,14 +208,15 @@ export function ScanRunDetailPage({
                                 <TableHead>
                                     <TableRow>
                                         <TableCell sx={{ fontWeight: 600 }}>ID</TableCell>
+                                        <TableCell sx={{ fontWeight: 600, width: 40 }}>Loc</TableCell>
                                         <TableCell sx={{ fontWeight: 600 }}>Package</TableCell>
                                         <TableCell sx={{ fontWeight: 600 }}>Severity</TableCell>
                                         <TableCell sx={{ fontWeight: 600 }}>Title</TableCell>
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
-                                    {trivyVulns.slice(0, 100).map((v, idx) => (
-                                        <TableRow key={`${v.VulnerabilityID}-${idx}`} hover>
+                                    {trivyVulns.slice(0, 100).map((v) => (
+                                        <TableRow key={v.VulnerabilityID} hover>
                                             <TableCell sx={{ fontFamily: "monospace" }}>
                                                 {v.PrimaryURL ? (
                                                     <MuiLink
@@ -200,6 +230,9 @@ export function ScanRunDetailPage({
                                                 ) : (
                                                     v.VulnerabilityID
                                                 )}
+                                            </TableCell>
+                                            <TableCell sx={{ fontFamily: "monospace", width: 40 }}>
+                                                {v.loc}
                                             </TableCell>
                                             <TableCell>{v.PkgName}</TableCell>
                                             <TableCell>
