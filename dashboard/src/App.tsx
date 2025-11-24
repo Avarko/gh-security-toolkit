@@ -5,14 +5,17 @@ import { ThemeProvider, CssBaseline } from "@mui/material";
 
 import { theme } from "./theme";
 import { DashboardLayout } from "./components/layout/DashboardLayout";
+import { TenantProvider } from "./context/TenantContext";
 
 export function AppShell() {
     return (
         <ThemeProvider theme={theme}>
             <CssBaseline />
-            <DashboardLayout>
-                <Outlet />
-            </DashboardLayout>
+            <TenantProvider tenant={{ dataRoot: "/data" }}>
+                <DashboardLayout>
+                    <Outlet />
+                </DashboardLayout>
+            </TenantProvider>
         </ThemeProvider>
     );
 }
