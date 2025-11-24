@@ -29,6 +29,7 @@ import {
     findTenantByUrlPath,
     type MultiTenantEntry,
 } from "../../config/tenantMode";
+import { useTenant } from "../../context/TenantContext";
 
 const DRAWER_WIDTH = 240;
 
@@ -59,6 +60,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     const location = useLocation();
     const { tenantPath } = useParams<{ tenantPath?: string }>();
 
+    // Get tenant info from context (includes organization branding in single-tenant mode)
+    const tenantInfo = useTenant();
+
     // Resolve tenant info in multi-tenant mode
     let tenant: MultiTenantEntry | undefined;
     if (isMultiTenant() && tenantPath) {
@@ -70,21 +74,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
     // Build title based on tenant mode
     const renderTitle = () => {
-        if (isSingleTenant()) {
-            return "Security dashboard";
-        }
-
-        // Multi-tenant mode: show tenant branding if available
-        if (tenant) {
-            const { org_display_name, display_name, logo_url, github_org, github_repo } = tenant;
+        // Single-tenant mode: show organization branding if available
+        if (isSingleTenant() && tenantInfo.orgDisplayName) {
+            const { orgDisplayName, displayName, logoUrl, githubOrg, githubRepo } = tenantInfo;
 
             return (
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
                     {/* Logo if available */}
-                    {logo_url && (
+                    {logoUrl && (
                         <img
-                            src={logo_url}
-                            alt={org_display_name || github_org}
+                            src={logoUrl}
+                            alt={orgDisplayName || githubOrg}
                             style={{
                                 height: "32px",
                                 width: "auto",
@@ -94,60 +94,59 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     )}
 
                     {/* Org display name or GitHub org */}
-                    {org_display_name ? (
+                    {orgDisplayName ? (
                         <>
-                            <span>{org_display_name}</span>
+                            <span>{orgDisplayName}</span>
                             <span style={{ color: "#656d76" }}>(</span>
                             <a
-                                href={`https://github.com/${github_org}`}
+                                href={`https://github.com/${githubOrg}`}
                                 target="_ghorg"
                                 style={{ color: "#0969da", textDecoration: "none" }}
                                 onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
                                 onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
                             >
-                                {github_org}
+                                {githubOrg}
                             </a>
                             <span style={{ color: "#656d76" }}>)</span>
                         </>
                     ) : (
                         <a
-                            href={`https://github.com/${github_org}`}
+                            href={`https://github.com/${githubOrg}`}
                             target="_ghorg"
                             style={{ color: "#0969da", textDecoration: "none" }}
                             onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
                             onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
                         >
-                            {github_org}
+                            {githubOrg}
                         </a>
                     )}
 
                     <span style={{ color: "#656d76" }}>/</span>
 
                     {/* Repo display name or GitHub repo */}
-                    {display_name ? (
+                    {displayName ? (
                         <>
-                            <span>{display_name}</span>
+                            <span>{displayName}</span>
                             <span style={{ color: "#656d76" }}>(</span>
                             <a
-                                href={`https://github.com/${github_org}/${github_repo}`}
+                                href={`https://github.com/${githubOrg}/${githubRepo}`}
                                 target="_ghrepo"
                                 style={{ color: "#0969da", textDecoration: "none" }}
                                 onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
                                 onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
                             >
-                                {github_repo}
+                                {githubRepo}
                             </a>
                             <span style={{ color: "#656d76" }}>)</span>
                         </>
                     ) : (
                         <a
-                            href={`https://github.com/${github_org}/${github_repo}`}
+                            href={`https://github.com/${githubOrg}/${githubRepo}`}
                             target="_ghrepo"
                             style={{ color: "#0969da", textDecoration: "none" }}
-                            onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
-                            onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
+                            onMouseOver={(e) => (e.currentTarget.style.textDecoration = "none")}
                         >
-                            {github_repo}
+                            {githubRepo}
                         </a>
                     )}
 
@@ -157,7 +156,44 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             );
         }
 
-        // Multi-tenant mode but no tenant found
+        // Multi-tenant mode: show tenant branding if available
+        if (tenant) {
+            const { org_display_name, display_name, logo_url } = tenant;
+
+            return (
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                    {/* Logo if available */}
+                    {logo_url && (
+                        <img
+                            src={logo_url}
+                            alt={org_display_name || tenant.id}
+                            style={{
+                                height: "32px",
+                                width: "auto",
+                                objectFit: "contain",
+                            }}
+                        />
+                    )}
+
+                    {/* Org display name or tenant ID */}
+                    {org_display_name ? (
+                        <>
+                            <span>{org_display_name}</span>
+                            <span style={{ color: "#656d76" }}>(</span>
+                            <span>{tenant.id}</span>
+                            <span style={{ color: "#656d76" }}>)</span>
+                        </>
+                    ) : (
+                        <span>{tenant.id}</span>
+                    )}
+
+                    <span style={{ color: "#656d76" }}>–</span>
+                    <span>Security dashboard</span>
+                </Box>
+            );
+        }
+
+        // Fallback: just show "Security dashboard"
         return "Security dashboard";
     };
 
