@@ -43,13 +43,75 @@ Provides reusable GitHub Actions composite actions and Makefile integration for 
 
 ```makefile
 # Avarko/gh-security-toolkit security scanner Makefile inclusion
-include $(shell __GHST_FILE=.ghst/Makefile; \
-	mkdir -p .ghst; \
+include $(shell __GHST_FILE=.gh-security-toolkit/Makefile; \
+	mkdir -p .gh-security-toolkit; \
 	[ -f $$__GHST_FILE ] || curl -fsSL "https://raw.githubusercontent.com/Avarko/gh-security-toolkit/main/Makefile.scanners" -o $$__GHST_FILE; \
 	echo $$__GHST_FILE)
 ```
 
-2. Then simply start scanning:
+2. Create `trivy.yaml` in your project root and change the configuration if you wish:
+
+```yaml
+# trivy.yaml
+scan:
+  scanners:
+    - vuln
+    - secret
+    - misconfig
+
+severity:
+  - MEDIUM
+  - HIGH
+  - CRITICAL
+ignore-unfixed: true
+ignorefile: "trivyignore"
+
+skip-dirs:
+  - node_modules
+  - .git
+  - .idea
+  - .vscode
+  - .sbom-temp
+  - dist
+  - build
+  - .venv
+
+vulnerability:
+  ignore-unfixed: true
+```
+
+3. Create `trivyignore` in your project root. You can use this to explicitly ignore specific findings:
+
+
+```
+# =========================
+# Trivy ignore policy
+# scope: image|fs  (allow in which scanner)
+# until: YYYY-MM-DD (last valid date)
+# reason: short justification
+# =========================
+
+# CVE example: upstream fix coming to base-image
+#CVE-2025-12345  # scope:image; until:2026-01-31; reason: upstream fix queued; cannot pin lower safely
+
+# GHSA example: temporary allowance until library update tested
+#GHSA-abcd-1234-efgh  # scope:fs; until:2025-12-15; reason: planned lib upgrade in sprint 49
+
+# If you need both scanners to ignore, list both in scope:
+#CVE-2024-77777  # scope:fs,image; until:2025-11-30; reason: false positive in scanner rule
+
+# (Avoid generic unstructured regex ignore patterns; keep targeted at ID level.)
+```
+
+4. Add to .gitignore
+
+Add the .gh-security-toolkit/Makefile to .gitignore file:
+
+```
+.gh-security-toolkit/Makefile
+```
+
+5. Start scanning:
 
 ```bash
 make sec/scan/help  # Show all commands

@@ -34,9 +34,9 @@ __GHST_TRIVY_TIMEOUT ?= 5m
 # ============================================================================
 
 .PHONY: sec/scan/trivy/fs
-sec/scan/trivy/fs: # Scan filesystem (uses .trivy.yaml config)
+sec/scan/trivy/fs: # Scan filesystem
 	@echo "🔍 Scanning filesystem with Trivy (offline mode)..."
-	@test -f .trivy.yaml && echo "ℹ️  Using .trivy.yaml configuration" || true
+	@test -f trivy.yaml && echo "ℹ️  Using trivy.yaml configuration" || true
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	-e TRIVY_SKIP_DB_UPDATE=true \
 	-e TRIVY_OFFLINE_SCAN=true \
@@ -46,10 +46,11 @@ sec/scan/trivy/fs: # Scan filesystem (uses .trivy.yaml config)
 sec/scan/trivy/img: # Scan Docker image (IMAGE=name:tag)
 	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" && exit 1)
 	@echo "🔍 Scanning image $(IMAGE) (offline mode)..."
-	@echo "ℹ️  Note: Docker socket access required (network isolation disabled for this scan)"
-	$(__GHST_DOCKER_CMD) run --rm --network=none \
+	@test -f trivy.yaml && echo "ℹ️  Using trivy.yaml configuration" || true
+	@echo "ℹ️  Note: Docker socket access required"
+	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
+	--user root \
 	-v /var/run/docker.sock:/var/run/docker.sock \
-	-v $(PWD):/workspace:ro -w /workspace \
 	-e TRIVY_SKIP_DB_UPDATE=true \
 	-e TRIVY_OFFLINE_SCAN=true \
 	$(__GHST_IMAGE) trivy image $(IMAGE) --format $(__GHST_TRIVY_FORMAT)
