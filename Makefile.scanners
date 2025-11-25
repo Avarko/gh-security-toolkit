@@ -1,9 +1,54 @@
+
 # ============================================================================
 # Makefile.scanners
 #
 # Includable commands to your Makefiles
 # All commands are namespaced under sec/ to avoid conflicts
 # ============================================================================
+
+# Generate trivy.yaml and trivyignore automatically
+__GHST_TRIVY_YAML := trivy.yaml
+__GHST_TRIVYIGNORE := trivyignore
+
+ifeq ($(shell [ -f "$(__GHST_TRIVY_YAML)" ] && echo yes || echo no),no)
+$(shell cat > "$(__GHST_TRIVY_YAML)" <<EOF
+scan:
+	scanners:
+		- vuln
+		- secret
+		- misconfig
+severity:
+	- MEDIUM
+	- HIGH
+	- CRITICAL
+ignore-unfixed: true
+ignorefile: "trivyignore"
+skip-dirs:
+	- node_modules
+	- .git
+	- .idea
+	- .vscode
+	- .sbom-temp
+	- dist
+	- build
+	- .venv
+vulnerability:
+	ignore-unfixed: true
+EOF
+)
+endif
+
+ifeq ($(shell [ -f "$(__GHST_TRIVYIGNORE)" ] && echo yes || echo no),no)
+$(shell cat > "$(__GHST_TRIVYIGNORE)" <<EOF
+# =========================
+# Trivy ignore policy
+# scope: image|fs
+# until: YYYY-MM-DD
+# reason: short justification
+# =========================
+EOF
+)
+endif
 
 __GHST_VERSION ?= main
 __GHST_IMAGE ?= ghcr.io/avarko/gh-security-toolkit:$(__GHST_VERSION)
@@ -30,7 +75,7 @@ __GHST_TRIVY_FORMAT ?= table
 __GHST_TRIVY_TIMEOUT ?= 5m
 
 # ============================================================================
-# Trivy - Automatically uses .trivy.yaml if present
+# Trivy - Automatically uses trivy.yaml if present
 # ============================================================================
 
 .PHONY: sec/scan/trivy/fs
