@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # CI provides build-args for tool versions to yield reproducible, non-flaky builds
 ARG TRIVY_VER
 ARG TRUFFLEHOG_VER
@@ -5,6 +7,10 @@ ARG COSIGN_VER
 ARG CRANE_VER
 
 FROM cgr.dev/chainguard/wolfi-base:latest
+
+ARG TARGETPLATFORM
+ARG TARGETARCH
+ARG TARGETOS
 
 RUN apk update && apk add --no-cache \
     bash ca-certificates curl jq git python3 py3-pip \
@@ -14,11 +20,13 @@ RUN adduser -D -u 10001 ghst \
     && mkdir -p /home/ghst \
     && chown -R ghst:ghst /home/ghst
 
+RUN echo "TARGETPLATFORM=${TARGETPLATFORM}, TARGETARCH=${TARGETARCH}, TARGETOS=${TARGETOS}"
+
 # Pre-verified binaries copied from CI
-COPY --chown=ghst:ghst verified-binaries/trivy /usr/local/bin/trivy
-COPY --chown=ghst:ghst verified-binaries/trufflehog /usr/local/bin/trufflehog
-COPY --chown=ghst:ghst verified-binaries/cosign /usr/local/bin/cosign
-COPY --chown=ghst:ghst verified-binaries/crane /usr/local/bin/crane
+COPY --chown=ghst:ghst verified-binaries/linux-${TARGETARCH}/trivy      /usr/local/bin/trivy
+COPY --chown=ghst:ghst verified-binaries/linux-${TARGETARCH}/trufflehog /usr/local/bin/trufflehog
+COPY --chown=ghst:ghst verified-binaries/linux-${TARGETARCH}/cosign     /usr/local/bin/cosign
+COPY --chown=ghst:ghst verified-binaries/linux-${TARGETARCH}/crane      /usr/local/bin/crane
 
 # Cosign TUF cache (for offline use)
 # CI provides verified-binaries/tuf-cache.tgz containing .sigstore/ + cosign-init.log

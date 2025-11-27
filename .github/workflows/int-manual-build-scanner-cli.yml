@@ -67,7 +67,12 @@ jobs:
             -o /usr/local/bin/slsa-verifier && chmod +x /usr/local/bin/slsa-verifier
 
       - name: Prepare binaries directory
-        run: mkdir -p ${{ env.CONTEXT }}/verified-binaries
+        run: |
+          set -euo pipefail
+          mkdir -p \
+            "${{ env.CONTEXT }}/verified-binaries/linux-amd64" \
+            "${{ env.CONTEXT }}/verified-binaries/linux-arm64" \
+            "${{ env.CONTEXT }}/verified-binaries/trivy-db"
 
       - name: Install jq & openssl
         run: sudo apt-get update && sudo apt-get install -y jq openssl
@@ -84,28 +89,37 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          CONTEXT="${{ env.CONTEXT }}"
+
           ver_cosign=$(gh api repos/sigstore/cosign/releases/latest --jq .tag_name)
           echo "ver_cosign=$ver_cosign" >> "$GITHUB_OUTPUT"
 
+          # Sigstore TUF bootstrap
           go install github.com/theupdateframework/go-tuf/cmd/tuf-client@latest
           curl -o sigstore-root.json https://raw.githubusercontent.com/sigstore/root-signing/refs/heads/main/metadata/root_history/10.root.json
           tuf-client init https://tuf-repo-cdn.sigstore.dev sigstore-root.json
-
           tuf-client get https://tuf-repo-cdn.sigstore.dev artifact.pub > artifact.pub
 
-          curl -o cosign-kms.sigstore.json -L https://github.com/sigstore/cosign/releases/download/${ver_cosign}/cosign-linux-amd64-kms.sigstore.json
-          cat cosign-kms.sigstore.json | jq -r .messageSignature.signature | base64 -d > cosign-kms.sig.decoded
+          for arch in amd64 arm64; do
+            COSIGN_FILE="cosign-linux-${arch}"
+            SIG_JSON="${COSIGN_FILE}-kms.sigstore.json"
 
-          curl -o cosign -L https://github.com/sigstore/cosign/releases/download/${ver_cosign}/cosign-linux-amd64
+            echo "Downloading cosign for $arch: ${COSIGN_FILE}"
+            curl -L -o "${SIG_JSON}" "https://github.com/sigstore/cosign/releases/download/${ver_cosign}/${SIG_JSON}"
+            jq -r '.messageSignature.signature' "${SIG_JSON}" | base64 -d > "cosign-${arch}.sig.decoded"
 
-          openssl dgst -sha256 -verify artifact.pub -signature cosign-kms.sig.decoded cosign
+            curl -L -o "${COSIGN_FILE}" "https://github.com/sigstore/cosign/releases/download/${ver_cosign}/${COSIGN_FILE}"
 
-          install -m 0755 cosign "${{ env.CONTEXT }}/verified-binaries/cosign"
+            echo "Verifying cosign (${arch}) with artifact.pub"
+            openssl dgst -sha256 -verify artifact.pub -signature "cosign-${arch}.sig.decoded" "${COSIGN_FILE}"
+
+            install -m 0755 "${COSIGN_FILE}" "${CONTEXT}/verified-binaries/linux-${arch}/cosign"
+          done
 
       - name: Initialize Sigstore TUF and archive cache (for offline / air gapped image)
         run: |
           set -euo pipefail
-          COSIGN_BIN="${{ env.CONTEXT }}/verified-binaries/cosign"
+          COSIGN_BIN="${{ env.CONTEXT }}/verified-binaries/linux-amd64/cosign"
           COSIGN_HOME="${{ env.CONTEXT }}/verified-binaries/cosign-home"
           mkdir -p "$COSIGN_HOME"
           HOME="$COSIGN_HOME" "$COSIGN_BIN" initialize --output-file "$COSIGN_HOME/cosign-init.log"
@@ -117,19 +131,31 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          CONTEXT="${{ env.CONTEXT }}"
+
           ver_crane=$(gh api repos/google/go-containerregistry/releases/latest --jq .tag_name)
           echo "ver_crane=$ver_crane" >> "$GITHUB_OUTPUT"
 
-          curl -sL "https://github.com/google/go-containerregistry/releases/download/${ver_crane}/go-containerregistry_Linux_x86_64.tar.gz" -o crane.tgz
           curl -sL "https://github.com/google/go-containerregistry/releases/download/${ver_crane}/multiple.intoto.jsonl" -o crane-provenance.intoto.jsonl
 
-          slsa-verifier verify-artifact crane.tgz \
-            --provenance-path crane-provenance.intoto.jsonl \
-            --source-uri github.com/google/go-containerregistry \
-            --source-tag "${ver_crane}"
+          for arch in amd64 arm64; do
+            case "$arch" in
+              amd64) TARBALL="go-containerregistry_Linux_x86_64.tar.gz" ;;
+              arm64) TARBALL="go-containerregistry_Linux_arm64.tar.gz" ;;
+            esac
 
-          tar -xzf crane.tgz crane
-          install -m 0755 crane  ${{ env.CONTEXT }}/verified-binaries/crane
+            echo "Downloading crane for $arch: $TARBALL"
+            curl -sL "https://github.com/google/go-containerregistry/releases/download/${ver_crane}/${TARBALL}" -o "crane-${arch}.tgz"
+
+            echo "Verifying crane (${arch}) with SLSA provenance"
+            slsa-verifier verify-artifact "crane-${arch}.tgz" \
+              --provenance-path crane-provenance.intoto.jsonl \
+              --source-uri github.com/google/go-containerregistry \
+              --source-tag "${ver_crane}"
+
+            tar -xzf "crane-${arch}.tgz" crane
+            install -m 0755 crane "${CONTEXT}/verified-binaries/linux-${arch}/crane"
+          done
 
       - name: Resolve Trivy
         id: trivy
@@ -137,30 +163,44 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          COSIGN_BIN="${{ env.CONTEXT }}/verified-binaries/cosign"
+          CONTEXT="${{ env.CONTEXT }}"
+          COSIGN_BIN="${CONTEXT}/verified-binaries/linux-amd64/cosign"
 
           ver_trivy=$(gh api repos/aquasecurity/trivy/releases/latest --jq .tag_name)
           echo "ver_trivy=$ver_trivy" >> "$GITHUB_OUTPUT"
 
-          curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/trivy_${ver_trivy#v}_Linux-64bit.tar.gz" -o trivy.tgz
-          curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/trivy_${ver_trivy#v}_Linux-64bit.tar.gz.sig" -o trivy.tgz.sig
-          curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/trivy_${ver_trivy#v}_Linux-64bit.tar.gz.pem" -o trivy.tgz.pem
+          for arch in amd64 arm64; do
+            case "$arch" in
+              amd64)
+                TARBALL="trivy_${ver_trivy#v}_Linux-64bit.tar.gz"
+                ;;
+              arm64)
+                TARBALL="trivy_${ver_trivy#v}_Linux-ARM64.tar.gz"
+                ;;
+            esac
 
-          "$COSIGN_BIN" verify-blob trivy.tgz \
-            --certificate trivy.tgz.pem \
-            --signature trivy.tgz.sig \
-            --certificate-identity-regexp 'https://github\.com/aquasecurity/trivy/\.github/workflows/.+' \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+            echo "Downloading Trivy for $arch: $TARBALL"
+            curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/${TARBALL}" -o "${TARBALL}"
+            curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/${TARBALL}.sig" -o "${TARBALL}.sig"
+            curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/${TARBALL}.pem" -o "${TARBALL}.pem"
 
-          tar -xzf trivy.tgz trivy
-          install -m 0755 trivy ${{ env.CONTEXT }}/verified-binaries/trivy
+            "$COSIGN_BIN" verify-blob "${TARBALL}" \
+              --certificate "${TARBALL}.pem" \
+              --signature "${TARBALL}.sig" \
+              --certificate-identity-regexp 'https://github\.com/aquasecurity/trivy/\.github/workflows/.+' \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+            tar -xzf "${TARBALL}" trivy
+            install -m 0755 trivy "${CONTEXT}/verified-binaries/linux-${arch}/trivy"
+          done
 
       - name: Download Trivy DBs
         id: trivy-db
         run: |
           set -euo pipefail
-          TRIVY_BIN="${{ env.CONTEXT }}/verified-binaries/trivy"
-          TRIVY_DB_DIR="${{ env.CONTEXT }}/verified-binaries/trivy-db"
+          CONTEXT="${{ env.CONTEXT }}"
+          TRIVY_BIN="${CONTEXT}/verified-binaries/linux-amd64/trivy"
+          TRIVY_DB_DIR="${CONTEXT}/verified-binaries/trivy-db"
 
           mkdir -p "$TRIVY_DB_DIR"
           "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" image --download-db-only
@@ -172,28 +212,37 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          COSIGN_BIN="${{ env.CONTEXT }}/verified-binaries/cosign"
+          CONTEXT="${{ env.CONTEXT }}"
+          COSIGN_BIN="${CONTEXT}/verified-binaries/linux-amd64/cosign"
+
           ver_trufflehog=$(gh api repos/trufflesecurity/trufflehog/releases/latest --jq .tag_name)
           echo "ver_trufflehog=$ver_trufflehog" >> "$GITHUB_OUTPUT"
 
-          # Download with exact filename from checksums.txt
-          TRUFFLEHOG_FILE="trufflehog_${ver_trufflehog#v}_linux_amd64.tar.gz"
+          CHECKSUMS="trufflehog_${ver_trufflehog#v}_checksums.txt"
+          CHECKSUMS_SIG="${CHECKSUMS}.sig"
+          CHECKSUMS_PEM="${CHECKSUMS}.pem"
 
-          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/${TRUFFLEHOG_FILE}" -o "${TRUFFLEHOG_FILE}"
-          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/trufflehog_${ver_trufflehog#v}_checksums.txt" -o trufflehog-checksums.txt
-          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/trufflehog_${ver_trufflehog#v}_checksums.txt.sig" -o trufflehog-checksums.txt.sig
-          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/trufflehog_${ver_trufflehog#v}_checksums.txt.pem" -o trufflehog-checksums.txt.pem
+          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/${CHECKSUMS}" -o "${CHECKSUMS}"
+          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/${CHECKSUMS_SIG}" -o "${CHECKSUMS_SIG}"
+          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/${CHECKSUMS_PEM}" -o "${CHECKSUMS_PEM}"
 
-          "$COSIGN_BIN" verify-blob trufflehog-checksums.txt \
-            --certificate trufflehog-checksums.txt.pem \
-            --signature trufflehog-checksums.txt.sig \
+          "$COSIGN_BIN" verify-blob "${CHECKSUMS}" \
+            --certificate "${CHECKSUMS_PEM}" \
+            --signature "${CHECKSUMS_SIG}" \
             --certificate-identity-regexp 'https://github\.com/trufflesecurity/trufflehog/\.github/workflows/.+' \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
 
-          sha256sum --ignore-missing -c trufflehog-checksums.txt
+          # Ladataan molemmat arkkitehtuurit ja varmistetaan sha256sum
+          for arch in amd64 arm64; do
+            TARBALL="trufflehog_${ver_trufflehog#v}_linux_${arch}.tar.gz"
+            echo "Downloading TruffleHog for $arch: $TARBALL"
+            curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/${TARBALL}" -o "${TARBALL}"
 
-          tar -xzf "${TRUFFLEHOG_FILE}" trufflehog
-          install -m 0755 trufflehog ${{ env.CONTEXT }}/verified-binaries/trufflehog
+            sha256sum --ignore-missing -c "${CHECKSUMS}"
+
+            tar -xzf "${TARBALL}" trufflehog
+            install -m 0755 trufflehog "${CONTEXT}/verified-binaries/linux-${arch}/trufflehog"
+          done
 
       # ---------- Build & push with verified binaries ----------
       - name: Build & push (provenance disabled here)
@@ -205,6 +254,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: false
+          platforms: linux/amd64,linux/arm64
           build-args: |
             TRIVY_VER=${{ steps.trivy.outputs.ver_trivy }}
             TRUFFLEHOG_VER=${{ steps.trufflehog.outputs.ver_trufflehog }}
