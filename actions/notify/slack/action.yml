@@ -1,0 +1,194 @@
+name: "Notify Slack on Scan Changes"
+description: "Compares scan results with previous run and sends Slack notification on changes"
+
+inputs:
+  channel:
+    description: 'Scan channel name'
+    required: true
+
+  timestamp:
+    description: 'Current scan timestamp (YYYYMMDD-HHMMSS)'
+    required: true
+
+  slack_webhook_url:
+    description: 'Slack webhook URL for notifications'
+    required: false
+    default: ''
+
+  slack_bot_token:
+    description: 'Slack bot token (alternative to webhook)'
+    required: false
+    default: ''
+
+  slack_channel:
+    description: 'Slack channel ID or name (required with bot token)'
+    required: false
+    default: ''
+
+  github_token:
+    description: 'GitHub token for artifact access'
+    required: true
+
+  notify_on:
+    description: 'When to notify: all, critical_only, or high_and_critical'
+    required: false
+    default: 'critical_only'
+
+outputs:
+  has_changes:
+    description: 'Whether changes were detected (true/false)'
+    value: ${{ steps.compare.outputs.has_changes }}
+
+  comparison_json:
+    description: 'Full comparison result as JSON'
+    value: ${{ steps.compare.outputs.comparison }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Download scan history artifact
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        echo "📦 Downloading scan history artifact..."
+
+        # Get latest artifact ID
+        ARTIFACT_ID=$(gh api \
+          -H "Accept: application/vnd.github+json" \
+          /repos/${{ github.repository }}/actions/artifacts \
+          --jq '.artifacts[] | select(.name == "__gh_security_toolkit__github_pages_site_data") | .id' \
+          | head -n 1)
+
+        if [[ -z "$ARTIFACT_ID" ]]; then
+          echo "⚠️  No scan history artifact found, skipping comparison"
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        echo "   Artifact ID: $ARTIFACT_ID"
+
+        # Download and extract
+        gh api \
+          -H "Accept: application/vnd.github+json" \
+          /repos/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip \
+          > site-data.zip
+
+        unzip -q site-data.zip
+        tar -xzf scan-history.tar.gz
+
+        echo "✅ Scan history extracted"
+
+    - name: Compare with previous scan
+      id: compare
+      shell: bash
+      run: |
+        if [ ! -f "data/hist/scan-history.json" ]; then
+          echo "⚠️  No scan-history.json found, skipping comparison"
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        echo "🔍 Comparing scans..."
+
+        # Run comparison
+        COMPARISON=$(jbang ${{ github.action_path }}/../../../scripts/compare_scans.java \
+          data/hist/scan-history.json \
+          "${{ inputs.channel }}" \
+          "${{ inputs.timestamp }}")
+
+        echo "Comparison result:"
+        echo "$COMPARISON" | jq . || echo "$COMPARISON"
+
+        # Extract hasChanges
+        HAS_CHANGES=$(echo "$COMPARISON" | jq -r '.hasChanges // false')
+        echo "has_changes=$HAS_CHANGES" >> $GITHUB_OUTPUT
+
+        # Save full comparison (escape for GitHub Actions)
+        echo "comparison<<EOF" >> $GITHUB_OUTPUT
+        echo "$COMPARISON" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+        if [ "$HAS_CHANGES" = "true" ]; then
+          echo "✅ Changes detected"
+        else
+          echo "ℹ️  No changes detected"
+        fi
+
+    - name: Filter changes by notify_on setting
+      id: filter
+      if: steps.compare.outputs.has_changes == 'true'
+      shell: bash
+      run: |
+        COMPARISON='${{ steps.compare.outputs.comparison }}'
+        NOTIFY_ON="${{ inputs.notify_on }}"
+
+        echo "Notify setting: $NOTIFY_ON"
+
+        SHOULD_NOTIFY="false"
+
+        if [ "$NOTIFY_ON" = "all" ]; then
+          SHOULD_NOTIFY="true"
+        elif [ "$NOTIFY_ON" = "critical_only" ]; then
+          # Check if critical changes exist
+          CRITICAL_CHANGED=$(echo "$COMPARISON" | jq -r '.changes.trivy.critical != null')
+          if [ "$CRITICAL_CHANGED" = "true" ]; then
+            SHOULD_NOTIFY="true"
+          fi
+        elif [ "$NOTIFY_ON" = "high_and_critical" ]; then
+          # Check if critical or high changes exist
+          CRITICAL_CHANGED=$(echo "$COMPARISON" | jq -r '.changes.trivy.critical != null')
+          HIGH_CHANGED=$(echo "$COMPARISON" | jq -r '.changes.trivy.high != null')
+          if [ "$CRITICAL_CHANGED" = "true" ] || [ "$HIGH_CHANGED" = "true" ]; then
+            SHOULD_NOTIFY="true"
+          fi
+        fi
+
+        echo "should_notify=$SHOULD_NOTIFY" >> $GITHUB_OUTPUT
+
+        if [ "$SHOULD_NOTIFY" = "true" ]; then
+          echo "✅ Changes match notify_on filter, will send notification"
+        else
+          echo "ℹ️  Changes don't match notify_on filter, skipping notification"
+        fi
+
+    - name: Send Slack notification
+      if: |
+        steps.compare.outputs.has_changes == 'true' &&
+        steps.filter.outputs.should_notify == 'true' &&
+        (inputs.slack_webhook_url != '' || (inputs.slack_bot_token != '' && inputs.slack_channel != ''))
+      shell: bash
+      env:
+        SLACK_WEBHOOK_URL: ${{ inputs.slack_webhook_url }}
+        SLACK_BOT_TOKEN: ${{ inputs.slack_bot_token }}
+        SLACK_CHANNEL: ${{ inputs.slack_channel }}
+      run: |
+        echo "📤 Sending Slack notification..."
+
+        jbang ${{ github.action_path }}/../../../scripts/slack_integration.java \
+          --comparison '${{ steps.compare.outputs.comparison }}'
+
+        echo "✅ Slack notification sent"
+
+    - name: Summary
+      if: always()
+      shell: bash
+      run: |
+        echo "## Slack Notification Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Channel:** ${{ inputs.channel }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Timestamp:** ${{ inputs.timestamp }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Has Changes:** ${{ steps.compare.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
+
+        if [ "${{ steps.compare.outputs.has_changes }}" = "true" ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Summary:** ${{ fromJSON(steps.compare.outputs.comparison).summary }}" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.filter.outputs.should_notify }}" = "true" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Slack notification sent" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️  Changes didn't match notify_on filter (${​{ inputs.notify_on }})" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
