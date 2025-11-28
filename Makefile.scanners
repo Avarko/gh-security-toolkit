@@ -8,6 +8,20 @@
 __GHST_VERSION ?= main
 __GHST_IMAGE ?= ghcr.io/avarko/gh-security-toolkit:$(__GHST_VERSION)
 __GHST_DOCKER_CMD ?= docker
+__GHST_PLATFORM ?=
+
+# Auto-detect host platform in a Docker-compatible format
+UNAME_M := $(shell uname -m)
+ifeq ($(UNAME_M),x86_64)
+  __GHST_PLATFORM ?= linux/amd64
+else ifeq ($(UNAME_M),arm64)
+  __GHST_PLATFORM ?= linux/arm64
+else ifeq ($(UNAME_M),aarch64)
+  __GHST_PLATFORM ?= linux/arm64
+else
+  # Fallback (safe) – try native but allow override
+  __GHST_PLATFORM ?= linux/$(UNAME_M)
+endif
 
 # Docker options: Mount only current directory (read-only option available)
 __GHST_MOUNT_RO ?= true
@@ -20,9 +34,13 @@ __GRADLE_MOUNT   := $(if $(filter yes,$(__GRADLE_EXISTS)),-v $$HOME/.gradle/cach
 
 # Network isolation: --network=none ensures air-gapped execution (no data leaves your machine)
 ifeq ($(__GHST_MOUNT_RO),true)
-	__GHST_DOCKER_OPTS := --rm --network=none  -v $(PWD):/workspace:ro $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
+	__GHST_DOCKER_OPTS := --rm --network=none \
+	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
+	 -v $(PWD):/workspace:ro $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
 else
-	__GHST_DOCKER_OPTS := --rm --network=none-v $(PWD):/workspace $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
+	__GHST_DOCKER_OPTS := --rm --network=none \
+	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
+	-v $(PWD):/workspace $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
 endif
 
 # Output format options
