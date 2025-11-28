@@ -25,6 +25,7 @@ on:
           - LIST
           - GET
           - DELETE
+          - DELETE_SCAN
         default: 'LIST'
       artifact_id:
         description: 'Artifact ID (required for GET/DELETE operations)'
@@ -32,6 +33,23 @@ on:
         type: string
       file_pattern:
         description: 'Regex pattern to match files for content preview (GET) or type "approve" to confirm deletion (DELETE)'
+        required: false
+        type: string
+      scan_channel:
+        description: 'Channel name (required for DELETE_SCAN, e.g., push-to-main, pr-123)'
+        required: false
+        type: string
+      scan_timestamps:
+        description: |
+          Timestamp(s) to delete (required for DELETE_SCAN). Supports:
+          - Single: 20251122-105346
+          - Multiple: 20251122-105346,20251123-143022,20251124-091532
+          - Range: 20251122-105346..20251124-235959
+          - All: *
+        required: false
+        type: string
+      confirm_deletion:
+        description: 'Type "DELETE" to confirm deletion (required for DELETE/DELETE_SCAN)'
         required: false
         type: string
 
@@ -67,6 +85,58 @@ jobs:
               echo "::error::For DELETE operation, you must type 'approve' in the file_pattern field to confirm deletion"
               exit 1
             fi
+          fi
+
+          if [[ "$OPERATION" == "DELETE_SCAN" ]]; then
+            CHANNEL="${{ inputs.scan_channel }}"
+            TIMESTAMPS="${{ inputs.scan_timestamps }}"
+            CONFIRM="${{ inputs.confirm_deletion }}"
+
+            echo "Channel: $CHANNEL"
+            echo "Timestamps: $TIMESTAMPS"
+
+            if [[ -z "$CHANNEL" ]]; then
+              echo "::error::scan_channel is required for DELETE_SCAN operation"
+              exit 1
+            fi
+
+            if [[ -z "$TIMESTAMPS" ]]; then
+              echo "::error::scan_timestamps is required for DELETE_SCAN operation"
+              exit 1
+            fi
+
+            if [[ "$CONFIRM" != "DELETE" ]]; then
+              echo "::error::You must type 'DELETE' in confirm_deletion field to confirm scan deletion"
+              exit 1
+            fi
+
+            # Parse and validate timestamp patterns
+            if [[ "$TIMESTAMPS" == "*" ]]; then
+              echo "delete_mode=all" >> $GITHUB_OUTPUT
+              echo "⚠️  WARNING: Will delete ALL scans in channel '$CHANNEL'"
+            elif [[ "$TIMESTAMPS" =~ ^[0-9]{8}-[0-9]{6}\.\.[0-9]{8}-[0-9]{6}$ ]]; then
+              START=$(echo "$TIMESTAMPS" | cut -d'.' -f1)
+              END=$(echo "$TIMESTAMPS" | cut -d'.' -f3)
+              echo "delete_mode=range" >> $GITHUB_OUTPUT
+              echo "range_start=$START" >> $GITHUB_OUTPUT
+              echo "range_end=$END" >> $GITHUB_OUTPUT
+              echo "ℹ️  Range deletion: $START to $END"
+            elif [[ "$TIMESTAMPS" =~ , ]]; then
+              echo "delete_mode=list" >> $GITHUB_OUTPUT
+              echo "ℹ️  Multiple timestamps: $TIMESTAMPS"
+            else
+              # Single timestamp
+              if ! [[ "$TIMESTAMPS" =~ ^[0-9]{8}-[0-9]{6}$ ]]; then
+                echo "::error::Invalid timestamp format. Expected: YYYYMMDD-HHMMSS"
+                exit 1
+              fi
+              echo "delete_mode=single" >> $GITHUB_OUTPUT
+              echo "ℹ️  Single timestamp: $TIMESTAMPS"
+            fi
+
+            echo "✅ DELETE_SCAN validation passed"
+            echo "scan_channel=$CHANNEL" >> $GITHUB_OUTPUT
+            echo "scan_timestamps=$TIMESTAMPS" >> $GITHUB_OUTPUT
           fi
 
           echo "operation=$OPERATION" >> $GITHUB_OUTPUT
@@ -263,6 +333,123 @@ jobs:
             exit 1
           fi
 
+      - name: Checkout repository
+        if: inputs.operation == 'DELETE_SCAN'
+        uses: actions/checkout@v4
+
+      - name: Setup JBang
+        if: inputs.operation == 'DELETE_SCAN'
+        uses: jbangdev/setup-jbang@main
+
+      - name: Download current site data artifact
+        if: inputs.operation == 'DELETE_SCAN'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "📦 Downloading latest site data artifact..."
+
+          # Get latest artifact ID
+          ARTIFACT_ID=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${{ github.repository }}/actions/artifacts \
+            --jq '.artifacts[] | select(.name == "__gh_security_toolkit__github_pages_site_data") | .id' \
+            | head -n 1)
+
+          if [[ -z "$ARTIFACT_ID" ]]; then
+            echo "::error::No site data artifact found. Cannot delete scan from non-existent history."
+            exit 1
+          fi
+
+          echo "   Artifact ID: $ARTIFACT_ID"
+          echo "artifact_id=$ARTIFACT_ID" >> $GITHUB_ENV
+
+          # Download and extract
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip \
+            > site-data.zip
+
+          unzip -q site-data.zip
+          tar -xzf scan-history.tar.gz
+
+          echo "✅ Site data extracted"
+
+          # Show current state
+          echo ""
+          echo "📊 Current scan history for channel '${{ steps.validate.outputs.scan_channel }}':"
+          if [ -f "data/hist/scan-history.json" ]; then
+            jq -r '.scans[] | select(.channel == "${{ steps.validate.outputs.scan_channel }}") | "\(.timestamp)"' \
+              data/hist/scan-history.json | head -n 20 || echo "   (no scans found)"
+          fi
+
+      - name: Delete scans from history
+        if: inputs.operation == 'DELETE_SCAN'
+        run: |
+          echo "🗑️  Deleting scans..."
+
+          jbang scripts/delete_scan.java \
+            "${{ steps.validate.outputs.scan_channel }}" \
+            "${{ steps.validate.outputs.scan_timestamps }}" \
+            "${{ steps.validate.outputs.delete_mode }}"
+
+          if [ $? -ne 0 ]; then
+            echo "::error::Scan deletion failed"
+            exit 1
+          fi
+
+          echo ""
+          echo "📊 Updated scan history for channel '${{ steps.validate.outputs.scan_channel }}':"
+          if [ -f "data/hist/scan-history.json" ]; then
+            REMAINING=$(jq -r '.scans[] | select(.channel == "${{ steps.validate.outputs.scan_channel }}") | "\(.timestamp)"' \
+              data/hist/scan-history.json | wc -l)
+            echo "   Remaining scans: $REMAINING"
+          fi
+
+      - name: Re-archive updated site data
+        if: inputs.operation == 'DELETE_SCAN'
+        run: |
+          echo "📦 Re-archiving updated site data..."
+
+          # Create new archive
+          tar -czf scan-history-updated.tar.gz data
+
+          SIZE=$(du -h scan-history-updated.tar.gz | cut -f1)
+          echo "   Archive size: $SIZE"
+
+      - name: Upload updated site data artifact
+        if: inputs.operation == 'DELETE_SCAN'
+        uses: actions/upload-artifact@v4
+        with:
+          name: __gh_security_toolkit__github_pages_site_data
+          path: scan-history-updated.tar.gz
+          retention-days: 90
+          overwrite: true
+
+      - name: Cleanup old site data artifacts
+        if: inputs.operation == 'DELETE_SCAN'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "🧹 Cleaning up old artifact versions..."
+
+          # List all site data artifacts (excluding the one we just uploaded)
+          OLD_ARTIFACTS=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${{ github.repository }}/actions/artifacts \
+            --jq '.artifacts[] | select(.name == "__gh_security_toolkit__github_pages_site_data") | .id' \
+            | tail -n +2)
+
+          if [[ -n "$OLD_ARTIFACTS" ]]; then
+            for ART_ID in $OLD_ARTIFACTS; do
+              echo "   Deleting old artifact: $ART_ID"
+              gh api --method DELETE \
+                -H "Accept: application/vnd.github+json" \
+                /repos/${{ github.repository }}/actions/artifacts/$ART_ID || true
+            done
+          fi
+
+          echo "✅ Cleanup complete"
+
       - name: Delete artifact(s)
         if: inputs.operation == 'DELETE'
         env:
@@ -332,7 +519,13 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Operation:** ${{ inputs.operation }}" >> $GITHUB_STEP_SUMMARY
 
-          if [[ "${{ inputs.operation }}" != "LIST" ]]; then
+          if [[ "${{ inputs.operation }}" == "DELETE_SCAN" ]]; then
+            echo "**Channel:** ${{ inputs.scan_channel }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Timestamps:** ${{ inputs.scan_timestamps }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Delete Mode:** ${{ steps.validate.outputs.delete_mode }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Scan deletion complete. Changes will take effect on next GitHub Pages rebuild." >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ inputs.operation }}" != "LIST" ]]; then
             echo "**Artifact ID:** ${{ inputs.artifact_id }}" >> $GITHUB_STEP_SUMMARY
           fi
 
