@@ -181,14 +181,24 @@ jobs:
 
             echo "Downloading Trivy for $arch: $TARBALL"
             curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/${TARBALL}" -o "${TARBALL}"
-            curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/${TARBALL}.sig" -o "${TARBALL}.sig"
-            curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/${TARBALL}.pem" -o "${TARBALL}.pem"
 
-            "$COSIGN_BIN" verify-blob "${TARBALL}" \
-              --certificate "${TARBALL}.pem" \
-              --signature "${TARBALL}.sig" \
-              --certificate-identity-regexp 'https://github\.com/aquasecurity/trivy/\.github/workflows/.+' \
-              --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+            # Try old format (.sig + .pem) first, fallback to new format (.sigstore.json)
+            if curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/${TARBALL}.sig" -o "${TARBALL}.sig" 2>/dev/null && \
+               curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/${TARBALL}.pem" -o "${TARBALL}.pem" 2>/dev/null; then
+              echo "Using legacy signature format (.sig + .pem)"
+              "$COSIGN_BIN" verify-blob "${TARBALL}" \
+                --certificate "${TARBALL}.pem" \
+                --signature "${TARBALL}.sig" \
+                --certificate-identity-regexp 'https://github\.com/aquasecurity/trivy/\.github/workflows/.+' \
+                --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+            else
+              echo "Legacy format not found, using Sigstore bundle format (.sigstore.json)"
+              curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/${TARBALL}.sigstore.json" -o "${TARBALL}.sigstore.json"
+              "$COSIGN_BIN" verify-blob "${TARBALL}" \
+                --bundle "${TARBALL}.sigstore.json" \
+                --certificate-identity-regexp 'https://github\.com/aquasecurity/trivy/\.github/workflows/.+' \
+                --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+            fi
 
             tar -xzf "${TARBALL}" trivy
             install -m 0755 trivy "${CONTEXT}/verified-binaries/linux-${arch}/trivy"
