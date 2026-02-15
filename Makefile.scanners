@@ -65,7 +65,7 @@ sec/scan/trivy/fs: # Scan filesystem (uses .trivy.yaml config)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	-e TRIVY_SKIP_DB_UPDATE=true \
 	-e TRIVY_OFFLINE_SCAN=true \
-	$(__GHST_IMAGE) trivy fs . --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
+	$(__GHST_IMAGE) trivy fs . --skip-java-db-update --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/artifact
 sec/scan/trivy/artifact: # Scan built artifact - Gradle WAR/JAR/EAR (ARTIFACT=path/to/app.war)
@@ -76,7 +76,7 @@ sec/scan/trivy/artifact: # Scan built artifact - Gradle WAR/JAR/EAR (ARTIFACT=pa
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	-e TRIVY_SKIP_DB_UPDATE=true \
 	-e TRIVY_OFFLINE_SCAN=true \
-	$(__GHST_IMAGE) trivy fs $(ARTIFACT) --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
+	$(__GHST_IMAGE) trivy fs $(ARTIFACT) --skip-java-db-update --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/img
 sec/scan/trivy/img: # Scan Docker image (IMAGE=name:tag)
@@ -90,7 +90,7 @@ sec/scan/trivy/img: # Scan Docker image (IMAGE=name:tag)
 	-v $(PWD):/workspace:ro -w /workspace \
 	-e TRIVY_SKIP_DB_UPDATE=true \
 	-e TRIVY_OFFLINE_SCAN=true \
-	$(__GHST_IMAGE) trivy image $(IMAGE) --format $(__GHST_TRIVY_FORMAT)
+	$(__GHST_IMAGE) trivy image $(IMAGE) --skip-java-db-update --format $(__GHST_TRIVY_FORMAT)
 
 # ============================================================================
 # Semgrep - Automatically uses .semgrep.yaml if present
