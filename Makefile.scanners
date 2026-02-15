@@ -26,6 +26,9 @@ endif
 # Docker options: Mount only current directory (read-only option available)
 __GHST_MOUNT_RO ?= true
 
+# Docker socket GID for image scanning (auto-detected)
+__DOCKER_SOCK_GID := $(shell stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null)
+
 # Mount Maven and Gradle caches if they exist
 __M2_EXISTS        := $(shell [ -d "$$HOME/.m2/repository" ] && echo yes || echo no)
 __GRADLE_EXISTS    := $(shell [ -d "$$HOME/.gradle/caches/modules-2" ] && echo yes || echo no)
@@ -49,6 +52,10 @@ __GHST_TRIVY_TIMEOUT ?= 5m
 
 # ============================================================================
 # Trivy - Automatically uses .trivy.yaml if present
+#
+# Gradle note: trivy fs . only works with lock files. For Gradle projects:
+#   Option A: Generate lock files first:  ./gradlew dependencies --write-locks
+#   Option B: Scan built artifacts:       make sec/scan/trivy/artifact ARTIFACT=build/libs/app.war
 # ============================================================================
 
 .PHONY: sec/scan/trivy/fs
@@ -60,12 +67,25 @@ sec/scan/trivy/fs: # Scan filesystem (uses .trivy.yaml config)
 	-e TRIVY_OFFLINE_SCAN=true \
 	$(__GHST_IMAGE) trivy fs . --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
+.PHONY: sec/scan/trivy/artifact
+sec/scan/trivy/artifact: # Scan built artifact - Gradle WAR/JAR/EAR (ARTIFACT=path/to/app.war)
+	@[ -n "$(ARTIFACT)" ] || (echo "❌ Usage: make sec/scan/trivy/artifact ARTIFACT=build/libs/app.war" && exit 1)
+	@[ -e "$(ARTIFACT)" ] || (echo "❌ Artifact not found: $(ARTIFACT)" && exit 1)
+	@echo "🔍 Scanning artifact $(ARTIFACT) with Trivy (offline mode)..."
+	@test -f .trivy.yaml && echo "ℹ️  Using .trivy.yaml configuration" || true
+	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
+	-e TRIVY_SKIP_DB_UPDATE=true \
+	-e TRIVY_OFFLINE_SCAN=true \
+	$(__GHST_IMAGE) trivy fs $(ARTIFACT) --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
+
 .PHONY: sec/scan/trivy/img
 sec/scan/trivy/img: # Scan Docker image (IMAGE=name:tag)
 	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" && exit 1)
 	@echo "🔍 Scanning image $(IMAGE) (offline mode)..."
 	@echo "ℹ️  Note: Docker socket access required (network isolation disabled for this scan)"
 	$(__GHST_DOCKER_CMD) run --rm --network=none \
+	$(if $(__DOCKER_SOCK_GID),--group-add $(__DOCKER_SOCK_GID),) \
+	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	-v /var/run/docker.sock:/var/run/docker.sock \
 	-v $(PWD):/workspace:ro -w /workspace \
 	-e TRIVY_SKIP_DB_UPDATE=true \
@@ -107,7 +127,7 @@ sec/scan/semgrep: # Scan code with Semgrep (uses .semgrep.yaml config)
 # ============================================================================
 
 .PHONY: sec/scan
-sec/scan: sec/scan/trivy/fs sec/scan/semgrep ## Full scan. Subcommands: sec/scan/[trivy/fs,trivy/img IMAGE=<Docker img tag>,/semgrep,/clean,/help].
+sec/scan: sec/scan/trivy/fs sec/scan/semgrep ## Full scan. Subcommands: sec/scan/[trivy/fs,trivy/artifact ARTIFACT=<path>,trivy/img IMAGE=<Docker img tag>,/semgrep,/clean,/help].
 	@echo "✅ All scans complete"
 
 # ============================================================================
