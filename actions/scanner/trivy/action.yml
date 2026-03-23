@@ -29,7 +29,7 @@ runs:
 
     - name: Trivy cache
       continue-on-error: true
-      uses: yogeshlonkar/trivy-cache-action@v0
+      uses: yogeshlonkar/trivy-cache-action@ed5a0132284e2c2d52921949acf5753cce4b6a2b  # v0.1.17
       with:
         gh-token: ${{ github.token }}
 
@@ -37,9 +37,9 @@ runs:
       id: fs_scan
       if: ${{ inputs.filesystem_path != '' }}
       continue-on-error: true
-      uses: aquasecurity/trivy-action@master
+      uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
       with:
-        version: 'latest'
+        version: 'v0.69.3'
         scan-type: 'fs'
         scan-ref: ${{ inputs.filesystem_path }}
         format: json
@@ -55,9 +55,9 @@ runs:
       id: image_scan
       if: ${{ inputs.docker_image_ref != '' }}
       continue-on-error: true
-      uses: aquasecurity/trivy-action@master
+      uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
       with:
-        version: 'latest'
+        version: 'v0.69.3'
         image-ref: ${{ inputs.docker_image_ref }}
         format: json
         output: ${{ inputs.trivy_output_dir }}/trivy-image-results.json

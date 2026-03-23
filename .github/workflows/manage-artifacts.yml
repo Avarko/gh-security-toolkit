@@ -339,7 +339,7 @@ jobs:
 
       - name: Setup JBang
         if: inputs.operation == 'DELETE_SCAN'
-        uses: jbangdev/setup-jbang@main
+        uses: jbangdev/setup-jbang@312c53a4221283f9c8e4aa84d8261b82f0c680fb  # Nov 11, 2025
 
       - name: Download current site data artifact
         if: inputs.operation == 'DELETE_SCAN'

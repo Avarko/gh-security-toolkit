@@ -30,7 +30,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup JBang
-        uses: jbangdev/setup-jbang@main
+        uses: jbangdev/setup-jbang@312c53a4221283f9c8e4aa84d8261b82f0c680fb  # Nov 11, 2025
 
       - name: Generate timestamp
         id: ts
