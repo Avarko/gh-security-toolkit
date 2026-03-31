@@ -166,7 +166,7 @@ jobs:
           CONTEXT="${{ env.CONTEXT }}"
           COSIGN_BIN="${CONTEXT}/verified-binaries/linux-amd64/cosign"
 
-          ver_trivy=$(gh api repos/aquasecurity/trivy/releases/latest --jq .tag_name)
+          ver_trivy=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/aquasecurity/trivy/releases/latest | grep -oP 'tag/\K.+')
           echo "ver_trivy=$ver_trivy" >> "$GITHUB_OUTPUT"
 
           for arch in amd64 arm64; do
