@@ -215,6 +215,7 @@ jobs:
           mkdir -p "$TRIVY_DB_DIR"
           "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" image --download-db-only
           "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" image --download-java-db-only
+          "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" fs /dev/null --scanners misconfig 2>/dev/null || true
 
       - name: Resolve TruffleHog
         id: trufflehog
