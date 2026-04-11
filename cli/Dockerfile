@@ -57,6 +57,8 @@ RUN apk add --no-cache unzip \
 # Copy Trivy DBs for offline use
 ENV TRIVY_CACHE_DIR=/opt/trivy-cache \
     TRIVY_SKIP_DB_UPDATE=true \
+    TRIVY_SKIP_JAVA_DB_UPDATE=true \
+    TRIVY_SKIP_CHECK_UPDATE=true \
     TRIVY_OFFLINE_SCAN=true
 COPY --chown=ghst:ghst verified-binaries/trivy-db/ "${TRIVY_CACHE_DIR}/"
 
