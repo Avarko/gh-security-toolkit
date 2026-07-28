@@ -6,7 +6,13 @@
 # ============================================================================
 
 __GHST_VERSION ?= main
-__GHST_IMAGE ?= ghcr.io/avarko/gh-security-toolkit:$(__GHST_VERSION)
+
+# Image tag, which defaults to the makefile version but is separate on
+# purpose: testing this makefile from a branch does not imply an image
+# published under that branch's name. Set __GHST_IMAGE_TAG to point at a
+# different image than the makefile came from.
+__GHST_IMAGE_TAG ?= $(__GHST_VERSION)
+__GHST_IMAGE ?= ghcr.io/avarko/gh-security-toolkit:$(__GHST_IMAGE_TAG)
 __GHST_DOCKER_CMD ?= docker
 __GHST_PLATFORM ?=
 
