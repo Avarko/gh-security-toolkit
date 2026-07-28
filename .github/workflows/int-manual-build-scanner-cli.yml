@@ -50,9 +50,12 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # latest only moves for builds from the default branch. A build from
+          # a feature branch would otherwise repoint the tag every other
+          # project pulls, which is not what testing a branch should do.
           tags: |
             type=raw,value=${{ github.event.inputs.docker-image-tag }}
-            type=raw,value=latest
+            type=raw,value=latest,enable={{is_default_branch}}
             type=sha
 
       - name: Expose image ref for downstream jobs
