@@ -396,7 +396,7 @@ jobs:
       attestations: write
     steps:
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ needs.build.outputs.image_ref }}
           subject-digest: ${{ needs.build.outputs.image_digest }}
