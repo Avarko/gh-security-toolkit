@@ -251,8 +251,12 @@ jobs:
           echo "helper_version=$version" >> "$GITHUB_OUTPUT"
           echo "Using database helper $version"
 
+          # These are OCI artifacts rather than container images, so pull the
+          # layer blob directly instead of exporting a filesystem.
           workdir=$(mktemp -d)
-          "$CRANE" export "${HELPER_PKG}:${version}" - | tar -x -C "$workdir"
+          digest=$("$CRANE" manifest "${HELPER_PKG}:${version}" \
+            | jq -r '.layers[] | select(.mediaType | startswith("application/vnd.evolver.trivy.helper")) | .digest')
+          "$CRANE" blob "${HELPER_PKG}@${digest}" | tar -xz -C "$workdir"
 
           # Verify against the checksums published alongside the binaries, so
           # a tampered artifact cannot reach the image unnoticed.

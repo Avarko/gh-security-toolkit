@@ -82,22 +82,34 @@ __GHST_TRIVY_TIMEOUT ?= 5m
 # Database management
 # ============================================================================
 
-# Locate the updater: alongside this Makefile when used from a checkout, or on
-# PATH when installed.
-__GHST_DB_SCRIPT := $(firstword $(wildcard $(dir $(lastword $(MAKEFILE_LIST)))scripts/trivy-db-update.sh) trivy-db-update.sh)
+# Database updates run inside the toolkit image, exactly like the scans do.
+# Everything they need — the helper binary, crane, jq — ships in that image,
+# so a developer installs nothing beyond Docker.
+#
+# Unlike the scan targets this one gets a network and a writable cache mount,
+# because fetching updates is the one step that has to reach the registry.
+__GHST_DB_RUN = $(__GHST_DOCKER_CMD) run --rm \
+	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
+	-v $(__GHST_DB_CACHE):/db-cache \
+	-e GHST_DB_CACHE=/db-cache \
+	-e GHST_DB_REPO=$(__GHST_DB_REPO) \
+	-e GHST_DB_MAX_AGE_DAYS=$(__GHST_DB_MAX_AGE_DAYS) \
+	-e GHST_OFFLINE=$(GHST_OFFLINE) \
+	$(__GHST_IMAGE) trivy-db-helper
 
-__GHST_DB_ENV := GHST_DB_CACHE=$(__GHST_DB_CACHE) \
-	GHST_DB_REPO=$(__GHST_DB_REPO) \
-	GHST_DB_MAX_AGE_DAYS=$(__GHST_DB_MAX_AGE_DAYS) \
-	GHST_OFFLINE=$(GHST_OFFLINE)
+# The cache directory must exist before Docker mounts it, or Docker creates it
+# owned by root.
+__GHST_DB_PREPARE = mkdir -p $(__GHST_DB_CACHE)
 
 .PHONY: sec/db/update
 sec/db/update: # Fetch Trivy database updates (incremental when possible)
-	@$(__GHST_DB_ENV) $(__GHST_DB_SCRIPT) update
+	@$(__GHST_DB_PREPARE)
+	@$(__GHST_DB_RUN) -command update
 
 .PHONY: sec/db/status
 sec/db/status: # Show Trivy database cache location, age and versions
-	@$(__GHST_DB_ENV) $(__GHST_DB_SCRIPT) status
+	@$(__GHST_DB_PREPARE)
+	@$(__GHST_DB_RUN) -command status
 
 .PHONY: sec/db/clean
 sec/db/clean: # Remove the cached Trivy databases
@@ -109,7 +121,8 @@ sec/db/clean: # Remove the cached Trivy databases
 # cache is current. GHST_OFFLINE=1 turns it into a freshness warning instead.
 .PHONY: __ghst-db-ensure
 __ghst-db-ensure:
-	@$(__GHST_DB_ENV) $(__GHST_DB_SCRIPT) ensure
+	@$(__GHST_DB_PREPARE)
+	@$(__GHST_DB_RUN) -command ensure
 
 # ============================================================================
 # Trivy - Automatically uses .trivy.yaml if present
