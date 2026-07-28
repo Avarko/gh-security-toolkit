@@ -232,28 +232,48 @@ jobs:
 
           echo "Checks bundled: $(du -sh "$TRIVY_DB_DIR" | cut -f1)"
 
-      - name: Build database helper
+      # The helper applies incremental database updates on the client. It is
+      # built and released by the private database pipeline, so this only
+      # downloads the published binaries — no source checkout, and the token
+      # needs read access to that repository's releases and nothing more.
+      #
+      # Developers never use this token. At scan time the helper reads the
+      # databases from ghcr.io using the developer's own registry login.
+      - name: Fetch database helper
         id: db-helper
+        env:
+          GH_TOKEN: ${{ secrets.DB_REPO_TOKEN }}
+          DB_REPO: Avarko/trivy-incremental-dbs
         run: |
           set -euo pipefail
           CONTEXT="${{ env.CONTEXT }}"
 
-          # Applies incremental updates on the client. Built from the private
-          # database pipeline repository; CGO is off so the binary is static
-          # and runs on the Wolfi base image without extra libraries.
-          git clone --depth 1 \
-            "https://x-access-token:${{ secrets.DB_REPO_TOKEN }}@github.com/Avarko/trivy-incremental-dbs.git" \
-            /tmp/trivy-incremental-dbs
+          version=$(gh release view -R "$DB_REPO" --json tagName --jq .tagName)
+          echo "helper_version=$version" >> "$GITHUB_OUTPUT"
+          echo "Using database helper $version"
 
-          cd /tmp/trivy-incremental-dbs/lib
           for arch in amd64 arm64; do
-            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
-              go build -trimpath -ldflags="-s -w" -o \
-              "${GITHUB_WORKSPACE}/${CONTEXT}/verified-binaries/linux-${arch}/trivy-db-helper" .
+            dest="${CONTEXT}/verified-binaries/linux-${arch}"
+            mkdir -p "$dest"
+            gh release download "$version" -R "$DB_REPO" \
+              --pattern "trivy-db-helper-linux-${arch}" \
+              --output "${dest}/trivy-db-helper"
+            chmod +x "${dest}/trivy-db-helper"
           done
 
-          cp "${GITHUB_WORKSPACE}/${CONTEXT}"/../scripts/trivy-db-update.sh \
-            "${GITHUB_WORKSPACE}/${CONTEXT}/verified-binaries/" 2>/dev/null || true
+          # Verify checksums published alongside the binaries, so a tampered
+          # release asset cannot reach the image unnoticed.
+          gh release download "$version" -R "$DB_REPO" \
+            --pattern "checksums.txt" --output /tmp/helper-checksums.txt
+          for arch in amd64 arm64; do
+            expected=$(grep "trivy-db-helper-linux-${arch}\$" /tmp/helper-checksums.txt | awk '{print $1}')
+            actual=$(sha256sum "${CONTEXT}/verified-binaries/linux-${arch}/trivy-db-helper" | awk '{print $1}')
+            if [ "$expected" != "$actual" ]; then
+              echo "::error::Checksum mismatch for linux-${arch} database helper"
+              exit 1
+            fi
+          done
+          echo "Helper checksums verified"
 
       - name: Resolve TruffleHog
         id: trufflehog
