@@ -132,6 +132,7 @@ __GHST_DB_RUN = $(__GHST_DOCKER_CMD) run --rm \
 	-e GHST_DB_REPO=$(__GHST_DB_REPO) \
 	-e GHST_DB_MAX_AGE_DAYS=$(__GHST_DB_MAX_AGE_DAYS) \
 	-e GHST_OFFLINE=$(GHST_OFFLINE) \
+	-e GHST_VEX_SERVE=0 \
 	$(__GHST_IMAGE) trivy-db-helper
 
 # The cache directory must exist before Docker mounts it, or Docker creates it
@@ -146,7 +147,10 @@ sec/db/update: # Fetch Trivy database updates (incremental when possible)
 .PHONY: sec/db/status
 sec/db/status: # Show Trivy database cache location, age and versions
 	@$(__GHST_DB_PREPARE)
-	@$(__GHST_DB_RUN) -command status
+	@echo "Trivy database cache: $(__GHST_DB_CACHE)"
+	@# The helper reports the path it sees inside the container, which is not
+	@# where the developer would go looking; the host path is printed above.
+	@$(__GHST_DB_RUN) -command status | grep -v '^Trivy database cache:'
 
 .PHONY: sec/db/clean
 sec/db/clean: # Remove the cached Trivy databases
