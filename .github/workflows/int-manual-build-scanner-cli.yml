@@ -233,46 +233,43 @@ jobs:
           echo "Checks bundled: $(du -sh "$TRIVY_DB_DIR" | cut -f1)"
 
       # The helper applies incremental database updates on the client. It is
-      # built and released by the private database pipeline, so this only
-      # downloads the published binaries — no source checkout, and the token
-      # needs read access to that repository's releases and nothing more.
-      #
-      # Developers never use this token. At scan time the helper reads the
-      # databases from ghcr.io using the developer's own registry login.
+      # published as a public OCI artifact by the database pipeline, whose
+      # repository stays private: on GitHub a package's visibility is
+      # independent of its repository's, so the artifacts are anonymously
+      # pullable while the source is not. No token is needed here, and none is
+      # needed by developers at scan time either.
       - name: Fetch database helper
         id: db-helper
         env:
-          GH_TOKEN: ${{ secrets.DB_REPO_TOKEN }}
-          DB_REPO: Avarko/trivy-incremental-dbs
+          HELPER_PKG: ghcr.io/avarko/trivy-incremental-dbs
         run: |
           set -euo pipefail
           CONTEXT="${{ env.CONTEXT }}"
+          CRANE="${CONTEXT}/verified-binaries/linux-amd64/crane"
 
-          version=$(gh release view -R "$DB_REPO" --json tagName --jq .tagName)
+          version=$("$CRANE" ls "$HELPER_PKG" | grep '^helper-v' | sort -V | tail -1)
           echo "helper_version=$version" >> "$GITHUB_OUTPUT"
           echo "Using database helper $version"
 
+          workdir=$(mktemp -d)
+          "$CRANE" export "${HELPER_PKG}:${version}" - | tar -x -C "$workdir"
+
+          # Verify against the checksums published alongside the binaries, so
+          # a tampered artifact cannot reach the image unnoticed.
           for arch in amd64 arm64; do
             dest="${CONTEXT}/verified-binaries/linux-${arch}"
             mkdir -p "$dest"
-            gh release download "$version" -R "$DB_REPO" \
-              --pattern "trivy-db-helper-linux-${arch}" \
-              --output "${dest}/trivy-db-helper"
-            chmod +x "${dest}/trivy-db-helper"
-          done
+            install -m 0755 "${workdir}/trivy-db-helper-linux-${arch}" "${dest}/trivy-db-helper"
 
-          # Verify checksums published alongside the binaries, so a tampered
-          # release asset cannot reach the image unnoticed.
-          gh release download "$version" -R "$DB_REPO" \
-            --pattern "checksums.txt" --output /tmp/helper-checksums.txt
-          for arch in amd64 arm64; do
-            expected=$(grep "trivy-db-helper-linux-${arch}\$" /tmp/helper-checksums.txt | awk '{print $1}')
-            actual=$(sha256sum "${CONTEXT}/verified-binaries/linux-${arch}/trivy-db-helper" | awk '{print $1}')
+            expected=$(grep "trivy-db-helper-linux-${arch}\$" "${workdir}/checksums.txt" | awk '{print $1}')
+            actual=$(sha256sum "${dest}/trivy-db-helper" | awk '{print $1}')
             if [ "$expected" != "$actual" ]; then
               echo "::error::Checksum mismatch for linux-${arch} database helper"
               exit 1
             fi
           done
+
+          rm -rf "$workdir"
           echo "Helper checksums verified"
 
       - name: Resolve TruffleHog
