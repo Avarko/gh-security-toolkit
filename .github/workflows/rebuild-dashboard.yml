@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup JBang
         uses: jbangdev/setup-jbang@312c53a4221283f9c8e4aa84d8261b82f0c680fb  # Nov 11, 2025

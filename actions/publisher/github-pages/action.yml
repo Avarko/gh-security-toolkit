@@ -115,7 +115,7 @@ runs:
         node-version: '24'
 
     - name: Download Dashboard Artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: __gh_security_toolkit__security-dashboard-build
         path: ${{ steps.temp.outputs.dashboard_build }}
@@ -163,7 +163,7 @@ runs:
 
     - name: Upload GitHub Pages site data artifact
       id: upload_site_data
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: __gh_security_toolkit__github_pages_site_data
         path: ${{ steps.temp.outputs.site_data_output }}/scan-history.tar.gz
@@ -182,10 +182,10 @@ runs:
           "${{ steps.upload_site_data.outputs.artifact-id }}"
 
     - name: Setup Pages
-      uses: actions/configure-pages@v5
+      uses: actions/configure-pages@v6
 
     - name: Upload Pages artifact
-      uses: actions/upload-pages-artifact@v3
+      uses: actions/upload-pages-artifact@v5
       with:
         path: ${{ steps.temp.outputs.site_dir }}
         name: __gh_security_toolkit__github_pages_deployment
@@ -193,7 +193,7 @@ runs:
 
     - name: Deploy to GitHub Pages
       id: deployment
-      uses: actions/deploy-pages@v4
+      uses: actions/deploy-pages@v5
       with:
         artifact_name: __gh_security_toolkit__github_pages_deployment
 
