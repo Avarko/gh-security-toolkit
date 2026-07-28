@@ -16,14 +16,14 @@ runs:
   using: composite
   steps:
     - name: Checkout toolkit repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         repository: Avarko/gh-security-toolkit
         ref: main
         path: _toolkit
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       continue-on-error: true
       with:
         node-version: ${{ inputs.node-version }}
@@ -48,7 +48,7 @@ runs:
         ls -lh dist/
 
     - name: Upload dashboard artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: __gh_security_toolkit__security-dashboard-build
         path: _toolkit/dashboard/dist
