@@ -32,6 +32,12 @@ endif
 # Docker options: Mount only current directory (read-only option available)
 __GHST_MOUNT_RO ?= true
 
+# Containers run as the invoking user so files they create in mounted
+# directories stay owned by the developer, and so they can read a cache the
+# developer owns. See the database section for why this is not optional.
+__GHST_HOST_UID := $(shell id -u)
+__GHST_HOST_GID := $(shell id -g)
+
 # Docker socket GID for image scanning (auto-detected)
 __DOCKER_SOCK_GID := $(shell stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null)
 
@@ -61,7 +67,13 @@ GHST_OFFLINE ?= 0
 # for vulnerabilities published since.
 __GHST_DB_MAX_AGE_DAYS ?= 14
 
-__GHST_DB_MOUNT := -v $(__GHST_DB_CACHE):/opt/trivy-cache:ro
+# The cache is mounted read-only so a scan cannot corrupt it, but Trivy also
+# wants somewhere writable for its own scratch state (fanal/, temp files). A
+# tmpfs gives it that without a second host directory, and it is discarded
+# when the container exits.
+__GHST_DB_MOUNT := -v $(__GHST_DB_CACHE)/db:/opt/trivy-cache/db:ro \
+	-v $(__GHST_DB_CACHE)/java-db:/opt/trivy-cache/java-db:ro \
+	--tmpfs /opt/trivy-cache/fanal:rw,size=512m
 
 # Mount Maven and Gradle caches if they exist
 __M2_EXISTS        := $(shell [ -d "$$HOME/.m2/repository" ] && echo yes || echo no)
@@ -69,13 +81,19 @@ __GRADLE_EXISTS    := $(shell [ -d "$$HOME/.gradle/caches/modules-2" ] && echo y
 __M2_MOUNT       := $(if $(filter yes,$(__M2_EXISTS)),-v $$HOME/.m2/repository:/home/ghst/.m2/repository:ro,)
 __GRADLE_MOUNT   := $(if $(filter yes,$(__GRADLE_EXISTS)),-v $$HOME/.gradle/caches/modules-2:/home/ghst/.gradle/caches/modules-2:ro,)
 
+# Scans run as the invoking user for the same reason the update does: the
+# database cache is the developer's, and the image's own account cannot read
+# it. Trivy also wants a writable HOME for its scratch state, which /tmp
+# provides without touching the workspace.
+__GHST_USER_OPTS := --user $(__GHST_HOST_UID):$(__GHST_HOST_GID) -e HOME=/tmp
+
 # Network isolation: --network=none ensures air-gapped execution (no data leaves your machine)
 ifeq ($(__GHST_MOUNT_RO),true)
-	__GHST_DOCKER_OPTS := --rm --network=none \
+	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_USER_OPTS) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	 -v $(PWD):/workspace:ro $(__GHST_DB_MOUNT) $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
 else
-	__GHST_DOCKER_OPTS := --rm --network=none \
+	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_USER_OPTS) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	-v $(PWD):/workspace $(__GHST_DB_MOUNT) $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
 endif
@@ -94,10 +112,23 @@ __GHST_TRIVY_TIMEOUT ?= 5m
 #
 # Unlike the scan targets this one gets a network and a writable cache mount,
 # because fetching updates is the one step that has to reach the registry.
+#
+# It also runs as the invoking user rather than the image's own account.
+#
+# Writing goes through the bind mount, but a bind mount is not a copy: it is
+# the host's own directory, and the host kernel checks permissions against the
+# host inode. The image's ghst account is uid 10001 while the cache belongs to
+# the developer, so creating files there is denied — and were the directory
+# world-writable it would be worse, since the files would end up owned by
+# 10001 and `sec/db/clean` could not remove them without sudo.
+#
+# Docker Desktop on macOS remaps ownership and hides this; Linux does not.
 __GHST_DB_RUN = $(__GHST_DOCKER_CMD) run --rm \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
+	--user $(__GHST_HOST_UID):$(__GHST_HOST_GID) \
 	-v $(__GHST_DB_CACHE):/db-cache \
 	-e GHST_DB_CACHE=/db-cache \
+	-e HOME=/tmp \
 	-e GHST_DB_REPO=$(__GHST_DB_REPO) \
 	-e GHST_DB_MAX_AGE_DAYS=$(__GHST_DB_MAX_AGE_DAYS) \
 	-e GHST_OFFLINE=$(GHST_OFFLINE) \
