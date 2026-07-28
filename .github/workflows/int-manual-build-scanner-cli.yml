@@ -204,8 +204,16 @@ jobs:
             install -m 0755 trivy "${CONTEXT}/verified-binaries/linux-${arch}/trivy"
           done
 
-      - name: Download Trivy DBs
-        id: trivy-db
+      # The vulnerability databases are deliberately NOT baked in. They used to
+      # be, at ~2.8 GB of image, and going stale forced a full re-pull. They
+      # now come from the shared host cache that Makefile.scanners mounts,
+      # updated incrementally by `make sec/db/update`.
+      #
+      # The misconfiguration checks are a different matter: they are a few MB
+      # of Rego policies that `trivy config` needs, they change rarely, and
+      # they have no incremental mechanism. Those stay in the image.
+      - name: Download Trivy misconfiguration checks
+        id: trivy-checks
         run: |
           set -euo pipefail
           CONTEXT="${{ env.CONTEXT }}"
@@ -213,9 +221,39 @@ jobs:
           TRIVY_DB_DIR="${CONTEXT}/verified-binaries/trivy-db"
 
           mkdir -p "$TRIVY_DB_DIR"
-          "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" image --download-db-only
-          "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" image --download-java-db-only
           "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" fs /dev/null --scanners misconfig 2>/dev/null || true
+
+          # Fail loudly rather than shipping an image whose vulnerability
+          # databases were pulled in by accident.
+          if [ -f "$TRIVY_DB_DIR/db/trivy.db" ] || [ -f "$TRIVY_DB_DIR/java-db/trivy-java.db" ]; then
+            echo "::error::Vulnerability databases must not be baked into the image"
+            exit 1
+          fi
+
+          echo "Checks bundled: $(du -sh "$TRIVY_DB_DIR" | cut -f1)"
+
+      - name: Build database helper
+        id: db-helper
+        run: |
+          set -euo pipefail
+          CONTEXT="${{ env.CONTEXT }}"
+
+          # Applies incremental updates on the client. Built from the private
+          # database pipeline repository; CGO is off so the binary is static
+          # and runs on the Wolfi base image without extra libraries.
+          git clone --depth 1 \
+            "https://x-access-token:${{ secrets.DB_REPO_TOKEN }}@github.com/Avarko/trivy-incremental-dbs.git" \
+            /tmp/trivy-incremental-dbs
+
+          cd /tmp/trivy-incremental-dbs/lib
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH="$arch" \
+              go build -trimpath -ldflags="-s -w" -o \
+              "${GITHUB_WORKSPACE}/${CONTEXT}/verified-binaries/linux-${arch}/trivy-db-helper" .
+          done
+
+          cp "${GITHUB_WORKSPACE}/${CONTEXT}"/../scripts/trivy-db-update.sh \
+            "${GITHUB_WORKSPACE}/${CONTEXT}/verified-binaries/" 2>/dev/null || true
 
       - name: Resolve TruffleHog
         id: trufflehog
