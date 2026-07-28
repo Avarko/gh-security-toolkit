@@ -247,9 +247,12 @@ jobs:
           CONTEXT="${{ env.CONTEXT }}"
           CRANE="${CONTEXT}/verified-binaries/linux-amd64/crane"
 
+          # helper-latest is moved by the publishing pipeline, so the image
+          # always picks up the current client. Resolve it to a concrete
+          # version for the build log and for provenance.
           version=$("$CRANE" ls "$HELPER_PKG" | grep '^helper-v' | sort -V | tail -1)
           echo "helper_version=$version" >> "$GITHUB_OUTPUT"
-          echo "Using database helper $version"
+          echo "Using database helper $version (via helper-latest)"
 
           # These are OCI artifacts rather than container images, so pull the
           # layer blob directly instead of exporting a filesystem.
