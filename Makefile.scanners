@@ -140,12 +140,12 @@ __GHST_DB_RUN = $(__GHST_DOCKER_CMD) run --rm \
 __GHST_DB_PREPARE = mkdir -p $(__GHST_DB_CACHE)
 
 .PHONY: sec/db/update
-sec/db/update: # Fetch Trivy database updates (incremental when possible)
+sec/db/update: __ghst-image-ensure # Fetch Trivy database updates (incremental when possible)
 	@$(__GHST_DB_PREPARE)
 	@$(__GHST_DB_RUN) -command update
 
 .PHONY: sec/db/status
-sec/db/status: # Show Trivy database cache location, age and versions
+sec/db/status: __ghst-image-ensure # Show Trivy database cache location, age and versions
 	@$(__GHST_DB_PREPARE)
 	@echo "Trivy database cache: $(__GHST_DB_CACHE)"
 	@# The helper reports the path it sees inside the container, which is not
@@ -161,9 +161,49 @@ sec/db/clean: # Remove the cached Trivy databases
 # Scan targets depend on this: it updates a stale cache and is a no-op when the
 # cache is current. GHST_OFFLINE=1 turns it into a freshness warning instead.
 .PHONY: __ghst-db-ensure
-__ghst-db-ensure:
+__ghst-db-ensure: __ghst-image-ensure
 	@$(__GHST_DB_PREPARE)
 	@$(__GHST_DB_RUN) -command ensure
+
+# ============================================================================
+# Toolkit image freshness
+#
+# Docker only pulls a tag when it has nothing local by that name, so an image
+# pulled once is never revisited — a fixed bug or a new helper version sits in
+# the registry indefinitely while every scan keeps running the old one. That
+# is exactly how a database-format change once shipped to the registry days
+# before any developer's local image could read it.
+#
+# Checked once per __GHST_IMAGE_MAX_AGE_DAYS rather than every invocation, so
+# an otherwise offline scan does not pay a registry round-trip each time. Same
+# shape as __GHST_DB_MAX_AGE_DAYS above, and for the same reason: a stale tool
+# should be refreshed on a schedule, not left to a developer noticing.
+# ============================================================================
+
+__GHST_IMAGE_MAX_AGE_DAYS ?= 1
+__GHST_IMAGE_STAMP := $(HOME)/.cache/gh-security-toolkit/.image-checked-$(subst /,_,$(__GHST_IMAGE_TAG))
+
+.PHONY: __ghst-image-ensure
+__ghst-image-ensure:
+	@mkdir -p "$(dir $(__GHST_IMAGE_STAMP))"
+	@if [ "$(GHST_OFFLINE)" = "1" ]; then exit 0; fi; \
+	if $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) >/dev/null 2>&1 \
+	   && [ -f "$(__GHST_IMAGE_STAMP)" ]; then \
+		now=$$(date +%s); \
+		checked=$$(stat -c %Y "$(__GHST_IMAGE_STAMP)" 2>/dev/null || stat -f %m "$(__GHST_IMAGE_STAMP)"); \
+		age_days=$$(( (now - checked) / 86400 )); \
+		[ "$$age_days" -lt "$(__GHST_IMAGE_MAX_AGE_DAYS)" ] && exit 0; \
+	fi; \
+	echo "🔄 Checking for a newer $(__GHST_IMAGE)..."; \
+	if $(__GHST_DOCKER_CMD) pull -q $(__GHST_IMAGE) >/dev/null 2>&1; then \
+		touch "$(__GHST_IMAGE_STAMP)"; \
+	elif $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) >/dev/null 2>&1; then \
+		echo "⚠️  Could not reach the registry — using the cached image."; \
+		touch "$(__GHST_IMAGE_STAMP)"; \
+	else \
+		echo "❌ $(__GHST_IMAGE) is not available locally and the registry could not be reached."; \
+		exit 1; \
+	fi
 
 # ============================================================================
 # Trivy - Automatically uses .trivy.yaml if present
@@ -259,6 +299,7 @@ sec/scan/clean: # Remove gh-security-toolkit image
 	@$(__GHST_DOCKER_CMD) ps -a -q --filter "ancestor=$(__GHST_IMAGE)" | xargs -r $(__GHST_DOCKER_CMD) stop 2>/dev/null || true
 	@$(__GHST_DOCKER_CMD) ps -a -q --filter "ancestor=$(__GHST_IMAGE)" | xargs -r $(__GHST_DOCKER_CMD) rm 2>/dev/null || true
 	@$(__GHST_DOCKER_CMD) rmi -f $(__GHST_IMAGE) 2>/dev/null || echo "ℹ️  Image $(__GHST_IMAGE) not found (already clean)"
+	@rm -f "$(__GHST_IMAGE_STAMP)"
 	@echo "✅ Docker cleanup complete. Next run will pull fresh image."
 
 # ============================================================================
