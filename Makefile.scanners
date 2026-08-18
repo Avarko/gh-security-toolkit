@@ -6,7 +6,13 @@
 # ============================================================================
 
 __GHST_VERSION ?= main
-__GHST_IMAGE ?= ghcr.io/avarko/gh-security-toolkit:$(__GHST_VERSION)
+
+# Image tag, which defaults to the makefile version but is separate on
+# purpose: testing this makefile from a branch does not imply an image
+# published under that branch's name. Set __GHST_IMAGE_TAG to point at a
+# different image than the makefile came from.
+__GHST_IMAGE_TAG ?= $(__GHST_VERSION)
+__GHST_IMAGE ?= ghcr.io/avarko/gh-security-toolkit:$(__GHST_IMAGE_TAG)
 __GHST_DOCKER_CMD ?= docker
 __GHST_PLATFORM ?=
 
@@ -26,8 +32,48 @@ endif
 # Docker options: Mount only current directory (read-only option available)
 __GHST_MOUNT_RO ?= true
 
+# Containers run as the invoking user so files they create in mounted
+# directories stay owned by the developer, and so they can read a cache the
+# developer owns. See the database section for why this is not optional.
+__GHST_HOST_UID := $(shell id -u)
+__GHST_HOST_GID := $(shell id -g)
+
 # Docker socket GID for image scanning (auto-detected)
 __DOCKER_SOCK_GID := $(shell stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null)
+
+# ============================================================================
+# Trivy vulnerability database cache
+#
+# The databases are no longer baked into the toolkit image: that cost ~2.8 GB
+# of image and forced a full re-pull whenever they went stale. They now live in
+# one cache directory shared by every project on this machine, updated
+# incrementally — a developer who scanned recently fetches a delta of a few
+# hundred kilobytes instead of ~1.4 GB.
+#
+# Scans still run air-gapped. Only sec/db/update touches the network, and only
+# to fetch database updates.
+# ============================================================================
+
+__GHST_DB_CACHE ?= $(HOME)/.cache/gh-security-toolkit/trivy-db
+__GHST_DB_REPO ?= ghcr.io/avarko/trivy-incremental-dbs
+
+# Set GHST_OFFLINE=1 to skip the update check entirely and scan with whatever
+# the cache already holds. Useful on a plane, behind a restrictive proxy, or
+# when a scan must not depend on the network.
+GHST_OFFLINE ?= 0
+
+# Refuse to scan against a database older than this many days. Stale
+# vulnerability data is worse than a failed scan, because it reports "clean"
+# for vulnerabilities published since.
+__GHST_DB_MAX_AGE_DAYS ?= 14
+
+# The cache is mounted read-only so a scan cannot corrupt it, but Trivy also
+# wants somewhere writable for its own scratch state (fanal/, temp files). A
+# tmpfs gives it that without a second host directory, and it is discarded
+# when the container exits.
+__GHST_DB_MOUNT := -v $(__GHST_DB_CACHE)/db:/opt/trivy-cache/db:ro \
+	-v $(__GHST_DB_CACHE)/java-db:/opt/trivy-cache/java-db:ro \
+	--tmpfs /opt/trivy-cache/fanal:rw,size=512m
 
 # Mount Maven and Gradle caches if they exist
 __M2_EXISTS        := $(shell [ -d "$$HOME/.m2/repository" ] && echo yes || echo no)
@@ -35,15 +81,21 @@ __GRADLE_EXISTS    := $(shell [ -d "$$HOME/.gradle/caches/modules-2" ] && echo y
 __M2_MOUNT       := $(if $(filter yes,$(__M2_EXISTS)),-v $$HOME/.m2/repository:/home/ghst/.m2/repository:ro,)
 __GRADLE_MOUNT   := $(if $(filter yes,$(__GRADLE_EXISTS)),-v $$HOME/.gradle/caches/modules-2:/home/ghst/.gradle/caches/modules-2:ro,)
 
+# Scans run as the invoking user for the same reason the update does: the
+# database cache is the developer's, and the image's own account cannot read
+# it. Trivy also wants a writable HOME for its scratch state, which /tmp
+# provides without touching the workspace.
+__GHST_USER_OPTS := --user $(__GHST_HOST_UID):$(__GHST_HOST_GID) -e HOME=/tmp
+
 # Network isolation: --network=none ensures air-gapped execution (no data leaves your machine)
 ifeq ($(__GHST_MOUNT_RO),true)
-	__GHST_DOCKER_OPTS := --rm --network=none \
+	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_USER_OPTS) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
-	 -v $(PWD):/workspace:ro $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
+	 -v $(PWD):/workspace:ro $(__GHST_DB_MOUNT) $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
 else
-	__GHST_DOCKER_OPTS := --rm --network=none \
+	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_USER_OPTS) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
-	-v $(PWD):/workspace $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
+	-v $(PWD):/workspace $(__GHST_DB_MOUNT) $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
 endif
 
 # Output format options
@@ -51,7 +103,113 @@ __GHST_TRIVY_FORMAT ?= table
 __GHST_TRIVY_TIMEOUT ?= 5m
 
 # ============================================================================
+# Database management
+# ============================================================================
+
+# Database updates run inside the toolkit image, exactly like the scans do.
+# Everything they need — the helper binary, crane, jq — ships in that image,
+# so a developer installs nothing beyond Docker.
+#
+# Unlike the scan targets this one gets a network and a writable cache mount,
+# because fetching updates is the one step that has to reach the registry.
+#
+# It also runs as the invoking user rather than the image's own account.
+#
+# Writing goes through the bind mount, but a bind mount is not a copy: it is
+# the host's own directory, and the host kernel checks permissions against the
+# host inode. The image's ghst account is uid 10001 while the cache belongs to
+# the developer, so creating files there is denied — and were the directory
+# world-writable it would be worse, since the files would end up owned by
+# 10001 and `sec/db/clean` could not remove them without sudo.
+#
+# Docker Desktop on macOS remaps ownership and hides this; Linux does not.
+__GHST_DB_RUN = $(__GHST_DOCKER_CMD) run --rm \
+	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
+	--user $(__GHST_HOST_UID):$(__GHST_HOST_GID) \
+	-v $(__GHST_DB_CACHE):/db-cache \
+	-e GHST_DB_CACHE=/db-cache \
+	-e HOME=/tmp \
+	-e GHST_DB_REPO=$(__GHST_DB_REPO) \
+	-e GHST_DB_MAX_AGE_DAYS=$(__GHST_DB_MAX_AGE_DAYS) \
+	-e GHST_OFFLINE=$(GHST_OFFLINE) \
+	-e GHST_VEX_SERVE=0 \
+	$(__GHST_IMAGE) trivy-db-helper
+
+# The cache directory must exist before Docker mounts it, or Docker creates it
+# owned by root.
+__GHST_DB_PREPARE = mkdir -p $(__GHST_DB_CACHE)
+
+.PHONY: sec/db/update
+sec/db/update: __ghst-image-ensure # Fetch Trivy database updates (incremental when possible)
+	@$(__GHST_DB_PREPARE)
+	@$(__GHST_DB_RUN) -command update
+
+.PHONY: sec/db/status
+sec/db/status: __ghst-image-ensure # Show Trivy database cache location, age and versions
+	@$(__GHST_DB_PREPARE)
+	@echo "Trivy database cache: $(__GHST_DB_CACHE)"
+	@# The helper reports the path it sees inside the container, which is not
+	@# where the developer would go looking; the host path is printed above.
+	@$(__GHST_DB_RUN) -command status | grep -v '^Trivy database cache:'
+
+.PHONY: sec/db/clean
+sec/db/clean: # Remove the cached Trivy databases
+	@echo "🧹 Removing Trivy database cache..."
+	@rm -rf $(__GHST_DB_CACHE)
+	@echo "✅ Cache removed. The next scan downloads a fresh database."
+
+# Scan targets depend on this: it updates a stale cache and is a no-op when the
+# cache is current. GHST_OFFLINE=1 turns it into a freshness warning instead.
+.PHONY: __ghst-db-ensure
+__ghst-db-ensure: __ghst-image-ensure
+	@$(__GHST_DB_PREPARE)
+	@$(__GHST_DB_RUN) -command ensure
+
+# ============================================================================
+# Toolkit image freshness
+#
+# Docker only pulls a tag when it has nothing local by that name, so an image
+# pulled once is never revisited — a fixed bug or a new helper version sits in
+# the registry indefinitely while every scan keeps running the old one. That
+# is exactly how a database-format change once shipped to the registry days
+# before any developer's local image could read it.
+#
+# Checked once per __GHST_IMAGE_MAX_AGE_DAYS rather than every invocation, so
+# an otherwise offline scan does not pay a registry round-trip each time. Same
+# shape as __GHST_DB_MAX_AGE_DAYS above, and for the same reason: a stale tool
+# should be refreshed on a schedule, not left to a developer noticing.
+# ============================================================================
+
+__GHST_IMAGE_MAX_AGE_DAYS ?= 1
+__GHST_IMAGE_STAMP := $(HOME)/.cache/gh-security-toolkit/.image-checked-$(subst /,_,$(__GHST_IMAGE_TAG))
+
+.PHONY: __ghst-image-ensure
+__ghst-image-ensure:
+	@mkdir -p "$(dir $(__GHST_IMAGE_STAMP))"
+	@if [ "$(GHST_OFFLINE)" = "1" ]; then exit 0; fi; \
+	if $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) >/dev/null 2>&1 \
+	   && [ -f "$(__GHST_IMAGE_STAMP)" ]; then \
+		now=$$(date +%s); \
+		checked=$$(stat -c %Y "$(__GHST_IMAGE_STAMP)" 2>/dev/null || stat -f %m "$(__GHST_IMAGE_STAMP)"); \
+		age_days=$$(( (now - checked) / 86400 )); \
+		[ "$$age_days" -lt "$(__GHST_IMAGE_MAX_AGE_DAYS)" ] && exit 0; \
+	fi; \
+	echo "🔄 Checking for a newer $(__GHST_IMAGE)..."; \
+	if $(__GHST_DOCKER_CMD) pull -q $(__GHST_IMAGE) >/dev/null 2>&1; then \
+		touch "$(__GHST_IMAGE_STAMP)"; \
+	elif $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) >/dev/null 2>&1; then \
+		echo "⚠️  Could not reach the registry — using the cached image."; \
+		touch "$(__GHST_IMAGE_STAMP)"; \
+	else \
+		echo "❌ $(__GHST_IMAGE) is not available locally and the registry could not be reached."; \
+		exit 1; \
+	fi
+
+# ============================================================================
 # Trivy - Automatically uses .trivy.yaml if present
+#
+# Scans run with --network=none against a database mounted from the host
+# cache, so no scan reaches the network. Only sec/db/update does.
 #
 # Gradle note: trivy fs . only works with lock files. For Gradle projects:
 #   Option A: Generate lock files first:  ./gradlew dependencies --write-locks
@@ -59,14 +217,14 @@ __GHST_TRIVY_TIMEOUT ?= 5m
 # ============================================================================
 
 .PHONY: sec/scan/trivy/fs
-sec/scan/trivy/fs: # Scan filesystem (uses .trivy.yaml config)
+sec/scan/trivy/fs: __ghst-db-ensure # Scan filesystem (uses .trivy.yaml config)
 	@echo "🔍 Scanning filesystem with Trivy (offline mode)..."
 	@test -f .trivy.yaml && echo "ℹ️  Using .trivy.yaml configuration" || true
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	$(__GHST_IMAGE) trivy fs . --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/artifact
-sec/scan/trivy/artifact: # Scan built artifact - Gradle WAR/JAR/EAR (ARTIFACT=path/to/app.war)
+sec/scan/trivy/artifact: __ghst-db-ensure # Scan built artifact - Gradle WAR/JAR/EAR (ARTIFACT=path/to/app.war)
 	@[ -n "$(ARTIFACT)" ] || (echo "❌ Usage: make sec/scan/trivy/artifact ARTIFACT=build/libs/app.war" && exit 1)
 	@[ -e "$(ARTIFACT)" ] || (echo "❌ Artifact not found: $(ARTIFACT)" && exit 1)
 	@echo "🔍 Scanning artifact $(ARTIFACT) with Trivy (offline mode)..."
@@ -75,14 +233,14 @@ sec/scan/trivy/artifact: # Scan built artifact - Gradle WAR/JAR/EAR (ARTIFACT=pa
 	$(__GHST_IMAGE) trivy fs $(ARTIFACT) --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/config
-sec/scan/trivy/config: # Scan IaC configs for misconfigurations - Terraform, Dockerfile, K8s, etc. (uses .trivy.yaml config)
+sec/scan/trivy/config: __ghst-db-ensure # Scan IaC configs for misconfigurations - Terraform, Dockerfile, K8s, etc. (uses .trivy.yaml config)
 	@echo "🔍 Scanning IaC configs with Trivy (offline mode)..."
 	@test -f .trivy.yaml && echo "ℹ️  Using .trivy.yaml configuration" || true
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	$(__GHST_IMAGE) trivy config . --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/img
-sec/scan/trivy/img: # Scan Docker image (IMAGE=name:tag)
+sec/scan/trivy/img: __ghst-db-ensure # Scan Docker image (IMAGE=name:tag)
 	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" && exit 1)
 	@echo "🔍 Scanning image $(IMAGE) (offline mode)..."
 	@echo "ℹ️  Note: Docker socket access required (network isolation disabled for this scan)"
@@ -90,7 +248,7 @@ sec/scan/trivy/img: # Scan Docker image (IMAGE=name:tag)
 	$(if $(__DOCKER_SOCK_GID),--group-add $(__DOCKER_SOCK_GID),) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	-v /var/run/docker.sock:/var/run/docker.sock \
-	-v $(PWD):/workspace:ro -w /workspace \
+	-v $(PWD):/workspace:ro $(__GHST_DB_MOUNT) -w /workspace \
 	$(__GHST_IMAGE) trivy image $(IMAGE) --format $(__GHST_TRIVY_FORMAT)
 
 # ============================================================================
@@ -128,7 +286,7 @@ sec/scan/semgrep: # Scan code with Semgrep (uses .semgrep.yaml config)
 # ============================================================================
 
 .PHONY: sec/scan
-sec/scan: sec/scan/trivy/fs sec/scan/trivy/config sec/scan/semgrep ## Full scan. Subcommands: sec/scan/[trivy/fs,trivy/config,trivy/artifact ARTIFACT=<path>,trivy/img IMAGE=<Docker img tag>,/semgrep,/clean,/help].
+sec/scan: sec/scan/trivy/fs sec/scan/trivy/config sec/scan/semgrep ## Full scan. Subcommands: sec/scan/[trivy/fs,trivy/config,trivy/artifact ARTIFACT=<path>,trivy/img IMAGE=<Docker img tag>,/semgrep,/clean,/help]. Databases: sec/db/[update,status,clean].
 	@echo "✅ All scans complete"
 
 # ============================================================================
@@ -141,6 +299,7 @@ sec/scan/clean: # Remove gh-security-toolkit image
 	@$(__GHST_DOCKER_CMD) ps -a -q --filter "ancestor=$(__GHST_IMAGE)" | xargs -r $(__GHST_DOCKER_CMD) stop 2>/dev/null || true
 	@$(__GHST_DOCKER_CMD) ps -a -q --filter "ancestor=$(__GHST_IMAGE)" | xargs -r $(__GHST_DOCKER_CMD) rm 2>/dev/null || true
 	@$(__GHST_DOCKER_CMD) rmi -f $(__GHST_IMAGE) 2>/dev/null || echo "ℹ️  Image $(__GHST_IMAGE) not found (already clean)"
+	@rm -f "$(__GHST_IMAGE_STAMP)"
 	@echo "✅ Docker cleanup complete. Next run will pull fresh image."
 
 # ============================================================================
