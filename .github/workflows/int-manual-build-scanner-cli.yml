@@ -31,7 +31,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -40,19 +40,22 @@ jobs:
       # Add support for more platforms with QEMU (optional)
       # https://github.com/docker/setup-qemu-action
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Extract metadata (tags/labels)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # latest only moves for builds from the default branch. A build from
+          # a feature branch would otherwise repoint the tag every other
+          # project pulls, which is not what testing a branch should do.
           tags: |
             type=raw,value=${{ github.event.inputs.docker-image-tag }}
-            type=raw,value=latest
+            type=raw,value=latest,enable={{is_default_branch}}
             type=sha
 
       - name: Expose image ref for downstream jobs
@@ -204,8 +207,16 @@ jobs:
             install -m 0755 trivy "${CONTEXT}/verified-binaries/linux-${arch}/trivy"
           done
 
-      - name: Download Trivy DBs
-        id: trivy-db
+      # The vulnerability databases are deliberately NOT baked in. They used to
+      # be, at ~2.8 GB of image, and going stale forced a full re-pull. They
+      # now come from the shared host cache that Makefile.scanners mounts,
+      # updated incrementally by `make sec/db/update`.
+      #
+      # The misconfiguration checks are a different matter: they are a few MB
+      # of Rego policies that `trivy config` needs, they change rarely, and
+      # they have no incremental mechanism. Those stay in the image.
+      - name: Download Trivy misconfiguration checks
+        id: trivy-checks
         run: |
           set -euo pipefail
           CONTEXT="${{ env.CONTEXT }}"
@@ -213,9 +224,63 @@ jobs:
           TRIVY_DB_DIR="${CONTEXT}/verified-binaries/trivy-db"
 
           mkdir -p "$TRIVY_DB_DIR"
-          "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" image --download-db-only
-          "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" image --download-java-db-only
           "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" fs /dev/null --scanners misconfig 2>/dev/null || true
+
+          # Fail loudly rather than shipping an image whose vulnerability
+          # databases were pulled in by accident.
+          if [ -f "$TRIVY_DB_DIR/db/trivy.db" ] || [ -f "$TRIVY_DB_DIR/java-db/trivy-java.db" ]; then
+            echo "::error::Vulnerability databases must not be baked into the image"
+            exit 1
+          fi
+
+          echo "Checks bundled: $(du -sh "$TRIVY_DB_DIR" | cut -f1)"
+
+      # The helper applies incremental database updates on the client. It is
+      # published as a public OCI artifact by the database pipeline, whose
+      # repository stays private: on GitHub a package's visibility is
+      # independent of its repository's, so the artifacts are anonymously
+      # pullable while the source is not. No token is needed here, and none is
+      # needed by developers at scan time either.
+      - name: Fetch database helper
+        id: db-helper
+        env:
+          HELPER_PKG: ghcr.io/avarko/trivy-incremental-dbs
+        run: |
+          set -euo pipefail
+          CONTEXT="${{ env.CONTEXT }}"
+          CRANE="${CONTEXT}/verified-binaries/linux-amd64/crane"
+
+          # helper-latest is moved by the publishing pipeline, so the image
+          # always picks up the current client. Resolve it to a concrete
+          # version for the build log and for provenance.
+          version=$("$CRANE" ls "$HELPER_PKG" | grep '^helper-v' | sort -V | tail -1)
+          echo "helper_version=$version" >> "$GITHUB_OUTPUT"
+          echo "Using database helper $version (via helper-latest)"
+
+          # These are OCI artifacts rather than container images, so pull the
+          # layer blob directly instead of exporting a filesystem.
+          workdir=$(mktemp -d)
+          digest=$("$CRANE" manifest "${HELPER_PKG}:${version}" \
+            | jq -r '.layers[] | select(.mediaType | startswith("application/vnd.evolver.trivy.helper")) | .digest')
+          "$CRANE" blob "${HELPER_PKG}@${digest}" | tar -xz -C "$workdir"
+
+          # Verify against the checksums published alongside the binaries, so
+          # a tampered artifact cannot reach the image unnoticed.
+          for arch in amd64 arm64; do
+            dest="${CONTEXT}/verified-binaries/linux-${arch}"
+            mkdir -p "$dest"
+            install -m 0755 "${workdir}/trivy-db-helper-linux-${arch}" "${dest}/trivy-db-helper"
+
+            expected=$(grep "trivy-db-helper-linux-${arch}\$" "${workdir}/checksums.txt" | awk '{print $1}')
+            actual=$(sha256sum "${dest}/trivy-db-helper" | awk '{print $1}')
+            if [ "$expected" != "$actual" ]; then
+              echo "::error::Checksum mismatch for linux-${arch} database helper"
+              exit 1
+            fi
+          done
+
+          rm -rf "$workdir"
+          echo "Helper checksums verified"
 
       - name: Resolve TruffleHog
         id: trufflehog
@@ -258,7 +323,7 @@ jobs:
       # ---------- Build & push with verified binaries ----------
       - name: Build & push (provenance disabled here)
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ${{ env.CONTEXT }}
           push: true
@@ -286,7 +351,7 @@ jobs:
       attestations: write  # GitHub Attestations store
     steps:
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -300,7 +365,7 @@ jobs:
           output-file: sbom.spdx.json
 
       - name: Generate SBOM attestation
-        uses: actions/attest-sbom@v2
+        uses: actions/attest-sbom@v4
         with:
           subject-name: ${{ needs.build.outputs.image_ref }}
           subject-digest: ${{ needs.build.outputs.image_digest }}
@@ -337,7 +402,7 @@ jobs:
       attestations: write
     steps:
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: ${{ needs.build.outputs.image_ref }}
           subject-digest: ${{ needs.build.outputs.image_digest }}
@@ -375,7 +440,7 @@ jobs:
       attestations: read
     steps:
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}

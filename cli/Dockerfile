@@ -54,13 +54,35 @@ RUN apk add --no-cache unzip \
     && chown -R ghst:ghst /var/www \
     && apk del unzip
 
-# Copy Trivy DBs for offline use
+# Trivy databases are NOT baked into the image. They used to be, which cost
+# ~2.8 GB of image size and forced a full re-pull whenever they went stale.
+# They now live in a cache directory on the host, shared by every project and
+# updated incrementally by `make sec/db/update`. The mount is supplied at run
+# time by Makefile.scanners.
+#
+# Trivy still runs fully offline: it is told to skip every update check, so it
+# uses whatever the mounted cache contains and never reaches the network
+# itself.
 ENV TRIVY_CACHE_DIR=/opt/trivy-cache \
     TRIVY_SKIP_DB_UPDATE=true \
     TRIVY_SKIP_JAVA_DB_UPDATE=true \
     TRIVY_SKIP_CHECK_UPDATE=true \
     TRIVY_OFFLINE_SCAN=true
-COPY --chown=ghst:ghst verified-binaries/trivy-db/ "${TRIVY_CACHE_DIR}/"
+
+# The misconfiguration checks, unlike the vulnerability databases, are a few MB
+# of Rego that does belong in the image: CI downloads them next to the
+# binaries, and TRIVY_SKIP_CHECK_UPDATE above means Trivy will not fetch them
+# at run time. Without this copy `trivy config` logs an ERROR on every scan and
+# silently falls back to whatever is compiled into the binary.
+#
+# The path is Trivy's own: it writes the bundle to <cache-dir>/policy, holding
+# content/ and metadata.json. Only the vulnerability databases are mounted over
+# at run time, so this survives.
+COPY --chown=ghst:ghst verified-binaries/trivy-db/policy /opt/trivy-cache/policy
+
+# Helper that applies incremental database updates, copied from CI alongside
+# the other verified binaries.
+COPY --chown=ghst:ghst verified-binaries/linux-${TARGETARCH}/trivy-db-helper /usr/local/bin/trivy-db-helper
 
 # Non-root user
 USER ghst
