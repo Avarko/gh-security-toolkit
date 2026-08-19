@@ -43,10 +43,28 @@ Provides reusable GitHub Actions composite actions and Makefile integration for 
 
 ```makefile
 # Avarko/gh-security-toolkit security scanner Makefile inclusion
-include $(shell __GHST_FILE=.ghst/Makefile; \
-	mkdir -p .ghst; \
-	[ -f $$__GHST_FILE ] || curl -fsSL "https://raw.githubusercontent.com/Avarko/gh-security-toolkit/main/Makefile.scanners" -o $$__GHST_FILE; \
-	echo $$__GHST_FILE)
+__GHST_VERSION ?= main
+__GHST_DIR := .gh-security-toolkit
+__GHST_MAKEFILE := $(__GHST_DIR)/Makefile.scanners
+__GHST_URL := https://raw.githubusercontent.com/Avarko/gh-security-toolkit/$(__GHST_VERSION)/Makefile.scanners
+
+$(__GHST_MAKEFILE):
+	@echo "Fetching gh-security-toolkit ($(__GHST_VERSION))..."
+	@mkdir -p $(__GHST_DIR)
+	@curl -fsSL "$(__GHST_URL)" -o $(__GHST_MAKEFILE).tmp || { \
+		echo "Could not fetch $(__GHST_URL)"; \
+		rm -f $(__GHST_MAKEFILE).tmp; \
+		exit 1; \
+	}
+	@mv $(__GHST_MAKEFILE).tmp $(__GHST_MAKEFILE)
+
+-include $(__GHST_MAKEFILE)
+
+.PHONY: sec/update
+sec/update: ## Re-fetch the security toolkit makefile
+	@rm -f $(__GHST_MAKEFILE)
+	@$(MAKE) --no-print-directory $(__GHST_MAKEFILE)
+	@echo "✅ Toolkit updated"
 ```
 
 2. Then simply start scanning:
@@ -55,6 +73,39 @@ include $(shell __GHST_FILE=.ghst/Makefile; \
 make sec/scan/help  # Show all commands
 make sec/scan       # Perform full scan
 ```
+
+3. To scan a Docker image and hand the result to an LLM agent for triage, write the scan to a file instead of letting it print to the terminal:
+
+```bash
+make sec/scan/trivy/img IMAGE=my-app:local > scan-results.json
+```
+
+Then ask the agent to work through it, e.g.:
+
+> Go through `scan-results.json` and list every CRITICAL and HIGH CVE. For each one, find the fixed version — check the actual current release of the affected library (its releases page, changelog, or package registry) rather than relying on your own memory of version numbers, since that can be outdated. Then tell me which upgrades are safe to apply now and which have dependency conflicts.
+
+The bundled `.trivy.yaml`/`.trivyignore` in the repo root apply automatically, so a re-run after upgrading only shows what is genuinely still open.
+
+### Ignore CVEs
+
+Not everything can be fixed immediately. A common case: a CVE is already patched upstream in a library, but the version that fixes it can't be adopted yet — for example, Spring Boot pins a transitive dependency's version and overriding it breaks compatibility elsewhere, so the fix isn't actually installable until Spring Boot itself moves. In situations like this, the finding needs to be ignored for now rather than left blocking every scan.
+
+Add a `.trivyignore` file at the repository root:
+
+```
+# .trivyignore
+
+# Fixed in jackson-databind 2.17.2, but spring-boot-starter-parent 3.2.x
+# pins jackson to 2.16.x; overriding it individually breaks Boot's own
+# dependency management. Revisit once we're on Boot 3.3+.
+# Tracked in JIRA-4821.
+CVE-2023-35116 exp:2026-12-31
+
+# No fix available yet upstream. Re-check on the next scan.
+CVE-2024-1234 exp:2026-10-01
+```
+
+See [Ignoring findings (`.trivyignore`)](#ignoring-findings-.trivyignore) below for the full syntax, including per-path/per-package ignores via `.trivyignore.yaml`.
 
 ### GitHub Actions CI/CD
 
