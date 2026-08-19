@@ -386,6 +386,53 @@ publishing:
 3. **Native tool configs** - `.trivy.yaml`, `.trivyignore`, `.semgrepignore`
 4. **Toolkit defaults** - Built-in default values
 
+### Ignoring findings (`.trivyignore`)
+
+Trivy skips a finding when its ID appears in a `.trivyignore` file at the repository root. This is Trivy's own native mechanism — the toolkit does not add anything on top of it, it just runs Trivy with whatever `.trivyignore` it finds.
+
+**Format:** one identifier per line — a CVE, an `AVD-*` misconfiguration ID, or a secret rule name. Blank lines and `#`-prefixed lines are comments and are skipped.
+
+```
+# .trivyignore
+
+# Accept the risk: no fix available yet, low exploitability in our setup.
+CVE-2018-14618
+
+# False positive — this is a test fixture, not a real credential.
+aws-account-id
+
+AVD-DS-0002  # Base image runs as root; acceptable for this internal tool
+```
+
+**Always pair an ignored ID with a `#` comment explaining why**, on the line above or as a trailing comment on the same line. An ignore without a reason is indistinguishable later from one nobody remembers adding — the comment is what lets a future reviewer (or you, in six months) judge whether it still holds.
+
+**Expiry — always set one for anything that is not a permanent accepted risk.** Append `exp:YYYY-MM-DD` after the ID:
+
+```
+# Waiting on upstream patch, tracked in JIRA-1234. Re-evaluate if still open.
+CVE-2019-14697 exp:2026-12-31
+```
+
+Once the date passes, Trivy stops ignoring that ID and it reappears in scan results — the ignore expires instead of silently living forever. Reserve ID-only, no-expiry lines for findings you have deliberately decided to accept permanently (e.g. a vulnerability in a code path that is genuinely unreachable in this project), and say so in the comment.
+
+**`.trivyignore.yaml` for anything more specific than an ID.** If an ignore needs to apply only to one file path, or only to one package (PURL) rather than every occurrence of an ID repo-wide, use the YAML form instead — it supports `paths`, `purls`, `statement` (the reason, as a field instead of a comment), and `expired_at` the same way:
+
+```yaml
+# .trivyignore.yaml
+vulnerabilities:
+  - id: CVE-2023-2650
+    paths:
+      - "vendor/legacy-lib/METADATA"
+    statement: "Vendored copy, not exercised by any code path we call."
+    expired_at: 2026-12-31
+
+misconfigurations:
+  - id: AVD-DS-0002
+    statement: "Base image runs as root; acceptable for this internal tool."
+```
+
+Both files are read straight from the repository root by the `trivy` binary the scanner steps invoke — nothing in this toolkit needs to be told they exist.
+
 ### Security scan action inputs
 
 | Input | Description | Default |
