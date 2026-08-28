@@ -8,7 +8,7 @@ import { scanMetadataSchema, scanHistorySchema } from '../historyTypes';
 describe('scanMetadataSchema', () => {
     it('should validate correct scan metadata', () => {
         const validScan = {
-            timestamp: '2024-01-15-120000Z',
+            timestamp: '20240115-120000',
             channel: 'prod-main',
             metadata: {
                 branch: 'main',
@@ -48,7 +48,7 @@ describe('scanMetadataSchema', () => {
 
     it('should reject invalid channel name with special characters', () => {
         const invalidScan = {
-            timestamp: '2024-01-15-120000Z',
+            timestamp: '20240115-120000',
             channel: 'test@invalid!',
             branch: 'main',
             commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
@@ -63,7 +63,7 @@ describe('scanMetadataSchema', () => {
 
     it('should reject path traversal in branch name', () => {
         const maliciousScan = {
-            timestamp: '2024-01-15-120000Z',
+            timestamp: '20240115-120000',
             channel: 'prod',
             branch: '../../etc/passwd',
             commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
@@ -77,7 +77,7 @@ describe('scanMetadataSchema', () => {
         // Short commit SHAs (< 7 chars) are invalid and will be rejected
         // because the schema has strict validation on metadata fields
         const scanWithShortCommit = {
-            timestamp: '2024-01-15-120000Z',
+            timestamp: '20240115-120000',
             channel: 'prod',
             metadata: {
                 branch: 'main',
@@ -92,7 +92,7 @@ describe('scanMetadataSchema', () => {
 
     it('should handle negative vulnerability count with .catch()', () => {
         const scanWithNegative = {
-            timestamp: '2024-01-15-120000Z',
+            timestamp: '20240115-120000',
             channel: 'prod',
             metadata: {
                 branch: 'main',
@@ -112,7 +112,7 @@ describe('scanMetadataSchema', () => {
 
     it('should handle string instead of number with .catch()', () => {
         const scanWithString = {
-            timestamp: '2024-01-15-120000Z',
+            timestamp: '20240115-120000',
             channel: 'prod',
             metadata: {
                 branch: 'main',
@@ -134,7 +134,7 @@ describe('scanMetadataSchema', () => {
 
     it('should reject unknown fields with .strict()', () => {
         const scanWithExtra = {
-            timestamp: '2024-01-15-120000Z',
+            timestamp: '20240115-120000',
             channel: 'prod',
             metadata: {
                 branch: 'main',
@@ -154,7 +154,7 @@ describe('scanHistorySchema', () => {
                 version: '1.0',
                 scans: [
                     {
-                        timestamp: '2024-01-15-120000Z',
+                        timestamp: '20240115-120000',
                         channel: 'prod',
                         metadata: {
                             branch: 'main',
@@ -182,7 +182,7 @@ describe('scanHistorySchema', () => {
             const hugeHistory = {
                 version: '1.0',
                 scans: new Array(10001).fill({
-                    timestamp: '2024-01-15-120000Z',
+                    timestamp: '20240115-120000',
                     channel: 'prod',
                     metadata: {
                         branch: 'main',
