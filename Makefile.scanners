@@ -62,6 +62,15 @@ __GHST_DB_REPO ?= ghcr.io/avarko/trivy-incremental-dbs
 # when a scan must not depend on the network.
 GHST_OFFLINE ?= 0
 
+# Database artifacts are signed by the publishing workflow and verified before
+# they are unpacked. A database that cannot be traced back to that workflow is
+# not used: it decides what every scan reports, and a substituted one reports
+# clean rather than looking wrong.
+#
+# Set to 0 only to update across the boundary where signing was introduced,
+# since artifacts published before it carry no signature.
+GHST_DB_REQUIRE_SIGNATURE ?= 1
+
 # Refuse to scan against a database older than this many days. Stale
 # vulnerability data is worse than a failed scan, because it reports "clean"
 # for vulnerabilities published since.
@@ -131,6 +140,7 @@ __GHST_DB_RUN = $(__GHST_DOCKER_CMD) run --rm \
 	-e HOME=/tmp \
 	-e GHST_DB_REPO=$(__GHST_DB_REPO) \
 	-e GHST_DB_MAX_AGE_DAYS=$(__GHST_DB_MAX_AGE_DAYS) \
+	-e GHST_DB_REQUIRE_SIGNATURE=$(GHST_DB_REQUIRE_SIGNATURE) \
 	-e GHST_OFFLINE=$(GHST_OFFLINE) \
 	-e GHST_VEX_SERVE=0 \
 	$(__GHST_IMAGE) trivy-db-helper
@@ -243,7 +253,10 @@ sec/scan/trivy/config: __ghst-db-ensure # Scan IaC configs for misconfigurations
 sec/scan/trivy/img: __ghst-db-ensure # Scan Docker image (IMAGE=name:tag)
 	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" && exit 1)
 	@echo "🔍 Scanning image $(IMAGE) (offline mode)..."
-	@echo "ℹ️  Note: Docker socket access required (network isolation disabled for this scan)"
+	@echo "ℹ️  Note: this target mounts the Docker socket so Trivy can read the"
+	@echo "   image. That is root-equivalent access to this host, and this is the"
+	@echo "   only target that needs it. The scan itself still runs with"
+	@echo "   --network=none, like every other scan."
 	$(__GHST_DOCKER_CMD) run --rm --network=none \
 	$(if $(__DOCKER_SOCK_GID),--group-add $(__DOCKER_SOCK_GID),) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
