@@ -70,6 +70,47 @@ describe('trivyScanSchema against real Trivy output', () => {
     });
 });
 
+describe('PrimaryURL scheme validation', () => {
+    const vulnerability = {
+        VulnerabilityID: 'CVE-2026-0001',
+        PkgName: 'example',
+        Severity: 'HIGH',
+        Title: 'Example',
+    };
+
+    // React 18 renders javascript: hrefs -- it only warns that a future
+    // version will block them -- so the schema is what stands between scan
+    // output and script execution in the viewer's session.
+    it.each([
+        'javascript:alert(1)',
+        'JaVaScRiPt:alert(1)',
+        'data:text/html,<script>alert(1)</script>',
+        'vbscript:msgbox(1)',
+        'not a url at all',
+    ])('drops the unsafe PrimaryURL %s', (PrimaryURL) => {
+        const result = trivyScanSchema.safeParse({
+            Results: [{ Target: 'x', Vulnerabilities: [{ ...vulnerability, PrimaryURL }] }],
+        });
+
+        expect(result.success).toBe(true);
+        if (!result.success) return;
+        expect(result.data.Results?.[0]?.Vulnerabilities?.[0]?.PrimaryURL).toBeUndefined();
+    });
+
+    it.each([
+        'https://avd.aquasec.com/nvd/cve-2026-0001',
+        'http://example.test/advisory',
+    ])('keeps the ordinary advisory link %s', (PrimaryURL) => {
+        const result = trivyScanSchema.safeParse({
+            Results: [{ Target: 'x', Vulnerabilities: [{ ...vulnerability, PrimaryURL }] }],
+        });
+
+        expect(result.success).toBe(true);
+        if (!result.success) return;
+        expect(result.data.Results?.[0]?.Vulnerabilities?.[0]?.PrimaryURL).toBe(PrimaryURL);
+    });
+});
+
 describe('semgrepScanSchema against real Semgrep output', () => {
     it('parses the fixture', () => {
         const result = semgrepScanSchema.safeParse(fixture('semgrep-results.json'));

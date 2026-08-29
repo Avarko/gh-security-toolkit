@@ -31,6 +31,32 @@ export type ScanRunMetadata = z.infer<typeof scanRunMetadataSchema>;
  * up as an empty table rather than an error.
  */
 
+/**
+ * Links come from scan output, which the dashboard treats as untrusted: it
+ * renders whatever is in the bucket for a channel, and a link is the one field
+ * that gets to choose its own scheme. React 18 still renders javascript: hrefs
+ * (it only warns that a future version will block them), so an unchecked
+ * PrimaryURL is a click away from script execution in the viewer's session.
+ *
+ * Anything that is not http(s) is dropped rather than rejected: one odd link
+ * must not cost the reader the whole vulnerability table.
+ */
+const safeUrlSchema = z
+    .string()
+    .refine(
+        (value) => {
+            try {
+                const { protocol } = new URL(value);
+                return protocol === "http:" || protocol === "https:";
+            } catch {
+                return false;
+            }
+        },
+        { message: "Only http(s) URLs are allowed" },
+    )
+    .optional()
+    .catch(undefined);
+
 export const trivyVulnerabilitySchema = z.object({
     VulnerabilityID: z.string(),
     PkgName: z.string(),
@@ -39,7 +65,7 @@ export const trivyVulnerabilitySchema = z.object({
     InstalledVersion: z.string().optional(),
     FixedVersion: z.string().optional(),
     Description: z.string().optional(),
-    PrimaryURL: z.string().optional(),
+    PrimaryURL: safeUrlSchema,
 });
 
 export type TrivyVulnerability = z.infer<typeof trivyVulnerabilitySchema>;
