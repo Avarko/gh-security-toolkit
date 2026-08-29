@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod';
+import { branchSchema, commitSchema, repositorySchema } from '../../../lib/gitRefSchemas';
 
 // Maximum safe lengths for string inputs
 const MAX_STRING_LENGTH = 1000;
@@ -27,20 +28,6 @@ const timestampSchema = z.string()
     );
 
 // Git commit SHA validation
-const commitSchema = z.string()
-    .max(MAX_COMMIT_SHA_LENGTH)
-    .regex(/^[a-f0-9]{7,40}$/i, "Invalid git commit SHA")
-    .optional()
-    .default("");
-
-// Git branch name validation
-const branchSchema = z.string()
-    .min(1)
-    .max(MAX_BRANCH_LENGTH)
-    .regex(/^[a-zA-Z0-9\/_\-\.]+$/, "Invalid branch name")
-    .optional()
-    .default("");
-
 // Channel name validation
 const channelSchema = z.string()
     .min(1)
@@ -51,7 +38,7 @@ const channelSchema = z.string()
 const metadataSchema = z.object({
     branch: branchSchema,
     commit: commitSchema,
-    repository: z.string().max(MAX_STRING_LENGTH).optional().default("")
+    repository: repositorySchema,
 }).strict();
 
 // Test report entry schema
