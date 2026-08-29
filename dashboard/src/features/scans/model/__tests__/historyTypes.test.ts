@@ -79,21 +79,88 @@ describe('scanMetadataSchema', () => {
         }
     });
 
-    it('should reject path traversal in branch name', () => {
+    // Branch and repository are interpolated into
+    // https://github.com/<repository>/tree/<branch> and rendered as an href by
+    // ReportFooter and both ChannelTables. A traversal that survives validation
+    // produces a link whose text reads "main" and whose target, after the
+    // browser normalises the path, is a different repository entirely.
+    //
+    // The original version of this test put branch and commit at the top level
+    // instead of inside metadata, so .strict() rejected it on the unrecognised
+    // keys and the traversal itself was never exercised -- it passed while the
+    // schema accepted "../../etc/passwd" happily.
+    it.each([
+        ['parent segments', '../../etc/passwd'],
+        ['embedded traversal', 'feature/../../evil'],
+        ['leading slash', '/etc/passwd'],
+        ['doubled separator', 'feature//evil'],
+        ['reflog syntax', 'main@{upstream}'],
+    ])('should not let %s through as a branch name', (_label, branch) => {
         const maliciousScan = {
             timestamp: '20240115-120000',
             channel: 'prod',
-            branch: '../../etc/passwd',
-            commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+            metadata: {
+                branch,
+                commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+                repository: 'owner/repo',
+            },
         };
 
         const result = scanMetadataSchema.safeParse(maliciousScan);
-        expect(result.success).toBe(false);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.metadata.branch).toBe('');
+        }
     });
 
-    it('should reject short commit SHA', () => {
-        // Short commit SHAs (< 7 chars) are invalid and will be rejected
-        // because the schema has strict validation on metadata fields
+    it.each([
+        ['traversal', '../../../evil/repo'],
+        ['absolute path', '/evil/repo'],
+        ['extra path segment', 'owner/repo/tree/evil'],
+        ['no owner', 'repo'],
+        ['dot segment', 'owner/..'],
+    ])('should not let %s through as a repository', (_label, repository) => {
+        const maliciousScan = {
+            timestamp: '20240115-120000',
+            channel: 'prod',
+            metadata: {
+                branch: 'main',
+                commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+                repository,
+            },
+        };
+
+        const result = scanMetadataSchema.safeParse(maliciousScan);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.metadata.repository).toBe('');
+        }
+    });
+
+    it.each([
+        'main',
+        'feature/JIRA-123_some.thing',
+        'release/1.2.3',
+        'dependabot/npm_and_yarn/dashboard/npm_and_yarn-e7552e82bb',
+    ])('should accept the real branch name %s', (branch) => {
+        const scan = {
+            timestamp: '20240115-120000',
+            channel: 'prod',
+            metadata: {
+                branch,
+                commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+                repository: 'Avarko/gh-security-toolkit',
+            },
+        };
+
+        const result = scanMetadataSchema.safeParse(scan);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.metadata.branch).toBe(branch);
+        }
+    });
+
+    it('should drop a short commit SHA rather than fail the document', () => {
         const scanWithShortCommit = {
             timestamp: '20240115-120000',
             channel: 'prod',
@@ -104,8 +171,13 @@ describe('scanMetadataSchema', () => {
             },
         };
 
+        // One malformed field must not cost the reader the whole history: the
+        // value is dropped and the component renders no commit link for it.
         const result = scanMetadataSchema.safeParse(scanWithShortCommit);
-        expect(result.success).toBe(false);
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.metadata.commit).toBe('');
+        }
     });
 
     it('should handle negative vulnerability count with .catch()', () => {
