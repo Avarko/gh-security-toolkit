@@ -11,10 +11,20 @@ const MAX_COMMIT_SHA_LENGTH = 40;
 const MAX_BRANCH_LENGTH = 200;
 const MAX_CHANNEL_LENGTH = 100;
 
-// Timestamp validation: YYYYMMDD-HHMMSS format (e.g., "20251122-145232")
+// Timestamp validation: YYYYMMDD-HHMMSS (e.g., "20251122-145232").
+//
+// The legacy YYYY-MM-DD-HHMMSSZ form is accepted too, because published
+// history retains every scan ever recorded and the entries written before the
+// switch to compact timestamps are still in it. This schema is all-or-nothing
+// -- one rejected entry fails the whole file and the page renders no data --
+// so being stricter here than TimestampUtils and formatTimestamp, which both
+// parse the legacy form deliberately, would break on real data.
 const timestampSchema = z.string()
     .max(MAX_STRING_LENGTH)
-    .regex(/^\d{8}-\d{6}$/, "Invalid timestamp format (expected YYYYMMDD-HHMMSS)");
+    .regex(
+        /^(\d{8}-\d{6}|\d{4}-\d{2}-\d{2}-\d{6}Z)$/,
+        "Invalid timestamp format (expected YYYYMMDD-HHMMSS)",
+    );
 
 // Git commit SHA validation
 const commitSchema = z.string()
