@@ -22,7 +22,7 @@ import { formatTimestamp } from "../../../lib/formatTimestamp";
 
 import type {
     ScanRunMetadata,
-    TrivyScan,
+    ScopedTrivyResult,
     TrivyVulnerability,
     SemgrepScan,
     SemgrepFinding,
@@ -31,7 +31,7 @@ import type {
 type ScanRunDetailPageProps = {
     channel: string;
     metadata: ScanRunMetadata;
-    trivyData: TrivyScan;
+    trivyResults: ScopedTrivyResult[];
     semgrepData: SemgrepScan;
     dataBasePath: string;
 };
@@ -39,7 +39,7 @@ type ScanRunDetailPageProps = {
 export function ScanRunDetailPage({
     channel,
     metadata,
-    trivyData,
+    trivyResults,
     semgrepData,
     dataBasePath,
 }: ScanRunDetailPageProps) {
@@ -68,38 +68,25 @@ export function ScanRunDetailPage({
         'UNKNOWN': 4,
     };
 
-    // Collect Trivy FS and Image vulnerabilities
-    const trivyFsVulns: TrivyVulnerability[] = (trivyData.Results?.filter(r => r.Target === 'filesystem' || r.Type === 'fs' || r.Target?.includes('fs'))
-        .flatMap(r => r.Vulnerabilities ?? []) ?? []);
-    const trivyImgVulns: TrivyVulnerability[] = (trivyData.Results?.filter(r => r.Target === 'image' || r.Type === 'img' || r.Target?.includes('img'))
-        .flatMap(r => r.Vulnerabilities ?? []) ?? []);
-    // Fallback: if Target/Type not set, treat all as both
-    const allVulns: TrivyVulnerability[] = (trivyData.Results?.flatMap(r => r.Vulnerabilities ?? []) ?? []);
-    // Build a map of VulnerabilityID to locs
-    const vulnMap: Record<string, { vuln: TrivyVulnerability, loc: string }> = {};
-    for (const v of trivyFsVulns) {
-        if (!vulnMap[v.VulnerabilityID]) {
-            vulnMap[v.VulnerabilityID] = { vuln: v, loc: 'fs' };
-        } else {
-            vulnMap[v.VulnerabilityID].loc += ',fs';
+    // Dedupe by vulnerability ID, recording every scan it was seen in. The same
+    // CVE routinely appears in both the filesystem and the image scan, and
+    // which one found it is the useful part -- so the scopes are collected into
+    // the Loc column rather than one of the rows being dropped.
+    const vulnMap: Record<string, { vuln: TrivyVulnerability; scopes: Set<string> }> = {};
+    for (const result of trivyResults) {
+        for (const vuln of result.Vulnerabilities ?? []) {
+            const entry = vulnMap[vuln.VulnerabilityID];
+            if (entry) {
+                entry.scopes.add(result.scope);
+            } else {
+                vulnMap[vuln.VulnerabilityID] = { vuln, scopes: new Set([result.scope]) };
+            }
         }
     }
-    for (const v of trivyImgVulns) {
-        if (!vulnMap[v.VulnerabilityID]) {
-            vulnMap[v.VulnerabilityID] = { vuln: v, loc: 'img' };
-        } else if (!vulnMap[v.VulnerabilityID].loc.includes('img')) {
-            vulnMap[v.VulnerabilityID].loc += ',img';
-        }
-    }
-    // If both arrays are empty, fallback to allVulns and mark loc as ''
-    if (Object.keys(vulnMap).length === 0) {
-        for (const v of allVulns) {
-            vulnMap[v.VulnerabilityID] = { vuln: v, loc: '' };
-        }
-    }
+
     // Build deduped, sorted array
     const trivyVulns = Object.values(vulnMap)
-        .map(({ vuln, loc }) => ({ ...vuln, loc }))
+        .map(({ vuln, scopes }) => ({ ...vuln, loc: [...scopes].join(",") }))
         .sort((a, b) => {
             const severityA = severityOrder[a.Severity?.toUpperCase() ?? 'UNKNOWN'] ?? 999;
             const severityB = severityOrder[b.Severity?.toUpperCase() ?? 'UNKNOWN'] ?? 999;
@@ -114,7 +101,9 @@ export function ScanRunDetailPage({
     };
 
     const semgrepFindings: SemgrepFinding[] =
-        (semgrepData.results ?? [])
+        // Copied before sorting: sort() works in place and this array belongs
+        // to the loader's data, not to this render.
+        [...(semgrepData.results ?? [])]
             .sort((a, b) => {
                 const severityA = semgrepSeverityOrder[a.extra?.severity?.toUpperCase() ?? 'INFO'] ?? 999;
                 const severityB = semgrepSeverityOrder[b.extra?.severity?.toUpperCase() ?? 'INFO'] ?? 999;
