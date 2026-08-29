@@ -45,7 +45,7 @@ not produce a wrong-looking answer. It produces a clean one.
 ```
  developer machine / CI runner
    |
-   |  (1) make include: HTTPS fetch of Makefile.scanners, cached forever
+   |  (1) make include: HTTPS fetch of Makefile.scanners, pinned by GHST_REF
    v
  Makefile.scanners
    |
@@ -55,7 +55,7 @@ not produce a wrong-looking answer. It produces a clean one.
  scanner container  (non-root uid 10001, --network=none)
    |
    |  (3) trivy-db-helper: crane pull of the vulnerability database
-   |      -- content-addressed, NOT signature-verified
+   |      -- cosign-verified against the publishing workflow identity
    v
  scan results
    |
@@ -64,9 +64,11 @@ not produce a wrong-looking answer. It produces a clean one.
  dashboard (static SPA, validates what it reads with Zod)
 ```
 
-Boundary (2) is well defended. Boundaries (1) and (3) are trust-on-first-use
-over HTTPS with no publisher authentication. Boundary (4) is defended in the
-client, and the client is not where isolation can be enforced -- see §5.
+Boundaries (2) and (3) authenticate the publisher. Boundary (1) does not: it is
+trust-on-first-use over HTTPS, pinned by ref, and there is no anchor available
+before the toolkit is bootstrapped (F-5). Boundary (4) is defended in the
+client, and a client is not where isolation can be enforced -- per-tenant
+hosting is (F-7).
 
 ---
 
@@ -87,6 +89,11 @@ from build args so a build is reproducible rather than "whatever was latest".
 **The container is not root.** `USER ghst` (uid 10001), Wolfi base, and the
 databases are mounted read-only with a tmpfs for Trivy's scratch state, so a
 scan cannot corrupt the cache it reads.
+
+**The database is signed, and verified before it is used.** Publishing signs
+each artifact and the manifest with cosign keyless; the client verifies against
+the publishing workflow's identity, by digest, before unpacking. Verification
+runs during an update, the one moment a client is online by design.
 
 **Stale data fails rather than passes.** `__GHST_DB_MAX_AGE_DAYS` refuses to
 scan against a database older than 14 days, on the reasoning that stale
@@ -115,6 +122,10 @@ into a path.
 From an audit on 2026-08-29 covering the actions, workflows, shell scripts,
 Makefile, image, database pipeline and dashboard.
 
+All nine are fixed, except the part of F-8 that only a rebuild can fix. Each
+entry keeps its original description, because what was wrong is the useful
+part to remember, and records what was done.
+
 ### F-1 (critical) -- Expression injection into `eval` in the TruffleHog scanner
 
 `actions/scanner/trufflehog/action.yml` interpolates `inputs.base`,
@@ -135,10 +146,10 @@ are shell metacharacters.
 Result: arbitrary command execution on the consumer's runner with the
 consumer's `GITHUB_TOKEN`.
 
-**Fix:** pass the values through `env:` and reference them as `"$BASE"`,
-`"$HEAD"`; build the command as an array and execute it directly instead of via
-`eval`. If `extra_args` must remain free-form, split it explicitly rather than
-letting the shell re-parse the whole command line.
+**Fixed.** The values pass through `env:`. The command is an array executed
+directly, and `extra_args` is split with `read -a`, so its words can only ever
+be arguments. Verified with `main; touch FILE`, `$(touch FILE)` and a backtick
+form: all three arrive as inert argument text.
 
 ### F-2 (high) -- The input-validation action is itself an injection point
 
@@ -157,8 +168,8 @@ characters" and exits 1, having already run it.
 This one matters beyond its own blast radius, because it is the action a
 consumer reaches for when they want an untrusted name made safe.
 
-**Fix:** the same shape as `validate-channel.sh`, which already does it
-correctly -- take the value in `env:` and validate `"$ARTIFACT_NAME"`.
+**Fixed.** The value arrives in `env:` and the checks run against
+`"$ARTIFACT_NAME"`, the shape `validate-channel.sh` already used.
 
 ### F-3 (high) -- The same unsafe idiom across fifty-three call sites
 
@@ -175,7 +186,15 @@ derives from one. Severity varies with how plausible an untrusted value is for
 each input, but the fix is uniform and mechanical, and the codebase already
 contains the pattern to copy.
 
-**Fix:** move every expression out of `run:` bodies into `env:`.
+**Fixed.** Zero expressions remain in any `run:` body.
+`scripts/check-no-expressions-in-run.py` holds the line and runs in CI. Where a
+built-in variable already carried the value -- `GITHUB_ACTION_PATH`,
+`GITHUB_REPOSITORY`, `RUNNER_TEMP` -- that is used instead of a new one.
+
+Seven needed more than a substitution, because a single-quoted expression
+cannot become `"$VAR"`: two jq filters that had the channel name in the program
+text now pass `--arg`, and three `echo '<expression>'` writes of JSON became
+`printf '%s'` of an environment value.
 
 ### F-4 (high) -- The vulnerability database is not signature-verified
 
@@ -192,8 +211,16 @@ This is the sharpest asymmetry in the design -- the image goes to considerable
 lengths to verify the binaries it bundles, using cosign, which it also ships,
 while the data that determines every result is taken on trust.
 
-**Fix:** sign the database artifacts at publish time and verify them in the
-helper before use, failing the scan when verification fails.
+**Fixed** in `trivy-incremental-dbs`. Artifacts and the manifest are signed
+with cosign's keyless flow, so the signature carries the publishing workflow's
+identity and there is no key to protect. The client verifies before unpacking,
+against the manifest digest rather than the tag it was reached through, since a
+tag can move between the two calls.
+
+Enforced unless `GHST_DB_REQUIRE_SIGNATURE` is exactly `0` -- a typo in that
+variable enforces rather than disables. **Sequencing matters:** artifacts
+published before this carry no signature, so sign the current base and deltas
+before rolling the verifying client out.
 
 ### F-5 (medium) -- Bootstrap fetches and executes make code with no verification
 
@@ -211,9 +238,14 @@ caused a concrete problem -- a stale vendored copy predating the current
 scanner targets -- and it means a security fix to `Makefile.scanners` does not
 reach existing checkouts at all.
 
-**Fix:** version the include and check it, the way the image and database are
-checked; at minimum give the cached copy the same age-based refresh the image
-and database already have.
+**Fixed.** `GHST_REF` pins what is fetched and `.gh-security-toolkit/REF`
+records it, so changing the pin refreshes the copy instead of leaving a
+first-fetch artifact in place forever.
+
+This remains trust-on-first-use over HTTPS. Verifying a signature over this
+file needs a trust anchor the consumer holds before the toolkit is
+bootstrapped, and the only one available is the checkout itself; the comment in
+the Makefile says so rather than implying more.
 
 ### F-6 (medium) -- Internal action references float on `@main`
 
@@ -223,8 +255,9 @@ landing on main and every consumer executing it, so a mistake or a compromise
 propagates immediately and unreviewably. `anchore/sbom-action@v0` floats on a
 major version for the same reason.
 
-**Fix:** cut release tags and reference those; recommend a tag or SHA in the
-consumer documentation.
+**Fixed.** Internal references are pinned to `@v1`, and
+`scripts/check-internal-action-refs.py` keeps them identical so that moving the
+tag is one step rather than ten. See §6 for what a release now involves.
 
 ### F-7 (medium) -- Dashboard route parameters are interpolated into fetch paths
 
@@ -241,9 +274,13 @@ read that origin, whatever the routes suggest. Isolation has to come from the
 hosting layer -- separate buckets or sites per tenant, which
 `getDataRootForTenant` already supports.
 
-**Fix:** validate `channel` and `timestamp` against the existing schemas before
-building the path, and document that per-tenant hosting separation is the
-actual boundary.
+**Fixed.** Both schemas moved to `dashboard/src/lib/scanIdentifiers.ts` --
+each model file had carried a copy -- and the route validates the pair before
+building the path.
+
+The wider point stands and is not something code here can fix: tenant isolation
+has to come from the hosting layer, separate buckets or sites per tenant, which
+`getDataRootForTenant` already supports.
 
 ### F-8 (medium) -- Scanner image is behind on patches
 
@@ -265,8 +302,16 @@ None is remotely reachable in the way the toolkit uses these tools -- scans run
 with `--network=none` -- but a security image carrying 31 unpatched highs is
 not defensible to the people being asked to act on its output.
 
-**Fix:** rebuild the image. The `trivy-db-helper` copy in it also predates
-`helper-v1.0.5`, so the rebuild is due on functional grounds as well.
+**Open, and only a rebuild closes it.** The versions come from CI build args
+and upstream releases, so there is nothing in the repository to change:
+`.mise.toml` already floats the helper's Go on `1.25`, which now resolves past
+the fixed patch. The `trivy-db-helper` in the image also predates
+`helper-v1.0.5`, so the rebuild is due on functional grounds too.
+
+What is fixed is that this stops depending on someone noticing: `self-checks`
+scans the published image weekly with Trivy directly -- not through the toolkit
+image, so a vulnerability there cannot suppress its own report -- and fails on
+a fixable high.
 
 ### F-9 (low) -- A comment contradicts the code it documents
 
@@ -276,9 +321,41 @@ says otherwise. Docker socket access is genuinely required for this target, and
 that is worth saying plainly -- the socket is root-equivalent on the host, and
 this is the one command that mounts it.
 
+**Fixed.** The message now says what is true: this is the one target that
+mounts the Docker socket, that is root-equivalent access to the host, and the
+scan itself still runs with `--network=none`.
+
 ---
 
-## 5. Standing expectations
+## 5. Checks that hold this in place
+
+Running in `self-checks.yml`, because every finding above was invisible while
+it existed -- an action that interpolates an input works perfectly for every
+value except the one that matters.
+
+| Check | Guards |
+|---|---|
+| `scripts/check-no-expressions-in-run.py` | F-1, F-2, F-3 -- zero expressions in any `run:` body |
+| `scripts/check-internal-action-refs.py` | F-6 -- internal references all on one pin |
+| Workflow and action YAML parse | A malformed action fails at use, in a consumer's pipeline |
+| Dashboard typecheck and tests | F-7 and the schema work it rests on |
+| `npm audit --omit=dev --audit-level=high` | Dependencies of the code that renders other people's scan results |
+| Weekly scan of the published image | F-8 -- staleness surfaces on a schedule, not when noticed |
+
+## 6. Releasing
+
+Internal action references are pinned to `@v1`, so a consumer pinning a release
+gets that release all the way down. The cost is that `main` is not what
+consumers run: publishing means moving the tag.
+
+```
+git tag -f v1 <commit> && git push -f origin v1
+```
+
+`scripts/check-internal-action-refs.py` fails if the references drift apart, so
+this stays one step.
+
+## 7. Standing expectations
 
 - The image is rebuilt on a schedule, not when someone notices. Its own scan is
   part of the release, and 31 highs should have failed something.
