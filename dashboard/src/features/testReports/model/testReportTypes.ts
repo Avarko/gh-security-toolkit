@@ -5,6 +5,7 @@
 
 import { z } from 'zod';
 import { branchSchema, commitSchema, repositorySchema } from '../../../lib/gitRefSchemas';
+import { channelSchema, timestampSchema } from '../../../lib/scanIdentifiers';
 
 // Maximum safe lengths for string inputs
 const MAX_STRING_LENGTH = 1000;
@@ -12,28 +13,7 @@ const MAX_COMMIT_SHA_LENGTH = 40;
 const MAX_BRANCH_LENGTH = 200;
 const MAX_CHANNEL_LENGTH = 100;
 
-// Timestamp validation: YYYYMMDD-HHMMSS (e.g., "20251122-145232").
-//
-// The legacy YYYY-MM-DD-HHMMSSZ form is accepted too, because published
-// history retains every scan ever recorded and the entries written before the
-// switch to compact timestamps are still in it. This schema is all-or-nothing
-// -- one rejected entry fails the whole file and the page renders no data --
-// so being stricter here than TimestampUtils and formatTimestamp, which both
-// parse the legacy form deliberately, would break on real data.
-const timestampSchema = z.string()
-    .max(MAX_STRING_LENGTH)
-    .regex(
-        /^(\d{8}-\d{6}|\d{4}-\d{2}-\d{2}-\d{6}Z)$/,
-        "Invalid timestamp format (expected YYYYMMDD-HHMMSS)",
-    );
-
 // Git commit SHA validation
-// Channel name validation
-const channelSchema = z.string()
-    .min(1)
-    .max(MAX_CHANNEL_LENGTH)
-    .regex(/^[a-zA-Z0-9\-_]+$/, "Invalid channel name");
-
 // Metadata schema for branch, commit, repository
 const metadataSchema = z.object({
     branch: branchSchema,

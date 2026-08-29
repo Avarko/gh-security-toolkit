@@ -2,10 +2,37 @@
 
 .DEFAULT_GOAL := help
 
-# Avarko/gh-security-toolkit security scanner Makefile inclusion
-include $(shell __GHST_FILE=.gh-security-toolkit/Makefile; \
-	mkdir -p .gh-security-toolkit; \
-	[ -f $$__GHST_FILE ] || curl -fsSL "https://raw.githubusercontent.com/Avarko/gh-security-toolkit/main/Makefile.scanners" -o $$__GHST_FILE; \
+# Avarko/gh-security-toolkit security scanner Makefile inclusion.
+#
+# Pin GHST_REF to a release tag. The fetched file is make code that runs on
+# this machine, so what it is pinned to is a trust decision: `main` means
+# whatever landed there most recently, with no review boundary between a commit
+# and every developer executing it.
+#
+# .gh-security-toolkit/REF records which ref the cached copy came from, and the
+# copy is re-fetched whenever GHST_REF no longer matches it. It used to be
+# fetched once and kept forever regardless, so a security fix here never
+# reached an existing checkout and developers ran copies that predated the
+# targets they were calling.
+#
+# This is still trust-on-first-use over HTTPS: pinning to a tag decides what is
+# fetched, not who served it. Verifying a signature over this file would need a
+# trust anchor the consumer already has, and the only one available before the
+# toolkit is bootstrapped is the checkout itself.
+GHST_REF ?= main
+
+include $(shell \
+	set -e; \
+	__GHST_DIR=.gh-security-toolkit; \
+	__GHST_FILE=$$__GHST_DIR/Makefile; \
+	__GHST_STAMP=$$__GHST_DIR/REF; \
+	mkdir -p $$__GHST_DIR; \
+	if [ ! -f $$__GHST_FILE ] || [ "$$(cat $$__GHST_STAMP 2>/dev/null)" != "$(GHST_REF)" ]; then \
+		curl -fsSL "https://raw.githubusercontent.com/Avarko/gh-security-toolkit/$(GHST_REF)/Makefile.scanners" \
+			-o $$__GHST_FILE.tmp \
+		&& mv $$__GHST_FILE.tmp $$__GHST_FILE \
+		&& printf '%s\n' "$(GHST_REF)" > $$__GHST_STAMP; \
+	fi; \
 	echo $$__GHST_FILE)
 
 .PHONY: help dashboard-dev dashboard-build dashboard-test-data dashboard-clean \

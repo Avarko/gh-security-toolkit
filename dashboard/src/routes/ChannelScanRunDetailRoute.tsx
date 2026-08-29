@@ -21,6 +21,7 @@ import type {
     TrivyScanScope,
 } from "../features/scans/types/scanRun";
 import { getDataRootFromParams } from "./loaderHelpers";
+import { parseScanAddress } from "../lib/scanIdentifiers";
 
 type LoaderData =
     | {
@@ -34,15 +35,19 @@ type LoaderData =
     | { success: false; error: string; details?: unknown };
 
 export async function loader({ params }: LoaderFunctionArgs): Promise<LoaderData> {
-    const { channel, timestamp } = params;
+    // Validated before they are used to build a path, not merely checked for
+    // presence: these come from the URL and go straight into the fetch target,
+    // so a percent-encoded traversal in either would point it elsewhere.
+    const address = parseScanAddress(params.channel, params.timestamp);
 
-    if (!channel || !timestamp) {
+    if (!address) {
         return {
             success: false,
-            error: "Channel and timestamp parameters are required",
+            error: "Channel and timestamp parameters are required and must be well-formed",
         };
     }
 
+    const { channel, timestamp } = address;
     const dataRoot = getDataRootFromParams(params);
     const dataBasePath = `${dataRoot}/runs/${channel}/${timestamp}`;
 
