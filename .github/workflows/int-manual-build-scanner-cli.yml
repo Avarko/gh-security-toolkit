@@ -70,12 +70,14 @@ jobs:
             -o /usr/local/bin/slsa-verifier && chmod +x /usr/local/bin/slsa-verifier
 
       - name: Prepare binaries directory
+        env:
+          CONTEXT: ${{ env.CONTEXT }}
         run: |
           set -euo pipefail
           mkdir -p \
-            "${{ env.CONTEXT }}/verified-binaries/linux-amd64" \
-            "${{ env.CONTEXT }}/verified-binaries/linux-arm64" \
-            "${{ env.CONTEXT }}/verified-binaries/trivy-db"
+            "${CONTEXT}/verified-binaries/linux-amd64" \
+            "${CONTEXT}/verified-binaries/linux-arm64" \
+            "${CONTEXT}/verified-binaries/trivy-db"
 
       - name: Install jq & openssl
         run: sudo apt-get update && sudo apt-get install -y jq openssl
@@ -90,9 +92,10 @@ jobs:
         id: cosign
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONTEXT: ${{ env.CONTEXT }}
         run: |
           set -euo pipefail
-          CONTEXT="${{ env.CONTEXT }}"
+          CONTEXT="${CONTEXT}"
 
           ver_cosign=$(gh api repos/sigstore/cosign/releases/latest --jq .tag_name)
           echo "ver_cosign=$ver_cosign" >> "$GITHUB_OUTPUT"
@@ -120,21 +123,24 @@ jobs:
           done
 
       - name: Initialize Sigstore TUF and archive cache (for offline / air gapped image)
+        env:
+          CONTEXT: ${{ env.CONTEXT }}
         run: |
           set -euo pipefail
-          COSIGN_BIN="${{ env.CONTEXT }}/verified-binaries/linux-amd64/cosign"
-          COSIGN_HOME="${{ env.CONTEXT }}/verified-binaries/cosign-home"
+          COSIGN_BIN="${CONTEXT}/verified-binaries/linux-amd64/cosign"
+          COSIGN_HOME="${CONTEXT}/verified-binaries/cosign-home"
           mkdir -p "$COSIGN_HOME"
           HOME="$COSIGN_HOME" "$COSIGN_BIN" initialize --output-file "$COSIGN_HOME/cosign-init.log"
-          tar -C "$COSIGN_HOME" -czf "${{ env.CONTEXT }}/verified-binaries/tuf-cache.tgz" .sigstore cosign-init.log
+          tar -C "$COSIGN_HOME" -czf "${CONTEXT}/verified-binaries/tuf-cache.tgz" .sigstore cosign-init.log
 
       - name: Resolve & verify Crane (SLSA provenance)
         id: crane
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONTEXT: ${{ env.CONTEXT }}
         run: |
           set -euo pipefail
-          CONTEXT="${{ env.CONTEXT }}"
+          CONTEXT="${CONTEXT}"
 
           ver_crane=$(gh api repos/google/go-containerregistry/releases/latest --jq .tag_name)
           echo "ver_crane=$ver_crane" >> "$GITHUB_OUTPUT"
@@ -164,9 +170,10 @@ jobs:
         id: trivy
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONTEXT: ${{ env.CONTEXT }}
         run: |
           set -euo pipefail
-          CONTEXT="${{ env.CONTEXT }}"
+          CONTEXT="${CONTEXT}"
           COSIGN_BIN="${CONTEXT}/verified-binaries/linux-amd64/cosign"
 
           ver_trivy=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/aquasecurity/trivy/releases/latest | grep -oP 'tag/\K.+')
@@ -217,9 +224,11 @@ jobs:
       # they have no incremental mechanism. Those stay in the image.
       - name: Download Trivy misconfiguration checks
         id: trivy-checks
+        env:
+          CONTEXT: ${{ env.CONTEXT }}
         run: |
           set -euo pipefail
-          CONTEXT="${{ env.CONTEXT }}"
+          CONTEXT="${CONTEXT}"
           TRIVY_BIN="${CONTEXT}/verified-binaries/linux-amd64/trivy"
           TRIVY_DB_DIR="${CONTEXT}/verified-binaries/trivy-db"
 
@@ -245,9 +254,10 @@ jobs:
         id: db-helper
         env:
           HELPER_PKG: ghcr.io/avarko/trivy-incremental-dbs
+          CONTEXT: ${{ env.CONTEXT }}
         run: |
           set -euo pipefail
-          CONTEXT="${{ env.CONTEXT }}"
+          CONTEXT="${CONTEXT}"
           CRANE="${CONTEXT}/verified-binaries/linux-amd64/crane"
 
           # helper-latest is moved by the publishing pipeline, so the image
@@ -286,9 +296,10 @@ jobs:
         id: trufflehog
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONTEXT: ${{ env.CONTEXT }}
         run: |
           set -euo pipefail
-          CONTEXT="${{ env.CONTEXT }}"
+          CONTEXT="${CONTEXT}"
           COSIGN_BIN="${CONTEXT}/verified-binaries/linux-amd64/cosign"
 
           ver_trufflehog=$(gh api repos/trufflesecurity/trufflehog/releases/latest --jq .tag_name)
@@ -418,15 +429,18 @@ jobs:
         uses: slsa-framework/slsa-verifier/actions/installer@v2.7.1
 
       - name: Verify OCI provenance
+        env:
+          NEEDS_BUILD_IMAGE_DIGEST: ${{ needs.build.outputs.image_digest }}
+          NEEDS_BUILD_IMAGE_REF: ${{ needs.build.outputs.image_ref }}
         run: |
           set -euo pipefail
-          IMG="${{ needs.build.outputs.image_ref }}@${{ needs.build.outputs.image_digest }}"
+          IMG="${NEEDS_BUILD_IMAGE_REF}@${NEEDS_BUILD_IMAGE_DIGEST}"
           echo "Verifying SLSA provenance for $IMG"
 
           # SLSA verifier requires either a git tag or uses commit SHA
           # Since manual-latest is not a git tag, verify against commit SHA
           slsa-verifier verify-image "$IMG" \
-            --source-uri "github.com/${{ github.repository }}" \
+            --source-uri "github.com/${GITHUB_REPOSITORY}" \
             --print-provenance
 
   verify_github_store:
@@ -449,14 +463,16 @@ jobs:
       - name: Verify attestations via GH CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEEDS_BUILD_IMAGE_DIGEST: ${{ needs.build.outputs.image_digest }}
+          NEEDS_BUILD_IMAGE_REF: ${{ needs.build.outputs.image_ref }}
         run: |
           # Use oci:// prefix for container images
-          SUBJECT="oci://${{ needs.build.outputs.image_ref }}@${{ needs.build.outputs.image_digest }}"
+          SUBJECT="oci://${NEEDS_BUILD_IMAGE_REF}@${NEEDS_BUILD_IMAGE_DIGEST}"
 
           echo "Verifying attestations for: $SUBJECT"
 
           # Verify attestation (checks both provenance and SBOM)
           gh attestation verify "$SUBJECT" \
-            --owner ${{ github.repository_owner }} \
+            --owner ${GITHUB_REPOSITORY_OWNER} \
             && echo "✅ Attestations verified successfully!" \
             || (echo "❌ No valid attestation found" && exit 1)

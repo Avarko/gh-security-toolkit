@@ -70,24 +70,27 @@ runs:
 
     - name: Report scan status
       shell: bash
+      env:
+        INPUT_DOCKER_IMAGE_REF: ${{ inputs.docker_image_ref }}
+        INPUT_FILESYSTEM_PATH: ${{ inputs.filesystem_path }}
+        INPUT_TRIVY_OUTPUT_DIR: ${{ inputs.trivy_output_dir }}
+        FS_REQUESTED: ${{ inputs.filesystem_path != '' }}
+        IMAGE_REQUESTED: ${{ inputs.docker_image_ref != '' }}
+        FS_OUTCOME: ${{ steps.fs_scan.outcome }}
+        IMAGE_OUTCOME: ${{ steps.image_scan.outcome }}
       run: |
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "📊 Trivy scan status report"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-        FS_REQUESTED="${{ inputs.filesystem_path != '' }}"
-        IMAGE_REQUESTED="${{ inputs.docker_image_ref != '' }}"
-        FS_OUTCOME="${{ steps.fs_scan.outcome }}"
-        IMAGE_OUTCOME="${{ steps.image_scan.outcome }}"
-
         # Filesystem scan status
         if [ "$FS_REQUESTED" = "true" ]; then
-          if [ -f "${{ inputs.trivy_output_dir }}/trivy-fs-results.json" ]; then
+          if [ -f "${INPUT_TRIVY_OUTPUT_DIR}/trivy-fs-results.json" ]; then
             echo "✅ Filesystem scan: completed successfully"
           elif [ "$FS_OUTCOME" = "failure" ]; then
             echo "❌ Filesystem scan: FAILED (check logs above for details)"
-            echo "   Path: ${{ inputs.filesystem_path }}"
+            echo "   Path: ${INPUT_FILESYSTEM_PATH}"
           elif [ "$FS_OUTCOME" = "skipped" ]; then
             echo "⏭️  Filesystem scan: skipped"
           else
@@ -99,11 +102,11 @@ runs:
 
         # Image scan status
         if [ "$IMAGE_REQUESTED" = "true" ]; then
-          if [ -f "${{ inputs.trivy_output_dir }}/trivy-image-results.json" ]; then
+          if [ -f "${INPUT_TRIVY_OUTPUT_DIR}/trivy-image-results.json" ]; then
             echo "✅ Image scan: completed successfully"
           elif [ "$IMAGE_OUTCOME" = "failure" ]; then
             echo "❌ Image scan: FAILED (check logs above for details)"
-            echo "   Image: ${{ inputs.docker_image_ref }}"
+            echo "   Image: ${INPUT_DOCKER_IMAGE_REF}"
           elif [ "$IMAGE_OUTCOME" = "skipped" ]; then
             echo "⏭️  Image scan: skipped"
           else
@@ -119,19 +122,24 @@ runs:
     - name: Set outputs
       id: outputs
       shell: bash
+      env:
+        INPUT_TRIVY_OUTPUT_DIR: ${{ inputs.trivy_output_dir }}
       run: |
-        if [ -f "${{ inputs.trivy_output_dir }}/trivy-fs-results.json" ]; then
-          echo "fs_json=${{ inputs.trivy_output_dir }}/trivy-fs-results.json" >> "$GITHUB_OUTPUT"
+        if [ -f "${INPUT_TRIVY_OUTPUT_DIR}/trivy-fs-results.json" ]; then
+          echo "fs_json=${INPUT_TRIVY_OUTPUT_DIR}/trivy-fs-results.json" >> "$GITHUB_OUTPUT"
         fi
-        if [ -f "${{ inputs.trivy_output_dir }}/trivy-image-results.json" ]; then
-          echo "image_json=${{ inputs.trivy_output_dir }}/trivy-image-results.json" >> "$GITHUB_OUTPUT"
+        if [ -f "${INPUT_TRIVY_OUTPUT_DIR}/trivy-image-results.json" ]; then
+          echo "image_json=${INPUT_TRIVY_OUTPUT_DIR}/trivy-image-results.json" >> "$GITHUB_OUTPUT"
         fi
 
     - name: Get Trivy version
       id: version
       shell: bash
+      env:
+        INPUT_DOCKER_IMAGE_REF: ${{ inputs.docker_image_ref }}
+        INPUT_FILESYSTEM_PATH: ${{ inputs.filesystem_path }}
       run: |
-        if [ -n "${{ inputs.filesystem_path }}" ] || [ -n "${{ inputs.docker_image_ref }}" ]; then
+        if [ -n "${INPUT_FILESYSTEM_PATH}" ] || [ -n "${INPUT_DOCKER_IMAGE_REF}" ]; then
           TRIVY_VERSION=$(trivy --version | head -n1 | awk '{print $2}')
           echo "trivy_version=$TRIVY_VERSION" >> "$GITHUB_OUTPUT"
           echo "Trivy version: $TRIVY_VERSION"

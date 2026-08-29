@@ -56,7 +56,7 @@ runs:
         # Get latest artifact ID
         ARTIFACT_ID=$(gh api \
           -H "Accept: application/vnd.github+json" \
-          /repos/${{ github.repository }}/actions/artifacts \
+          /repos/${GITHUB_REPOSITORY}/actions/artifacts \
           --jq '.artifacts[] | select(.name == "__gh_security_toolkit__github_pages_site_data") | .id' \
           | head -n 1)
 
@@ -71,7 +71,7 @@ runs:
         # Download and extract
         gh api \
           -H "Accept: application/vnd.github+json" \
-          /repos/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip \
+          /repos/${GITHUB_REPOSITORY}/actions/artifacts/$ARTIFACT_ID/zip \
           > site-data.zip
 
         unzip -q site-data.zip
@@ -82,6 +82,9 @@ runs:
     - name: Compare with previous scan
       id: compare
       shell: bash
+      env:
+        INPUT_CHANNEL: ${{ inputs.channel }}
+        INPUT_TIMESTAMP: ${{ inputs.timestamp }}
       run: |
         if [ ! -f "data/hist/scan-history.json" ]; then
           echo "⚠️  No scan-history.json found, skipping comparison"
@@ -92,10 +95,10 @@ runs:
         echo "🔍 Comparing scans..."
 
         # Run comparison
-        COMPARISON=$(jbang ${{ github.action_path }}/../../../scripts/compare_scans.java \
+        COMPARISON=$(jbang ${GITHUB_ACTION_PATH}/../../../scripts/compare_scans.java \
           data/hist/scan-history.json \
-          "${{ inputs.channel }}" \
-          "${{ inputs.timestamp }}")
+          "${INPUT_CHANNEL}" \
+          "${INPUT_TIMESTAMP}")
 
         echo "Comparison result:"
         echo "$COMPARISON" | jq . || echo "$COMPARISON"
@@ -119,9 +122,10 @@ runs:
       id: filter
       if: steps.compare.outputs.has_changes == 'true'
       shell: bash
+      env:
+        COMPARISON: ${{ steps.compare.outputs.comparison }}
+        NOTIFY_ON: ${{ inputs.notify_on }}
       run: |
-        COMPARISON='${{ steps.compare.outputs.comparison }}'
-        NOTIFY_ON="${{ inputs.notify_on }}"
 
         echo "Notify setting: $NOTIFY_ON"
 
@@ -162,29 +166,42 @@ runs:
         SLACK_WEBHOOK_URL: ${{ inputs.slack_webhook_url }}
         SLACK_BOT_TOKEN: ${{ inputs.slack_bot_token }}
         SLACK_CHANNEL: ${{ inputs.slack_channel }}
+        COMPARISON: ${{ steps.compare.outputs.comparison }}
       run: |
         echo "📤 Sending Slack notification..."
 
-        jbang ${{ github.action_path }}/../../../scripts/slack_integration.java \
-          --comparison '${{ steps.compare.outputs.comparison }}'
+        # The comparison is JSON built from scan history, so it carries channel
+        # names and other values from scanned repositories. Passed as one
+        # argument from the environment rather than pasted into the command
+        # line inside quotes it could close.
+        jbang ${GITHUB_ACTION_PATH}/../../../scripts/slack_integration.java \
+          --comparison "$COMPARISON"
 
         echo "✅ Slack notification sent"
 
     - name: Summary
       if: always()
       shell: bash
+      env:
+        INPUT_CHANNEL: ${{ inputs.channel }}
+        INPUT_TIMESTAMP: ${{ inputs.timestamp }}
+        COMPARISON: ${{ steps.compare.outputs.comparison }}
+        STEP_COMPARE_HAS_CHANGES: ${{ steps.compare.outputs.has_changes }}
+        STEP_FILTER_SHOULD_NOTIFY: ${{ steps.filter.outputs.should_notify }}
       run: |
         echo "## Slack Notification Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Channel:** ${{ inputs.channel }}" >> $GITHUB_STEP_SUMMARY
-        echo "**Timestamp:** ${{ inputs.timestamp }}" >> $GITHUB_STEP_SUMMARY
-        echo "**Has Changes:** ${{ steps.compare.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Channel:** ${INPUT_CHANNEL}" >> $GITHUB_STEP_SUMMARY
+        echo "**Timestamp:** ${INPUT_TIMESTAMP}" >> $GITHUB_STEP_SUMMARY
+        echo "**Has Changes:** ${STEP_COMPARE_HAS_CHANGES}" >> $GITHUB_STEP_SUMMARY
 
-        if [ "${{ steps.compare.outputs.has_changes }}" = "true" ]; then
+        if [ "${STEP_COMPARE_HAS_CHANGES}" = "true" ]; then
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Summary:** ${{ fromJSON(steps.compare.outputs.comparison).summary }}" >> $GITHUB_STEP_SUMMARY
+          # Read out of the JSON at run time rather than letting the
+          # expression paste a scan-derived string into the script.
+          printf '**Summary:** %s\n' "$(jq -r '.summary // ""' <<< "$COMPARISON")" >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "${{ steps.filter.outputs.should_notify }}" = "true" ]; then
+          if [ "${STEP_FILTER_SHOULD_NOTIFY}" = "true" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "✅ Slack notification sent" >> $GITHUB_STEP_SUMMARY
           else

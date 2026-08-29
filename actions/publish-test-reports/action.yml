@@ -72,7 +72,7 @@ runs:
         INPUT_JACOCO_REPORT_PATH: ${{ inputs.jacoco_report_path }}
         INPUT_SUREFIRE_REPORT_PATH: ${{ inputs.surefire_report_path }}
       run: |
-        ${{ github.action_path }}/scripts/check-reports.sh
+        ${GITHUB_ACTION_PATH}/scripts/check-reports.sh
 
     - name: Create scan context metadata
       shell: bash
@@ -85,7 +85,7 @@ runs:
         INPUT_REPO_DISPLAY_NAME: ""
       run: |
         # Reuse create-scan-context.sh from security-scan action
-        ${{ github.action_path }}/../security-scan/scripts/create-scan-context.sh
+        ${GITHUB_ACTION_PATH}/../security-scan/scripts/create-scan-context.sh
 
     - name: Copy test reports
       shell: bash
@@ -96,7 +96,7 @@ runs:
         INPUT_HAS_JACOCO: ${{ steps.check-reports.outputs.has_jacoco }}
         INPUT_HAS_SUREFIRE: ${{ steps.check-reports.outputs.has_surefire }}
       run: |
-        ${{ github.action_path }}/scripts/copy-reports.sh
+        ${GITHUB_ACTION_PATH}/scripts/copy-reports.sh
 
     - name: Create landing page
       shell: bash
@@ -104,7 +104,7 @@ runs:
         INPUT_OUTPUT_DIR: ${{ steps.setup.outputs.output_dir }}
         INPUT_CUSTOM_INDEX: ${{ inputs.custom_index_html }}
       run: |
-        ${{ github.action_path }}/scripts/create-landing-page.sh
+        ${GITHUB_ACTION_PATH}/scripts/create-landing-page.sh
 
     # === PUBLISH TO GITHUB PAGES ===
     - name: Publish to GitHub Pages
@@ -117,13 +117,16 @@ runs:
 
     - name: Summary
       shell: bash
+      env:
+        STEP_CHECK_REPORTS_HAS_JACOCO: ${{ steps.check-reports.outputs.has_jacoco }}
+        STEP_CHECK_REPORTS_HAS_SUREFIRE: ${{ steps.check-reports.outputs.has_surefire }}
       run: |
         echo "## Test Reports Published" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Included Reports:" >> $GITHUB_STEP_SUMMARY
-        if [ "${{ steps.check-reports.outputs.has_jacoco }}" = "true" ]; then
+        if [ "${STEP_CHECK_REPORTS_HAS_JACOCO}" = "true" ]; then
           echo "- JaCoCo Coverage Report" >> $GITHUB_STEP_SUMMARY
         fi
-        if [ "${{ steps.check-reports.outputs.has_surefire }}" = "true" ]; then
+        if [ "${STEP_CHECK_REPORTS_HAS_SUREFIRE}" = "true" ]; then
           echo "- Surefire Test Report" >> $GITHUB_STEP_SUMMARY
         fi

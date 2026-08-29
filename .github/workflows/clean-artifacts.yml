@@ -104,35 +104,42 @@ jobs:
       - name: Clean dashboard build artifacts
         env:
           GH_TOKEN: ${{ github.token }}
+          BUILD_KEEP: ${{ inputs.dashboard_build_keep || 3 }}
         run: |
           ./cleanup-script.sh \
             "__gh_security_toolkit__security-dashboard-build" \
-            "${{ inputs.dashboard_build_keep || 3 }}" \
-            "${{ github.repository }}"
+            "${BUILD_KEEP}" \
+            "${GITHUB_REPOSITORY}"
 
       - name: Clean site data history artifacts
         env:
           GH_TOKEN: ${{ github.token }}
+          SITE_HISTORY_KEEP: ${{ inputs.site_history_keep || 3 }}
         run: |
           ./cleanup-script.sh \
             "__gh_security_toolkit__github_pages_site_data" \
-            "${{ inputs.site_history_keep || 3 }}" \
-            "${{ github.repository }}"
+            "${SITE_HISTORY_KEEP}" \
+            "${GITHUB_REPOSITORY}"
 
       - name: Clean dashboard pages artifacts
         env:
           GH_TOKEN: ${{ github.token }}
+          DEPLOYMENTS_KEEP: ${{ inputs.dashboard_deployments_keep || 3 }}
         run: |
           ./cleanup-script.sh \
             "__gh_security_toolkit__github_pages_deployment" \
-            "${{ inputs.dashboard_deployments_keep || 3 }}" \
-            "${{ github.repository }}"
+            "${DEPLOYMENTS_KEEP}" \
+            "${GITHUB_REPOSITORY}"
 
       - name: Cleanup summary
+        env:
+          BUILD_KEEP: ${{ inputs.dashboard_build_keep || 3 }}
+          SITE_HISTORY_KEEP: ${{ inputs.site_history_keep || 3 }}
+          DEPLOYMENTS_KEEP: ${{ inputs.dashboard_deployments_keep || 3 }}
         run: |
-          echo "✅ Artifact cleanup complete for ${{ github.repository }}!"
+          echo "✅ Artifact cleanup complete for ${GITHUB_REPOSITORY}!"
           echo ""
           echo "Retention policy applied:"
-          echo "  • __gh_security_toolkit__security-dashboard-build: keep ${{ inputs.dashboard_build_keep || 3 }} newest"
-          echo "  • __gh_security_toolkit__github_pages_site_data: keep ${{ inputs.site_history_keep || 3 }} newest"
-          echo "  • __gh_security_toolkit__github_pages_deployment: keep ${{ inputs.dashboard_deployments_keep || 3 }} newest"
+          echo "  • __gh_security_toolkit__security-dashboard-build: keep ${BUILD_KEEP} newest"
+          echo "  • __gh_security_toolkit__github_pages_site_data: keep ${SITE_HISTORY_KEEP} newest"
+          echo "  • __gh_security_toolkit__github_pages_deployment: keep ${DEPLOYMENTS_KEEP} newest"

@@ -63,10 +63,17 @@ jobs:
     steps:
       - name: Validate inputs
         id: validate
+        env:
+          INPUT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          INPUT_CONFIRM_DELETION: ${{ inputs.confirm_deletion }}
+          INPUT_FILE_PATTERN: ${{ inputs.file_pattern }}
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_SCAN_CHANNEL: ${{ inputs.scan_channel }}
+          INPUT_SCAN_TIMESTAMPS: ${{ inputs.scan_timestamps }}
         run: |
-          OPERATION="${{ inputs.operation }}"
-          ARTIFACT_ID="${{ inputs.artifact_id }}"
-          FILE_PATTERN="${{ inputs.file_pattern }}"
+          OPERATION="${INPUT_OPERATION}"
+          ARTIFACT_ID="${INPUT_ARTIFACT_ID}"
+          FILE_PATTERN="${INPUT_FILE_PATTERN}"
 
           echo "Operation: $OPERATION"
           echo "Artifact ID(s): $ARTIFACT_ID"
@@ -88,9 +95,9 @@ jobs:
           fi
 
           if [[ "$OPERATION" == "DELETE_SCAN" ]]; then
-            CHANNEL="${{ inputs.scan_channel }}"
-            TIMESTAMPS="${{ inputs.scan_timestamps }}"
-            CONFIRM="${{ inputs.confirm_deletion }}"
+            CHANNEL="${INPUT_SCAN_CHANNEL}"
+            TIMESTAMPS="${INPUT_SCAN_TIMESTAMPS}"
+            CONFIRM="${INPUT_CONFIRM_DELETION}"
 
             echo "Channel: $CHANNEL"
             echo "Timestamps: $TIMESTAMPS"
@@ -146,13 +153,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "📦 Listing all artifacts in ${{ github.repository }}..."
+          echo "📦 Listing all artifacts in ${GITHUB_REPOSITORY}..."
           echo ""
 
           gh api \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            /repos/${{ github.repository }}/actions/artifacts \
+            /repos/${GITHUB_REPOSITORY}/actions/artifacts \
             --jq '.artifacts[] | "ID: \(.id) | Name: \(.name) | Size: \(.size_in_bytes) bytes | Created: \(.created_at) | Expires: \(.expires_at)"'
 
           echo ""
@@ -161,14 +168,16 @@ jobs:
           gh api \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            /repos/${{ github.repository }}/actions/artifacts
+            /repos/${GITHUB_REPOSITORY}/actions/artifacts
 
       - name: Get artifact details
         if: inputs.operation == 'GET'
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_FILE_PATTERN: ${{ inputs.file_pattern }}
+          STEP_VALIDATE_ARTIFACT_ID: ${{ steps.validate.outputs.artifact_id }}
         run: |
-          echo "🔍 Getting details for artifact ID: ${{ steps.validate.outputs.artifact_id }}"
+          echo "🔍 Getting details for artifact ID: ${STEP_VALIDATE_ARTIFACT_ID}"
           echo ""
 
           # Get artifact metadata
@@ -176,7 +185,7 @@ jobs:
           gh api \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            /repos/${{ github.repository }}/actions/artifacts/${{ steps.validate.outputs.artifact_id }} \
+            /repos/${GITHUB_REPOSITORY}/actions/artifacts/${STEP_VALIDATE_ARTIFACT_ID} \
             --jq '{id: .id, name: .name, size_in_bytes: .size_in_bytes, created_at: .created_at, expires_at: .expires_at, workflow_run: .workflow_run.id}'
 
           echo ""
@@ -186,7 +195,7 @@ jobs:
           gh api \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            /repos/${{ github.repository }}/actions/artifacts/${{ steps.validate.outputs.artifact_id }}/zip > artifact.zip
+            /repos/${GITHUB_REPOSITORY}/actions/artifacts/${STEP_VALIDATE_ARTIFACT_ID}/zip > artifact.zip
 
           # Check if download was successful
           if [ -f artifact.zip ] && [ -s artifact.zip ]; then
@@ -271,7 +280,7 @@ jobs:
               fi
 
               # File pattern matching and preview
-              FILE_PATTERN="${{ inputs.file_pattern }}"
+              FILE_PATTERN="${INPUT_FILE_PATTERN}"
               if [ -n "$FILE_PATTERN" ]; then
                 echo ""
                 echo "🔍 Searching for files matching pattern: $FILE_PATTERN"
@@ -345,13 +354,14 @@ jobs:
         if: inputs.operation == 'DELETE_SCAN'
         env:
           GH_TOKEN: ${{ github.token }}
+          SCAN_CHANNEL: ${{ steps.validate.outputs.scan_channel }}
         run: |
           echo "📦 Downloading latest site data artifact..."
 
           # Get latest artifact ID
           ARTIFACT_ID=$(gh api \
             -H "Accept: application/vnd.github+json" \
-            /repos/${{ github.repository }}/actions/artifacts \
+            /repos/${GITHUB_REPOSITORY}/actions/artifacts \
             --jq '.artifacts[] | select(.name == "__gh_security_toolkit__github_pages_site_data") | .id' \
             | head -n 1)
 
@@ -366,7 +376,7 @@ jobs:
           # Download and extract
           gh api \
             -H "Accept: application/vnd.github+json" \
-            /repos/${{ github.repository }}/actions/artifacts/$ARTIFACT_ID/zip \
+            /repos/${GITHUB_REPOSITORY}/actions/artifacts/$ARTIFACT_ID/zip \
             > site-data.zip
 
           unzip -q site-data.zip
@@ -376,21 +386,29 @@ jobs:
 
           # Show current state
           echo ""
-          echo "📊 Current scan history for channel '${{ steps.validate.outputs.scan_channel }}':"
+          printf '📊 Current scan history for channel %s:\n' "$SCAN_CHANNEL"
           if [ -f "data/hist/scan-history.json" ]; then
-            jq -r '.scans[] | select(.channel == "${{ steps.validate.outputs.scan_channel }}") | "\(.timestamp)"' \
+            # --arg, not string interpolation: the channel is data the filter
+            # compares against, and embedding it in the program text would let
+            # a quote in it rewrite the filter.
+            jq -r --arg channel "$SCAN_CHANNEL" \
+              '.scans[] | select(.channel == $channel) | "\(.timestamp)"' \
               data/hist/scan-history.json | head -n 20 || echo "   (no scans found)"
           fi
 
       - name: Delete scans from history
         if: inputs.operation == 'DELETE_SCAN'
+        env:
+          SCAN_CHANNEL: ${{ steps.validate.outputs.scan_channel }}
+          SCAN_TIMESTAMPS: ${{ steps.validate.outputs.scan_timestamps }}
+          DELETE_MODE: ${{ steps.validate.outputs.delete_mode }}
         run: |
           echo "🗑️  Deleting scans..."
 
           jbang scripts/delete_scan.java \
-            "${{ steps.validate.outputs.scan_channel }}" \
-            "${{ steps.validate.outputs.scan_timestamps }}" \
-            "${{ steps.validate.outputs.delete_mode }}"
+            "$SCAN_CHANNEL" \
+            "$SCAN_TIMESTAMPS" \
+            "$DELETE_MODE"
 
           if [ $? -ne 0 ]; then
             echo "::error::Scan deletion failed"
@@ -398,9 +416,10 @@ jobs:
           fi
 
           echo ""
-          echo "📊 Updated scan history for channel '${{ steps.validate.outputs.scan_channel }}':"
+          printf '📊 Updated scan history for channel %s:\n' "$SCAN_CHANNEL"
           if [ -f "data/hist/scan-history.json" ]; then
-            REMAINING=$(jq -r '.scans[] | select(.channel == "${{ steps.validate.outputs.scan_channel }}") | "\(.timestamp)"' \
+            REMAINING=$(jq -r --arg channel "$SCAN_CHANNEL" \
+              '.scans[] | select(.channel == $channel) | "\(.timestamp)"' \
               data/hist/scan-history.json | wc -l)
             echo "   Remaining scans: $REMAINING"
           fi
@@ -435,7 +454,7 @@ jobs:
           # List all site data artifacts (excluding the one we just uploaded)
           OLD_ARTIFACTS=$(gh api \
             -H "Accept: application/vnd.github+json" \
-            /repos/${{ github.repository }}/actions/artifacts \
+            /repos/${GITHUB_REPOSITORY}/actions/artifacts \
             --jq '.artifacts[] | select(.name == "__gh_security_toolkit__github_pages_site_data") | .id' \
             | tail -n +2)
 
@@ -444,7 +463,7 @@ jobs:
               echo "   Deleting old artifact: $ART_ID"
               gh api --method DELETE \
                 -H "Accept: application/vnd.github+json" \
-                /repos/${{ github.repository }}/actions/artifacts/$ART_ID || true
+                /repos/${GITHUB_REPOSITORY}/actions/artifacts/$ART_ID || true
             done
           fi
 
@@ -454,14 +473,15 @@ jobs:
         if: inputs.operation == 'DELETE'
         env:
           GH_TOKEN: ${{ github.token }}
+          STEP_VALIDATE_ARTIFACT_ID: ${{ steps.validate.outputs.artifact_id }}
         run: |
-          echo "🗑️  Deleting artifact(s) matching: ${{ steps.validate.outputs.artifact_id }}"
+          echo "🗑️  Deleting artifact(s) matching: ${STEP_VALIDATE_ARTIFACT_ID}"
           echo "Fetching all artifact IDs from GitHub..."
-          ALL_ARTIFACTS_JSON=$(gh api -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" /repos/${{ github.repository }}/actions/artifacts)
+          ALL_ARTIFACTS_JSON=$(gh api -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" /repos/${GITHUB_REPOSITORY}/actions/artifacts)
           ALL_IDS=$(echo "$ALL_ARTIFACTS_JSON" | jq -r '.artifacts[].id')
 
           # Parse user input for IDs/ranges
-          USER_IDS="${{ steps.validate.outputs.artifact_id }}"
+          USER_IDS="${STEP_VALIDATE_ARTIFACT_ID}"
           TO_DELETE=""
           IFS=',' read -ra PARTS <<< "$USER_IDS"
           for PART in "${PARTS[@]}"; do
@@ -493,7 +513,7 @@ jobs:
             gh api \
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
-              /repos/${{ github.repository }}/actions/artifacts/$ART_ID \
+              /repos/${GITHUB_REPOSITORY}/actions/artifacts/$ART_ID \
               --jq '{id: .id, name: .name, size_in_bytes: .size_in_bytes, created_at: .created_at}'
 
             echo "Deleting artifact $ART_ID..."
@@ -501,7 +521,7 @@ jobs:
               --method DELETE \
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
-              /repos/${{ github.repository }}/actions/artifacts/$ART_ID
+              /repos/${GITHUB_REPOSITORY}/actions/artifacts/$ART_ID
 
             if [ $? -eq 0 ]; then
               echo "✅ Artifact $ART_ID deleted successfully"
@@ -514,21 +534,27 @@ jobs:
 
       - name: Summary
         if: always()
+        env:
+          INPUT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_SCAN_CHANNEL: ${{ inputs.scan_channel }}
+          INPUT_SCAN_TIMESTAMPS: ${{ inputs.scan_timestamps }}
+          STEP_VALIDATE_DELETE_MODE: ${{ steps.validate.outputs.delete_mode }}
         run: |
           echo "## Artifact Management Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Operation:** ${{ inputs.operation }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Operation:** ${INPUT_OPERATION}" >> $GITHUB_STEP_SUMMARY
 
-          if [[ "${{ inputs.operation }}" == "DELETE_SCAN" ]]; then
-            echo "**Channel:** ${{ inputs.scan_channel }}" >> $GITHUB_STEP_SUMMARY
-            echo "**Timestamps:** ${{ inputs.scan_timestamps }}" >> $GITHUB_STEP_SUMMARY
-            echo "**Delete Mode:** ${{ steps.validate.outputs.delete_mode }}" >> $GITHUB_STEP_SUMMARY
+          if [[ "${INPUT_OPERATION}" == "DELETE_SCAN" ]]; then
+            echo "**Channel:** ${INPUT_SCAN_CHANNEL}" >> $GITHUB_STEP_SUMMARY
+            echo "**Timestamps:** ${INPUT_SCAN_TIMESTAMPS}" >> $GITHUB_STEP_SUMMARY
+            echo "**Delete Mode:** ${STEP_VALIDATE_DELETE_MODE}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "✅ Scan deletion complete. Changes will take effect on next GitHub Pages rebuild." >> $GITHUB_STEP_SUMMARY
-          elif [[ "${{ inputs.operation }}" != "LIST" ]]; then
-            echo "**Artifact ID:** ${{ inputs.artifact_id }}" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${INPUT_OPERATION}" != "LIST" ]]; then
+            echo "**Artifact ID:** ${INPUT_ARTIFACT_ID}" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Triggered by:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** ${GITHUB_REPOSITORY}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** @${GITHUB_ACTOR}" >> $GITHUB_STEP_SUMMARY

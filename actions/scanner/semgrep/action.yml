@@ -96,9 +96,12 @@ runs:
     - name: Run Semgrep scan (JSON for parsing)
       shell: bash
       working-directory: ${{ inputs.filesystem_path }}
+      env:
+        INPUT_SEMGREP_CONFIGS: ${{ inputs.semgrep_configs }}
+        INPUT_SEMGREP_OUTPUT_DIR: ${{ inputs.semgrep_output_dir }}
       run: |
         # Split comma-separated configs into --config flags
-        CONFIGS="${{ inputs.semgrep_configs }}"
+        CONFIGS="${INPUT_SEMGREP_CONFIGS}"
         CONFIG_FLAGS=""
         IFS=',' read -ra CONFIG_ARRAY <<< "$CONFIGS"
         for cfg in "${CONFIG_ARRAY[@]}"; do
@@ -114,16 +117,19 @@ runs:
           --quiet \
           --metrics=off \
           --no-git-ignore \
-          . > "${{ inputs.semgrep_output_dir }}/semgrep-results.json" || true
+          . > "${INPUT_SEMGREP_OUTPUT_DIR}/semgrep-results.json" || true
 
         echo "Semgrep JSON scan completed"
 
     - name: Run Semgrep scan (text for full report)
       shell: bash
       working-directory: ${{ inputs.filesystem_path }}
+      env:
+        INPUT_SEMGREP_CONFIGS: ${{ inputs.semgrep_configs }}
+        INPUT_SEMGREP_OUTPUT_DIR: ${{ inputs.semgrep_output_dir }}
       run: |
         # Split comma-separated configs into --config flags
-        CONFIGS="${{ inputs.semgrep_configs }}"
+        CONFIGS="${INPUT_SEMGREP_CONFIGS}"
         CONFIG_FLAGS=""
         IFS=',' read -ra CONFIG_ARRAY <<< "$CONFIGS"
         for cfg in "${CONFIG_ARRAY[@]}"; do
@@ -135,25 +141,29 @@ runs:
           $CONFIG_FLAGS \
           --metrics=off \
           --no-git-ignore \
-          . > "${{ inputs.semgrep_output_dir }}/semgrep-full-report.txt" 2>&1 || true
+          . > "${INPUT_SEMGREP_OUTPUT_DIR}/semgrep-full-report.txt" 2>&1 || true
 
     - name: Create full report markdown
       shell: bash
+      env:
+        INPUT_SEMGREP_OUTPUT_DIR: ${{ inputs.semgrep_output_dir }}
       run: |
-        FULL_REPORT="${{ inputs.semgrep_output_dir }}/semgrep-full-report.md"
+        FULL_REPORT="${INPUT_SEMGREP_OUTPUT_DIR}/semgrep-full-report.md"
 
         echo "# Semgrep SAST Full Report" > "$FULL_REPORT"
         echo "" >> "$FULL_REPORT"
         echo '```' >> "$FULL_REPORT"
-        cat "${{ inputs.semgrep_output_dir }}/semgrep-full-report.txt" >> "$FULL_REPORT"
+        cat "${INPUT_SEMGREP_OUTPUT_DIR}/semgrep-full-report.txt" >> "$FULL_REPORT"
         echo '```' >> "$FULL_REPORT"
 
     - name: Create summary markdown (top 10)
       id: summary
       shell: bash
+      env:
+        INPUT_SEMGREP_OUTPUT_DIR: ${{ inputs.semgrep_output_dir }}
       run: |
-        OUTPUT_FILE="${{ inputs.semgrep_output_dir }}/SEMGREP_SUMMARY.md"
-        JSON_FILE="${{ inputs.semgrep_output_dir }}/semgrep-results.json"
+        OUTPUT_FILE="${INPUT_SEMGREP_OUTPUT_DIR}/SEMGREP_SUMMARY.md"
+        JSON_FILE="${INPUT_SEMGREP_OUTPUT_DIR}/semgrep-results.json"
 
         echo "## 🔍 Semgrep SAST Scan Results" > "$OUTPUT_FILE"
         echo "" >> "$OUTPUT_FILE"

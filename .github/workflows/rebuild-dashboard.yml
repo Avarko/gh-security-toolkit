@@ -38,6 +38,9 @@ jobs:
 
       - name: Create minimal scan data with context
         id: setup
+        env:
+          INPUT_CHANNEL: ${{ inputs.channel }}
+          STEP_TS_TS: ${{ steps.ts.outputs.ts }}
         run: |
           # Create a minimal output directory with empty scan results
           mkdir -p scan-output
@@ -45,8 +48,8 @@ jobs:
           # Create scan-context.json (required by publisher)
           cat > scan-output/scan-context.json << EOF
           {
-            "channel": "${{ inputs.channel }}",
-            "timestamp": "${{ steps.ts.outputs.ts }}",
+            "channel": "${INPUT_CHANNEL}",
+            "timestamp": "${STEP_TS_TS}",
             "branch": "${GITHUB_REF_NAME:-}",
             "repository": "${GITHUB_REPOSITORY:-}",
             "commitSha": "${GITHUB_SHA:-}",
@@ -61,7 +64,7 @@ jobs:
           echo '{"results":[]}' > scan-output/semgrep-results.json
 
           # Generate realistic scan history with 20 nightly scans showing security improvement
-          ./scripts/generate-test-scan-history.sh scan-output/scan-history.json "${{ inputs.channel }}"
+          ./scripts/generate-test-scan-history.sh scan-output/scan-history.json "${INPUT_CHANNEL}"
 
           echo "output_dir=scan-output" >> "$GITHUB_OUTPUT"
 
@@ -73,11 +76,14 @@ jobs:
           outdir: ${{ steps.setup.outputs.output_dir }}
 
       - name: Summary
+        env:
+          INPUT_CHANNEL: ${{ inputs.channel }}
+          STEP_PAGES_PAGE_URL: ${{ steps.pages.outputs.page_url }}
         run: |
           echo "## 🎨 Dashboard Rebuild Complete" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Channel**: ${{ inputs.channel }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Pages URL**: ${{ steps.pages.outputs.page_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Channel**: ${INPUT_CHANNEL}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Pages URL**: ${STEP_PAGES_PAGE_URL}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "The React+Remix dashboard has been built and deployed." >> "$GITHUB_STEP_SUMMARY"
           echo "All existing scan history has been preserved." >> "$GITHUB_STEP_SUMMARY"

@@ -60,12 +60,15 @@ runs:
       env:
         TITLE_VULN: ${{ inputs.title_vuln_fs }}
         TITLE_MIS:  ${{ inputs.title_mis_fs }}
+        INPUT_FS_JSON: ${{ inputs.fs_json }}
+        INPUT_MAX_ROWS: ${{ inputs.max_rows }}
+        INPUT_OUTDIR: ${{ inputs.outdir }}
       run: |
-        jbang "${{ github.action_path }}/../../scripts/trivy_summarize.java" \
-          "${{ inputs.fs_json }}" "${{ inputs.max_rows }}" "${{ inputs.outdir }}"
+        jbang "${GITHUB_ACTION_PATH}/../../scripts/trivy_summarize.java" \
+          "${INPUT_FS_JSON}" "${INPUT_MAX_ROWS}" "${INPUT_OUTDIR}"
         # Rename to temp file to avoid overwrite (if file was created)
-        [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY.md" ] && \
-          mv "${{ inputs.outdir }}/TRIVY_SUMMARY.md" "${{ inputs.outdir }}/TRIVY_SUMMARY_FS.md" || \
+        [ -f "${INPUT_OUTDIR}/TRIVY_SUMMARY.md" ] && \
+          mv "${INPUT_OUTDIR}/TRIVY_SUMMARY.md" "${INPUT_OUTDIR}/TRIVY_SUMMARY_FS.md" || \
           echo "No TRIVY_SUMMARY.md created for FS scan"
 
     - name: Summarize image (if provided)
@@ -74,40 +77,48 @@ runs:
       env:
         TITLE_VULN: ${{ inputs.title_vuln_img }}
         TITLE_MIS:  ${{ inputs.title_mis_img }}
+        INPUT_IMAGE_JSON: ${{ inputs.image_json }}
+        INPUT_MAX_ROWS: ${{ inputs.max_rows }}
+        INPUT_OUTDIR: ${{ inputs.outdir }}
       run: |
-        jbang "${{ github.action_path }}/../../scripts/trivy_summarize.java" \
-          "${{ inputs.image_json }}" "${{ inputs.max_rows }}" "${{ inputs.outdir }}"
+        jbang "${GITHUB_ACTION_PATH}/../../scripts/trivy_summarize.java" \
+          "${INPUT_IMAGE_JSON}" "${INPUT_MAX_ROWS}" "${INPUT_OUTDIR}"
         # Rename to temp file (if file was created)
-        [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY.md" ] && \
-          mv "${{ inputs.outdir }}/TRIVY_SUMMARY.md" "${{ inputs.outdir }}/TRIVY_SUMMARY_IMAGE.md" || \
+        [ -f "${INPUT_OUTDIR}/TRIVY_SUMMARY.md" ] && \
+          mv "${INPUT_OUTDIR}/TRIVY_SUMMARY.md" "${INPUT_OUTDIR}/TRIVY_SUMMARY_IMAGE.md" || \
           echo "No TRIVY_SUMMARY.md created for Image scan"
 
     - name: Combine Trivy summaries
       shell: bash
+      env:
+        INPUT_OUTDIR: ${{ inputs.outdir }}
       run: |
-        summary="${{ inputs.outdir }}/TRIVY_SUMMARY.md"
+        summary="${INPUT_OUTDIR}/TRIVY_SUMMARY.md"
         > "$summary"  # Create empty file
 
         # Append FS summary if exists
-        if [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY_FS.md" ]; then
-          cat "${{ inputs.outdir }}/TRIVY_SUMMARY_FS.md" >> "$summary"
+        if [ -f "${INPUT_OUTDIR}/TRIVY_SUMMARY_FS.md" ]; then
+          cat "${INPUT_OUTDIR}/TRIVY_SUMMARY_FS.md" >> "$summary"
           echo "" >> "$summary"
         fi
 
         # Append Image summary if exists
-        if [ -f "${{ inputs.outdir }}/TRIVY_SUMMARY_IMAGE.md" ]; then
-          cat "${{ inputs.outdir }}/TRIVY_SUMMARY_IMAGE.md" >> "$summary"
+        if [ -f "${INPUT_OUTDIR}/TRIVY_SUMMARY_IMAGE.md" ]; then
+          cat "${INPUT_OUTDIR}/TRIVY_SUMMARY_IMAGE.md" >> "$summary"
           echo "" >> "$summary"
         fi
 
     - name: Combine summaries to release body
       id: combine
       shell: bash
+      env:
+        INPUT_MAXLENGTH: ${{ inputs.maxlength }}
+        INPUT_OUTDIR: ${{ inputs.outdir }}
       run: |
         set -euo pipefail
 
-        outdir="${{ inputs.outdir }}"
-        maxlength="${{ inputs.maxlength }}"
+        outdir="${INPUT_OUTDIR}"
+        maxlength="${INPUT_MAXLENGTH}"
         out="${outdir}/RELEASE_BODY.md"
         header="## 🔍 Security Scan Summary"
 

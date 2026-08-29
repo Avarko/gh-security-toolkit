@@ -60,11 +60,15 @@ runs:
 
     - name: Validate inputs
       shell: bash
+      env:
+        INPUT_OUTDIR: ${{ inputs.outdir }}
+        INPUT_RELEASE_NAME: ${{ inputs.release_name }}
+        INPUT_TAG_NAME: ${{ inputs.tag_name }}
       run: |
         set -euo pipefail
-        [ -n "${{ inputs.release_name }}" ] || { echo "release_name is required"; exit 1; }
-        [ -n "${{ inputs.tag_name }}" ] || { echo "tag_name is required"; exit 1; }
-        [ -d "${{ inputs.outdir }}" ] || { echo "outdir '${{ inputs.outdir }}' not found"; exit 1; }
+        [ -n "${INPUT_RELEASE_NAME}" ] || { echo "release_name is required"; exit 1; }
+        [ -n "${INPUT_TAG_NAME}" ] || { echo "tag_name is required"; exit 1; }
+        [ -d "${INPUT_OUTDIR}" ] || { echo "outdir '${INPUT_OUTDIR}' not found"; exit 1; }
 
     - name: Prepare Gh auth
       shell: bash
@@ -77,56 +81,64 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github_token }}
+        INPUT_TAG_NAME: ${{ inputs.tag_name }}
       run: |
         set -euo pipefail
-        if gh release view "${{ inputs.tag_name }}" &>/dev/null; then
-          echo "Tag exists -> deleting release + tag: ${{ inputs.tag_name }}"
-          gh release delete "${{ inputs.tag_name }}" -y || true
-          git tag -d "${{ inputs.tag_name }}" || true
+        if gh release view "${INPUT_TAG_NAME}" &>/dev/null; then
+          echo "Tag exists -> deleting release + tag: ${INPUT_TAG_NAME}"
+          gh release delete "${INPUT_TAG_NAME}" -y || true
+          git tag -d "${INPUT_TAG_NAME}" || true
         fi
 
     - name: Create release
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github_token }}
+        INPUT_BODY_FILE: ${{ inputs.body_file }}
+        INPUT_DRAFT: ${{ inputs.draft }}
+        INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        INPUT_RELEASE_NAME: ${{ inputs.release_name }}
+        INPUT_TAG_NAME: ${{ inputs.tag_name }}
       run: |
         set -euo pipefail
 
         # Check if release already exists
-        if gh release view "${{ inputs.tag_name }}" &>/dev/null; then
-          echo "⚠️ Release already exists: ${{ inputs.tag_name }}"
+        if gh release view "${INPUT_TAG_NAME}" &>/dev/null; then
+          echo "⚠️ Release already exists: ${INPUT_TAG_NAME}"
           echo "   This should not happen - each scan should have a unique timestamp."
           echo "   Deleting existing release and recreating..."
-          gh release delete "${{ inputs.tag_name }}" -y
+          gh release delete "${INPUT_TAG_NAME}" -y
         fi
 
-        args=( --title "${{ inputs.release_name }}" )
-        if [ -n "${{ inputs.body_file }}" ] && [ -f "${{ inputs.body_file }}" ]; then
-          args+=( --notes-file "${{ inputs.body_file }}" )
+        args=( --title "${INPUT_RELEASE_NAME}" )
+        if [ -n "${INPUT_BODY_FILE}" ] && [ -f "${INPUT_BODY_FILE}" ]; then
+          args+=( --notes-file "${INPUT_BODY_FILE}" )
         fi
-        [ "${{ inputs.draft }}" = "true" ] && args+=( --draft )
-        [ "${{ inputs.prerelease }}" = "true" ] && args+=( --prerelease )
+        [ "${INPUT_DRAFT}" = "true" ] && args+=( --draft )
+        [ "${INPUT_PRERELEASE}" = "true" ] && args+=( --prerelease )
 
-        echo "📦 Creating release: ${{ inputs.tag_name }}"
-        gh release create "${{ inputs.tag_name }}" "${args[@]}"
+        echo "📦 Creating release: ${INPUT_TAG_NAME}"
+        gh release create "${INPUT_TAG_NAME}" "${args[@]}"
 
     - name: Upload assets (scan outputs + metadata)
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github_token }}
+        INPUT_OUTDIR: ${{ inputs.outdir }}
+        INPUT_TAG_NAME: ${{ inputs.tag_name }}
       run: |
         set -euo pipefail
         # Collect non-empty files only (skip empty files to avoid "Bad Content-Length" error)
-        mapfile -t files < <(find "${{ inputs.outdir }}" -type f -size +0 -maxdepth 3 -print)
+        mapfile -t files < <(find "${INPUT_OUTDIR}" -type f -size +0 -maxdepth 3 -print)
 
         if [ ${#files[@]} -eq 0 ]; then
-          echo "⚠️ No files to upload in ${{ inputs.outdir }}"
+          echo "⚠️ No files to upload in ${INPUT_OUTDIR}"
           exit 0
         fi
 
-        echo "📤 Uploading ${#files[@]} file(s) to release ${{ inputs.tag_name }}"
+        echo "📤 Uploading ${#files[@]} file(s) to release ${INPUT_TAG_NAME}"
         # Upload with --clobber to allow re-runs
-        gh release upload "${{ inputs.tag_name }}" "${files[@]}" --clobber
+        gh release upload "${INPUT_TAG_NAME}" "${files[@]}" --clobber
 
     - name: Cleanup old releases
       if: ${{ inputs.channel != '' && (inputs.retention_keep != '0' || inputs.retention_days != '0') }}
