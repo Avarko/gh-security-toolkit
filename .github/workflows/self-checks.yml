@@ -1,0 +1,65 @@
+# Checks that guard the toolkit's own invariants.
+#
+# These run on the repository itself rather than on a consumer's code. They
+# exist because the failures they catch are silent: an action that interpolates
+# an input into a shell script still works perfectly for every well-behaved
+# value, and only misbehaves for the one that matters.
+name: Self-checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actions-hygiene:
+    name: Actions hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: "No expressions inside run: bodies"
+        run: python3 scripts/check-no-expressions-in-run.py
+
+      - name: Workflows and actions parse
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          for f in .github/workflows/*.yml actions/**/action.yml; do
+            python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1]))" "$f"
+          done
+          echo "All workflow and action files parse."
+
+  dashboard:
+    name: Dashboard
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # The dashboard renders scan output from other repositories, so a
+      # vulnerable dependency here is a vulnerability in how those results are
+      # read. Production dependencies only: a finding in the test runner is
+      # worth knowing about but should not block a publish.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high

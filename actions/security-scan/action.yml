@@ -106,7 +106,7 @@ runs:
       env:
         INPUT_CHANNEL: ${{ inputs.channel }}
       run: |
-        ${{ github.action_path }}/scripts/validate-channel.sh
+        ${GITHUB_ACTION_PATH}/scripts/validate-channel.sh
 
     - name: Read client config file
       id: config
@@ -114,7 +114,7 @@ runs:
       env:
         INPUT_CONFIG_OVERRIDES: ${{ inputs.config_overrides }}
       run: |
-        ${{ github.action_path }}/scripts/read-client-config.sh
+        ${GITHUB_ACTION_PATH}/scripts/read-client-config.sh
 
     - name: Create scan context metadata
       shell: bash
@@ -125,7 +125,7 @@ runs:
         INPUT_ORG_LOGO_URL: ${{ steps.config.outputs.org_logo_url }}
         INPUT_REPO_DISPLAY_NAME: ${{ steps.config.outputs.repo_display_name }}
       run: |
-        ${{ github.action_path }}/scripts/create-scan-context.sh
+        ${GITHUB_ACTION_PATH}/scripts/create-scan-context.sh
 
     # === BUILD FILESYSTEM SCAN ROOT ===
     - name: Build filesystem scan root
@@ -136,7 +136,7 @@ runs:
         INPUT_TARGET_ROOT: ${{ runner.temp }}/trivy-fs-root-${{ github.run_id }}-${{ github.run_attempt }}
         FILESYSTEM_PATHS: ${{ inputs.scan_filesystem_paths }}
       run: |
-        ${{ github.action_path }}/scripts/build-fsroot.sh
+        ${GITHUB_ACTION_PATH}/scripts/build-fsroot.sh
 
     # === RUN TRIVY SCANS ===
     - name: Run Trivy scans

@@ -48,15 +48,15 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        ${{ github.action_path }}/scripts/check-pages-visibility.sh \
-          "${{ github.repository }}"
+        ${GITHUB_ACTION_PATH}/scripts/check-pages-visibility.sh \
+          "${GITHUB_REPOSITORY}"
 
     - name: Validate GitHub context variables
       shell: bash
       run: |
-        ${{ github.action_path }}/scripts/validate-github-context.sh \
-          "${{ github.repository_owner }}" \
-          "${{ github.repository }}"
+        ${GITHUB_ACTION_PATH}/scripts/validate-github-context.sh \
+          "${GITHUB_REPOSITORY_OWNER}" \
+          "${GITHUB_REPOSITORY}"
 
 
     - name: Setup JBang
@@ -65,18 +65,23 @@ runs:
     - name: Create optional config overrides (if provided)
       id: config_overrides
       shell: bash
+      env:
+        INPUT_CONFIG_OVERRIDES: ${{ inputs.config_overrides }}
+        TEMP_CONFIG_OVERRIDES: ${{ steps.temp.outputs.config_overrides }}
       run: |
         set -euo pipefail
-        if [ -n "${{ inputs.config_overrides }}" ]; then
+        if [ -n "$INPUT_CONFIG_OVERRIDES" ]; then
           # Check if it's a file path or JSON string
-          if [ -f "${{ inputs.config_overrides }}" ]; then
-            echo "path=${{ inputs.config_overrides }}" >> "$GITHUB_OUTPUT"
-            echo "Using config overrides from file: ${{ inputs.config_overrides }}"
+          if [ -f "$INPUT_CONFIG_OVERRIDES" ]; then
+            printf 'path=%s\n' "$INPUT_CONFIG_OVERRIDES" >> "$GITHUB_OUTPUT"
+            printf 'Using config overrides from file: %s\n' "$INPUT_CONFIG_OVERRIDES"
           else
-            # It's a JSON string, write to temp file
-            TEMP_FILE="${{ steps.temp.outputs.config_overrides }}"
-            echo '${{ inputs.config_overrides }}' > "$TEMP_FILE"
-            echo "path=$TEMP_FILE" >> "$GITHUB_OUTPUT"
+            # It's a JSON string, write to temp file. printf, not echo of a
+            # single-quoted expression: a quote in the JSON used to end the
+            # quoting and hand the remainder to the shell.
+            TEMP_FILE="$TEMP_CONFIG_OVERRIDES"
+            printf '%s\n' "$INPUT_CONFIG_OVERRIDES" > "$TEMP_FILE"
+            printf 'path=%s\n' "$TEMP_FILE" >> "$GITHUB_OUTPUT"
             echo "Config overrides provided as JSON string"
           fi
         else
@@ -86,12 +91,17 @@ runs:
 
     - name: Create builder configuration
       shell: bash
+      env:
+        INPUT_OUTDIR: ${{ inputs.outdir }}
+        STEP_CONFIG_OVERRIDES_PATH: ${{ steps.config_overrides.outputs.path }}
+        STEP_TEMP_BUILDER_CONFIG: ${{ steps.temp.outputs.builder_config }}
+        STEP_TEMP_DASHBOARD_BUILD: ${{ steps.temp.outputs.dashboard_build }}
       run: |
-        ${{ github.action_path }}/scripts/create-config.sh \
-          "${{ inputs.outdir }}" \
-          "${{ steps.temp.outputs.builder_config }}" \
-          "${{ steps.config_overrides.outputs.path }}" \
-          "${{ steps.temp.outputs.dashboard_build }}"
+        ${GITHUB_ACTION_PATH}/scripts/create-config.sh \
+          "${INPUT_OUTDIR}" \
+          "${STEP_TEMP_BUILDER_CONFIG}" \
+          "${STEP_CONFIG_OVERRIDES_PATH}" \
+          "${STEP_TEMP_DASHBOARD_BUILD}"
 
     - name: Download and restore GitHub Pages site data
       continue-on-error: true
@@ -99,12 +109,13 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github_token }}
+        STEP_TEMP_BASE: ${{ steps.temp.outputs.base }}
       run: |
-        ${{ github.action_path }}/scripts/download-and-restore-history.sh \
-          "${{ github.repository }}" \
+        ${GITHUB_ACTION_PATH}/scripts/download-and-restore-history.sh \
+          "${GITHUB_REPOSITORY}" \
           "." \
           "$GITHUB_OUTPUT" \
-          "${{ steps.temp.outputs.base }}"
+          "${STEP_TEMP_BASE}"
 
 
 
@@ -125,25 +136,28 @@ runs:
       env:
         GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
         GITHUB_REPOSITORY: ${{ github.repository }}
+        STEP_TEMP_BUILDER_CONFIG: ${{ steps.temp.outputs.builder_config }}
+        STEP_TEMP_SITE_DATA_OUTPUT: ${{ steps.temp.outputs.site_data_output }}
+        STEP_TEMP_SITE_DIR: ${{ steps.temp.outputs.site_dir }}
       run: |
         set -euo pipefail
         echo "Building GitHub Pages (incremental update)..."
 
         # Run the builder (processes data in current directory)
-        jbang "${{ github.action_path }}/../../../scripts/github_pages_builder.java" \
-          "${{ steps.temp.outputs.builder_config }}"
+        jbang "${GITHUB_ACTION_PATH}/../../../scripts/github_pages_builder.java" \
+          "${STEP_TEMP_BUILDER_CONFIG}"
 
         # Debug: show hist contents after Java builder
         echo "📋 Contents of data/hist after Java builder:"
         ls -la ./data/hist/ 2>/dev/null || echo "   (directory not found or empty)"
 
         # Archive the updated data for persistence across runs
-        ${{ github.action_path }}/scripts/archive-scan-history.sh \
+        ${GITHUB_ACTION_PATH}/scripts/archive-scan-history.sh \
           "." \
-          "${{ steps.temp.outputs.site_data_output }}"
+          "${STEP_TEMP_SITE_DATA_OUTPUT}"
 
         # Prepare site directory for deployment
-        SITE_DIR="${{ steps.temp.outputs.site_dir }}"
+        SITE_DIR="${STEP_TEMP_SITE_DIR}"
         mkdir -p "$SITE_DIR"
 
         # Debug: show hist contents before move
@@ -175,11 +189,12 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github_token }}
+        STEP_UPLOAD_SITE_DATA_ARTIFACT_ID: ${{ steps.upload_site_data.outputs.artifact-id }}
       run: |
-        ${{ github.action_path }}/scripts/cleanup-old-artifacts.sh \
-          "${{ github.repository }}" \
+        ${GITHUB_ACTION_PATH}/scripts/cleanup-old-artifacts.sh \
+          "${GITHUB_REPOSITORY}" \
           "__gh_security_toolkit__github_pages_site_data" \
-          "${{ steps.upload_site_data.outputs.artifact-id }}"
+          "${STEP_UPLOAD_SITE_DATA_ARTIFACT_ID}"
 
     - name: Setup Pages
       uses: actions/configure-pages@v6

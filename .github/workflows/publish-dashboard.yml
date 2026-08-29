@@ -63,14 +63,18 @@ jobs:
 
       - name: Create minimal scan data with context
         id: setup
+        env:
+          INPUT_CHANNEL: ${{ inputs.channel }}
+          INPUT_USE_EXISTING_SCANS: ${{ inputs.use_existing_scans }}
+          STEP_TS_TS: ${{ steps.ts.outputs.ts }}
         run: |
           mkdir -p scan-output
 
           # Create scan-context.json (required by publisher)
           cat > scan-output/scan-context.json << EOF
           {
-            "channel": "${{ inputs.channel }}",
-            "timestamp": "${{ steps.ts.outputs.ts }}",
+            "channel": "${INPUT_CHANNEL}",
+            "timestamp": "${STEP_TS_TS}",
             "branch": "${GITHUB_REF_NAME:-}",
             "repository": "${GITHUB_REPOSITORY:-}",
             "commitSha": "${GITHUB_SHA:-}",
@@ -81,7 +85,7 @@ jobs:
           }
           EOF
 
-          if [ "${{ inputs.use_existing_scans }}" = "true" ]; then
+          if [ "${INPUT_USE_EXISTING_SCANS}" = "true" ]; then
             echo "ℹ️  Using existing scan history - no new scan data added"
             # Create empty placeholder files (publisher won't add them to history if empty)
             echo '{"Results":[]}' > scan-output/trivy-fs-results.json

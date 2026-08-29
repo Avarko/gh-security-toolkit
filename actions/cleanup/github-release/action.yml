@@ -28,12 +28,16 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github_token }}
+        INPUT_CHANNEL: ${{ inputs.channel }}
+        INPUT_EXCLUDE_TAG: ${{ inputs.exclude_tag }}
+        INPUT_RETENTION_DAYS: ${{ inputs.retention_days }}
+        INPUT_RETENTION_KEEP: ${{ inputs.retention_keep }}
       run: |
         set -euo pipefail
-        channel="${{ inputs.channel }}"
-        keep="${{ inputs.retention_keep }}"
-        days="${{ inputs.retention_days }}"
-        exclude="${{ inputs.exclude_tag }}"
+        channel="${INPUT_CHANNEL}"
+        keep="${INPUT_RETENTION_KEEP}"
+        days="${INPUT_RETENTION_DAYS}"
+        exclude="${INPUT_EXCLUDE_TAG}"
 
         echo "🧹 Cleanup channel='${channel}' keep=${keep} days=${days}"
         [ -n "$exclude" ] && echo "   Excluding tag: ${exclude}"
