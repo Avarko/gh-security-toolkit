@@ -121,7 +121,7 @@ runs:
 
 
     - name: Build Dashboard
-      uses: Avarko/gh-security-toolkit/actions/builder/dashboard@main
+      uses: Avarko/gh-security-toolkit/actions/builder/dashboard@v1
       with:
         node-version: '24'
 

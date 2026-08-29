@@ -10,6 +10,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # The published image is checked on a schedule because that is the only
+    # way its staleness surfaces: nothing about it changes when a CVE is
+    # published against a binary inside it, so without this it goes unnoticed
+    # until someone scans it by hand. That is how it reached 31 unpatched
+    # highs -- an image eleven days old, with a fix available for every one.
+    - cron: '0 5 * * 1'
   workflow_dispatch:
 
 permissions:
@@ -24,6 +31,9 @@ jobs:
 
       - name: "No expressions inside run: bodies"
         run: python3 scripts/check-no-expressions-in-run.py
+
+      - name: Internal action references are pinned
+        run: python3 scripts/check-internal-action-refs.py
 
       - name: Workflows and actions parse
         run: |
@@ -63,3 +73,23 @@ jobs:
       # worth knowing about but should not block a publish.
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+
+  published-image:
+    name: Published image
+    # Pull requests cannot change the published image, and a contributor should
+    # not see a red check for something they did not cause.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Scanned with Trivy directly rather than through the toolkit image,
+      # so a vulnerability in the toolkit cannot suppress its own report.
+      - name: Scan the published toolkit image
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
+        with:
+          image-ref: ghcr.io/avarko/gh-security-toolkit:main
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
