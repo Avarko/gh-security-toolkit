@@ -9,7 +9,17 @@ import { Container, Typography } from "@mui/material";
 
 import { ScanRunDetailPage } from "../features/scans/components/ScanRunDetailPage";
 import { ValidationErrorDisplay } from "../features/scans/components/ValidationErrorDisplay";
-import type { ScanRunMetadata, TrivyScan, SemgrepScan } from "../features/scans/types/scanRun";
+import {
+    scanRunMetadataSchema,
+    trivyScanSchema,
+    semgrepScanSchema,
+} from "../features/scans/types/scanRun";
+import type {
+    ScanRunMetadata,
+    ScopedTrivyResult,
+    SemgrepScan,
+    TrivyScanScope,
+} from "../features/scans/types/scanRun";
 import { getDataRootFromParams } from "./loaderHelpers";
 
 type LoaderData =
@@ -17,7 +27,7 @@ type LoaderData =
           success: true;
           channel: string;
           metadata: ScanRunMetadata;
-          trivyData: TrivyScan;
+          trivyResults: ScopedTrivyResult[];
           semgrepData: SemgrepScan;
           dataBasePath: string;
       }
@@ -52,33 +62,55 @@ export async function loader({ params }: LoaderFunctionArgs): Promise<LoaderData
             };
         }
 
-        const metadata = (await metadataRes.json()) as ScanRunMetadata;
+        // Scan output is validated, not cast. It is written by whatever ran the
+        // scan and read here as data, so the schemas are the boundary -- see
+        // ZOD_VALIDATION.md. A cast would let a malformed or hostile document
+        // through to rendering with only TypeScript's word that it is fine.
+        const metadataResult = scanRunMetadataSchema.safeParse(await metadataRes.json());
+
+        if (!metadataResult.success) {
+            return {
+                success: false,
+                error: `Invalid scan metadata in ${dataBasePath}/scan-run.json`,
+                details: metadataResult.error,
+            };
+        }
 
         // Trivy and Semgrep files may not exist - use empty defaults
-        const trivyFs: TrivyScan = trivyFsRes.ok
-            ? await trivyFsRes.json()
-            : { Results: [] };
-        const trivyImage: TrivyScan = trivyImageRes.ok
-            ? await trivyImageRes.json()
-            : { Results: [] };
-        const semgrepData: SemgrepScan = semgrepRes.ok
-            ? await semgrepRes.json()
-            : { results: [] };
+        const trivyFs = trivyFsRes.ok
+            ? trivyScanSchema.safeParse(await trivyFsRes.json())
+            : null;
+        const trivyImage = trivyImageRes.ok
+            ? trivyScanSchema.safeParse(await trivyImageRes.json())
+            : null;
+        const semgrep = semgrepRes.ok
+            ? semgrepScanSchema.safeParse(await semgrepRes.json())
+            : null;
 
-        // Merge Trivy results from both filesystem and image scans
-        const trivyData: TrivyScan = {
-            Results: [
-                ...(trivyFs.Results ?? []),
-                ...(trivyImage.Results ?? []),
-            ],
-        };
+        // Provenance is recorded here because here is where it is known: the
+        // two scans arrive as separate files and nothing inside a Result says
+        // which one it came from. Merging them first and guessing afterwards
+        // from Target or Type cannot work -- Target is a file path and Type is
+        // a package ecosystem, neither names the scan.
+        const scoped = (
+            result: ReturnType<typeof trivyScanSchema.safeParse> | null,
+            scope: TrivyScanScope,
+        ): ScopedTrivyResult[] =>
+            result?.success
+                ? (result.data.Results ?? []).map((entry) => ({ ...entry, scope }))
+                : [];
+
+        const trivyResults: ScopedTrivyResult[] = [
+            ...scoped(trivyFs, "fs"),
+            ...scoped(trivyImage, "img"),
+        ];
 
         return {
             success: true,
             channel,
-            metadata,
-            trivyData,
-            semgrepData,
+            metadata: metadataResult.data,
+            trivyResults,
+            semgrepData: semgrep?.success ? semgrep.data : { results: [] },
             dataBasePath,
         };
     } catch (error) {
@@ -109,7 +141,7 @@ export default function ChannelScanRunDetailRoute() {
             <ScanRunDetailPage
                 channel={data.channel}
                 metadata={data.metadata}
-                trivyData={data.trivyData}
+                trivyResults={data.trivyResults}
                 semgrepData={data.semgrepData}
                 dataBasePath={data.dataBasePath}
             />
