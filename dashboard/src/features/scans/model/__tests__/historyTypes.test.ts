@@ -32,6 +32,24 @@ describe('scanMetadataSchema', () => {
         expect(result.success).toBe(true);
     });
 
+    it('should accept legacy YYYY-MM-DD-HHMMSSZ timestamps', () => {
+        // Published history retains every scan, so entries written before the
+        // switch to compact timestamps are still in the live file. Rejecting
+        // them fails the whole document and the page renders no data.
+        const legacyScan = {
+            timestamp: '2025-11-16-020000Z',
+            channel: 'prod-main',
+            metadata: {
+                branch: 'main',
+                commit: 'a1b2c3d4e5f6789012345678901234567890abcd',
+                repository: 'owner/repo',
+            },
+        };
+
+        const result = scanMetadataSchema.safeParse(legacyScan);
+        expect(result.success).toBe(true);
+    });
+
     it('should reject invalid timestamp', () => {
         const invalidScan = {
             timestamp: 'not-a-timestamp',
