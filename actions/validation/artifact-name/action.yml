@@ -10,8 +10,17 @@ runs:
   steps:
     - name: Validate artifact name
       shell: bash
+      # The value has to arrive as an environment variable. Interpolating it
+      # into the script would run it: GitHub substitutes the expression before
+      # bash parses the line, so an input of `"; <command>; echo "` executes
+      # <command> at assignment time -- and the checks below then report
+      # "invalid characters" about a command that has already run. An action
+      # whose whole job is to make an untrusted name safe cannot be the place
+      # that value first reaches a shell.
+      env:
+        INPUT_ARTIFACT_NAME: ${{ inputs.artifact_name }}
       run: |
-        ARTIFACT_NAME="${{ inputs.artifact_name }}"
+        ARTIFACT_NAME="$INPUT_ARTIFACT_NAME"
 
         # Check length (max 100 characters)
         if [ ${#ARTIFACT_NAME} -gt 100 ]; then
