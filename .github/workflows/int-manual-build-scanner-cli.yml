@@ -136,13 +136,23 @@ jobs:
       - name: Resolve & verify Crane (SLSA provenance)
         id: crane
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CONTEXT: ${{ env.CONTEXT }}
         run: |
           set -euo pipefail
           CONTEXT="${CONTEXT}"
 
-          ver_crane=$(gh api repos/google/go-containerregistry/releases/latest --jq .tag_name)
+          # Pinned rather than resolved to releases/latest, because here newer
+          # is not safer. v0.22.0 dropped upstream's .go-version file in favour
+          # of go.mod's toolchain directive, but their release workflow sets
+          # GOTOOLCHAIN=local -- and setup-go skips the toolchain directive
+          # when that is set, falling back to the `go` directive. That one is a
+          # minimum-version floor (1.25.0), so v0.22.0 ships built with
+          # go1.25.0 where v0.21.9 shipped go1.26.5, carrying 14 extra
+          # unpatched stdlib highs. The floor only moves when upstream drops
+          # support for an old Go, so later releases inherit this until they
+          # notice. Before bumping, check the candidate: `go version -m crane`
+          # has to name a toolchain that covers the current stdlib advisories.
+          ver_crane=v0.21.9
           echo "ver_crane=$ver_crane" >> "$GITHUB_OUTPUT"
 
           curl -sL "https://github.com/google/go-containerregistry/releases/download/${ver_crane}/multiple.intoto.jsonl" -o crane-provenance.intoto.jsonl
