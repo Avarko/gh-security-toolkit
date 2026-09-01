@@ -76,6 +76,13 @@ GHST_DB_REQUIRE_SIGNATURE ?= 1
 # for vulnerabilities published since.
 __GHST_DB_MAX_AGE_DAYS ?= 14
 
+# Set GHST_DB_DEBUG=1 to make the update trace itself: every registry command
+# it runs, and crane's own HTTP request and response logs. Reach for it when
+# an update fails for a reason the error does not name — a proxy that
+# intercepts TLS, a blocked host, a token endpoint that answers differently
+# than the pull does. The trace goes to stderr, so piping stdout still works.
+GHST_DB_DEBUG ?= 0
+
 # The cache is mounted read-only so a scan cannot corrupt it, but Trivy also
 # wants somewhere writable for its own scratch state (fanal/, temp files). A
 # tmpfs gives it that without a second host directory, and it is discarded
@@ -142,6 +149,7 @@ __GHST_DB_RUN = $(__GHST_DOCKER_CMD) run --rm \
 	-e GHST_DB_MAX_AGE_DAYS=$(__GHST_DB_MAX_AGE_DAYS) \
 	-e GHST_DB_REQUIRE_SIGNATURE=$(GHST_DB_REQUIRE_SIGNATURE) \
 	-e GHST_OFFLINE=$(GHST_OFFLINE) \
+	-e GHST_DB_DEBUG=$(GHST_DB_DEBUG) \
 	-e GHST_VEX_SERVE=0 \
 	$(__GHST_IMAGE) trivy-db-helper
 
