@@ -89,6 +89,18 @@ jobs:
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
         with:
           image-ref: ghcr.io/avarko/gh-security-toolkit:main
+          # Pinned rather than left to the action's default, which trailed the
+          # Trivy the image itself ships and could not read it. Go writes an
+          # enabled GOEXPERIMENT into the version string, so the image's own
+          # Trivy identifies as go1.26.6-X:jsonv2; older Trivy turned that into
+          # v1.26.6-X:jsonv2, which is not valid semver, and every stdlib
+          # advisory comparison failed with "Version matching error". Each
+          # failure is skipped, so that binary was reported as 0 findings
+          # having had none of them evaluated -- a clean result that meant
+          # nothing. A scanner auditing this image must therefore be no older
+          # than the one inside it; check that before bumping the image's
+          # Trivy, since that one resolves to releases/latest at build time.
+          version: v0.74.0
           format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true
