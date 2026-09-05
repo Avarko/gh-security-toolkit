@@ -35,6 +35,16 @@ jobs:
       - name: Internal action references are pinned
         run: python3 scripts/check-internal-action-refs.py
 
+      # Resolves each pin's "# v1.2.3" against the tag it names, which nothing
+      # was doing: the comment is the only part of a pin a reader understands,
+      # and an upload-artifact spent three majors wearing the wrong one before
+      # review caught it. Needs the token because the anonymous API allowance
+      # is sixty an hour per machine, shared across every job on that runner.
+      - name: Third-party pins say what they are
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/check-action-pins.py
+
       - name: Workflows and actions parse
         run: |
           set -euo pipefail
