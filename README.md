@@ -86,6 +86,40 @@ Then ask the agent to work through it, e.g.:
 
 The bundled `.trivy.yaml`/`.trivyignore` in the repo root apply automatically, so a re-run after upgrading only shows what is genuinely still open.
 
+### What produced a scan
+
+Every scan begins by saying what it ran:
+
+```
+==> Scanner ghcr.io/avarko/gh-security-toolkit:main | digest sha256:38a4dce76a2a | revision 2b8427fa9c17
+==> Trivy DB main 20260905, java 20260905 (0 day(s) old) | source ghcr.io/avarko/trivy-incremental-dbs | helper helper-v1.0.8
+```
+
+The first line comes from the local image and names the scanner: the tag, the
+digest it resolved to, and the commit it was built from. The second comes from
+the database helper and names the data: which database versions the scan will
+match against, where they were published, and which helper assembled them.
+
+Both go to stderr, so neither lands in a report redirected to a file.
+
+This matters because a tag is not an answer. `main` moves, and two developers
+scanning the same code on the same day can get different findings with nothing
+in the output to explain it. The digest and the database version are what make
+a result reproducible, and what let a disputed finding be traced back to
+something specific.
+
+`make sec/provenance` prints the same information in full, including the tool
+versions inside the image, without running a scan. `make sec/db/status` reports
+the database cache in detail.
+
+Two things are worth knowing about the pin:
+
+- Pinning the include to a release tag pins the scan commands, not the scanner.
+  Only a `main` image is published, so the image can change under a fixed
+  include. When the two differ, every scan says so.
+- An image published before provenance labelling reports its tool versions as
+  `unknown`. Pull it again once a labelled image exists.
+
 ### Ignore CVEs
 
 Not everything can be fixed immediately. A common case: a CVE is already patched upstream in a library, but the version that fixes it can't be adopted yet — for example, Spring Boot pins a transitive dependency's version and overriding it breaks compatibility elsewhere, so the fix isn't actually installable until Spring Boot itself moves. In situations like this, the finding needs to be ignored for now rather than left blocking every scan.

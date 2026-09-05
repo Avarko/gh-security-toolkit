@@ -179,7 +179,7 @@ sec/db/clean: # Remove the cached Trivy databases
 # Scan targets depend on this: it updates a stale cache and is a no-op when the
 # cache is current. GHST_OFFLINE=1 turns it into a freshness warning instead.
 .PHONY: __ghst-db-ensure
-__ghst-db-ensure: __ghst-image-ensure
+__ghst-db-ensure: __ghst-image-ensure __ghst-provenance
 	@$(__GHST_DB_PREPARE)
 	@$(__GHST_DB_RUN) -command ensure
 
@@ -221,6 +221,75 @@ __ghst-image-ensure:
 	else \
 		echo "❌ $(__GHST_IMAGE) is not available locally and the registry could not be reached."; \
 		exit 1; \
+	fi
+
+# ============================================================================
+# Provenance
+#
+# Every scan states what produced it: which image, resolved to a digest, and
+# which commit that image was built from. The database versions are printed
+# separately by the helper, which is the thing that knows them.
+#
+# This exists because a scan result is only worth something if it can be
+# reproduced, and until now nothing in the output said what it ran. A tag is
+# not an answer: `main` moved twice this week, and two developers scanning the
+# same code on the same day could get different findings with no way to tell.
+#
+# Everything here is read from the local image. No registry call, so the
+# banner costs nothing and works offline.
+#
+# Output goes to stderr, so it cannot land in a report redirected to a file.
+# Note that the scan targets' own progress echoes still go to stdout, so
+# `__GHST_TRIVY_FORMAT=json > report.json` is not clean today for reasons that
+# predate this banner.
+# ============================================================================
+
+# Docker's template language has no "or" for missing map keys, so each value
+# is fetched with `with`, which prints nothing when the label is absent.
+__GHST_LABEL = $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) \
+	--format '{{with index .Config.Labels "$(1)"}}{{.}}{{end}}' 2>/dev/null
+
+.PHONY: sec/provenance
+sec/provenance: ## Print what a scan on this machine would run: image, digest, commit, tool versions
+	@$(MAKE) --no-print-directory __ghst-provenance GHST_PROVENANCE_VERBOSE=1
+
+# Printed before every scan. Silent about anything it cannot determine rather
+# than guessing: an unknown digest is better than a wrong one.
+.PHONY: __ghst-provenance
+__ghst-provenance:
+	@ref='$(__GHST_IMAGE)'; \
+	digest=$$($(__GHST_DOCKER_CMD) image inspect $$ref \
+		--format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null \
+		| sed 's/.*@//'); \
+	revision=$$($(call __GHST_LABEL,org.opencontainers.image.revision)); \
+	helper=$$($(call __GHST_LABEL,fi.evolver.ghst.trivy-db-helper.version)); \
+	trivy=$$($(call __GHST_LABEL,fi.evolver.ghst.trivy.version)); \
+	short_digest=$$(echo "$$digest" | cut -c1-19); \
+	short_revision=$$(echo "$$revision" | cut -c1-12); \
+	echo "==> Scanner $$ref$${short_digest:+ | digest $${short_digest}}$${short_revision:+ | revision $${short_revision}}" >&2; \
+	if [ "$(GHST_PROVENANCE_VERBOSE)" = "1" ]; then \
+		echo "    digest   $${digest:-unknown}" >&2; \
+		echo "    revision $${revision:-unknown}" >&2; \
+		echo "    trivy    $${trivy:-unknown}" >&2; \
+		echo "    helper   $${helper:-unknown}" >&2; \
+		echo "    makefile taken from $(__GHST_VERSION), image tag $(__GHST_IMAGE_TAG)" >&2; \
+	fi; \
+	if ! $(__GHST_DOCKER_CMD) image inspect $$ref >/dev/null 2>&1; then \
+		echo "warning: $$ref is not present locally, so nothing can be said about it " >&2; \
+		echo "         yet. A scan will pull it first." >&2; \
+	else \
+		if [ -z "$$digest" ]; then \
+			echo "warning: $$ref has no registry digest. It was built or loaded locally, " >&2; \
+			echo "         so no published image corresponds to this scan." >&2; \
+		fi; \
+		if [ -z "$$revision" ]; then \
+			echo "warning: $$ref carries no revision label, so the commit behind this scan " >&2; \
+			echo "         is unknown. Pull it again once a labelled image is published." >&2; \
+		fi; \
+	fi; \
+	if [ "$(__GHST_VERSION)" != "$(__GHST_IMAGE_TAG)" ]; then \
+		echo "    note: Makefile pinned to '$(__GHST_VERSION)', image tag '$(__GHST_IMAGE_TAG)'. " >&2; \
+		echo "          Pinning the include does not pin the scanner." >&2; \
 	fi
 
 # ============================================================================
