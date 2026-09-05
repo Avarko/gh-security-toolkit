@@ -21,19 +21,26 @@ believed.
 Where a pin names a commit with no tag, the comment carries the commit's date
 instead ("# Nov 11, 2025") and that is checked the same way.
 
-Needs network and, on a runner, GITHUB_TOKEN -- the anonymous API allowance is
-sixty an hour for the whole machine. Anything it cannot resolve is an error,
-never a pass: a check that goes quiet when the network is down would have
-reported success on every finding above.
+Everything is asked over git rather than through the REST API, which is the
+second version of this script. The first used api.github.com and failed in CI
+on its eleventh request with GITHUB_TOKEN set, having already been impossible
+to run locally: sixty anonymous requests an hour is about five runs, and
+debugging a check costs more runs than that. git has no quota and needs no
+token. It also answers more precisely -- refs/tags/X^{} is the commit an
+annotated tag peels to, which is the number a pin must match, and the API
+makes you ask for that in two steps and take the wrong one by default.
+
+Anything it cannot resolve is an error, never a pass: a check that goes quiet
+when the network is down would have reported success on every finding above.
 """
+import atexit
 import glob
-import json
-import os
 import re
+import shutil
+import subprocess
 import sys
-import urllib.error
-import urllib.request
-from datetime import datetime
+import tempfile
+from datetime import datetime, timezone
 
 USES = re.compile(r"^\s*(?:-\s*)?uses:\s*(\S+?)(?:\s+#\s*(.*?))?\s*$")
 SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -41,75 +48,91 @@ INTERNAL = "Avarko/gh-security-toolkit"
 TAG_COMMENT = re.compile(r"^v?\d+(?:\.\d+)*$")
 DATE_COMMENT = re.compile(r"^[A-Z][a-z]{2} \d{1,2}, \d{4}$")
 
-API = "https://api.github.com"
 _cache = {}
+_scratch = None
 
 
 class Unresolvable(Exception):
-    """The API could not answer. Distinct from a pin being wrong."""
+    """The lookup could not be made. Distinct from a pin being wrong."""
 
 
-def api(path):
-    if path in _cache:
-        return _cache[path]
-    request = urllib.request.Request(
-        API + path,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "gh-security-toolkit-pin-check",
-            **(
-                {"Authorization": "Bearer " + os.environ["GITHUB_TOKEN"]}
-                if os.environ.get("GITHUB_TOKEN")
-                else {}
-            ),
-        },
+def git(*args, cwd=None):
+    result = subprocess.run(
+        ["git", *args], capture_output=True, text=True, timeout=120, cwd=cwd
     )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            body = json.load(response)
-    except urllib.error.HTTPError as error:
-        if error.code == 404:
-            _cache[path] = None
-            return None
-        if error.code in (403, 429):
-            raise Unresolvable(
-                f"{path}: HTTP {error.code}. The anonymous API allowance is "
-                f"sixty requests an hour; set GITHUB_TOKEN."
-            ) from error
-        raise Unresolvable(f"{path}: HTTP {error.code}") from error
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
-        raise Unresolvable(f"{path}: {error}") from error
-    _cache[path] = body
-    return body
+    if result.returncode != 0:
+        raise Unresolvable(
+            "git " + " ".join(args) + ": " + (result.stderr.strip() or "failed")
+        )
+    return result.stdout
+
+
+def scratch_repo():
+    """An empty repository to fetch single commits into."""
+    global _scratch
+    if _scratch is None:
+        _scratch = tempfile.mkdtemp(prefix="pin-check-")
+        atexit.register(shutil.rmtree, _scratch, True)
+        git("init", "-q", "--bare", _scratch)
+    return _scratch
 
 
 def commit_for_tag(repo, tag):
-    """The commit a tag points at, following annotated tags to their target.
+    """The commit a tag points at, asked of the repository over git.
 
-    git/ref/tags/<tag> returns the tag *object* for an annotated tag, whose SHA
-    is not the commit's. Comparing that one reports a correct pin as wrong,
-    which is how the first version of this check spent an afternoon.
+    An annotated tag names a tag object, not a commit, and a pin has to match
+    the commit. git offers both and the difference is one suffix: refs/tags/X
+    is whatever the tag names, refs/tags/X^{} is what it peels to. Reading the
+    wrong one reports a correct pin as wrong, which cost an afternoon earlier
+    in this work when the API's two-step version of the same question was
+    answered halfway.
     """
-    ref = api(f"/repos/{repo}/git/ref/tags/{tag}")
-    if ref is None:
-        return None
-    obj = ref["object"]
-    if obj["type"] == "commit":
-        return obj["sha"]
-    if obj["type"] == "tag":
-        return api(f"/repos/{repo}/git/tags/{obj['sha']}")["object"]["sha"]
-    raise Unresolvable(f"{repo}@{tag}: tag points at a {obj['type']}")
+    key = ("tag", repo, tag)
+    if key not in _cache:
+        out = git(
+            "ls-remote", "--tags", f"https://github.com/{repo}", tag, tag + "^{}"
+        )
+        refs = {}
+        for line in out.splitlines():
+            sha, _, name = line.partition("\t")
+            refs[name.strip()] = sha.strip()
+        # Peeled first: for an annotated tag it is the commit, and for a
+        # lightweight one it does not exist and the ref itself already is.
+        _cache[key] = refs.get(f"refs/tags/{tag}^{{}}") or refs.get(f"refs/tags/{tag}")
+    return _cache[key]
 
 
 def commit_dates(repo, sha):
-    commit = api(f"/repos/{repo}/commits/{sha}")
-    if commit is None:
-        return None
-    stamps = commit["commit"]
-    return {
-        datetime.fromisoformat(stamps[which]["date"].replace("Z", "+00:00")).date()
-        for which in ("author", "committer")
-    }
+    """The dates a commit carries, fetched one commit deep.
+
+    No ref names a date, so this is the one thing ls-remote cannot answer.
+    A depth-1 fetch of the single commit costs about a second and a hundred
+    kilobytes, which is cheaper than the API request it replaces was
+    unreliable.
+    """
+    key = ("date", repo, sha)
+    if key not in _cache:
+        scratch = scratch_repo()
+        try:
+            git("fetch", "-q", "--depth=1", f"https://github.com/{repo}", sha,
+                cwd=scratch)
+        except Unresolvable:
+            # A SHA the repository will not serve is a finding about the pin,
+            # not a failure of the check: it is not a commit of that project.
+            _cache[key] = None
+            return None
+        stamps = git("show", "-s", "--format=%cI%n%aI", sha, cwd=scratch).split()
+        # Both the committer's own offset and UTC count as the commit's date.
+        # A comment written from what GitHub displayed and one written from
+        # `git log` can differ by a day either way, and neither is a mistake
+        # worth failing a build over.
+        dates = set()
+        for stamp in stamps:
+            moment = datetime.fromisoformat(stamp)
+            dates.add(moment.date())  # as the committer's clock read it
+            dates.add(moment.astimezone(timezone.utc).date())
+        _cache[key] = dates
+    return _cache[key]
 
 
 def check_comment(repo, sha, comment):
@@ -131,9 +154,13 @@ def check_comment(repo, sha, comment):
             return f"{sha[:12]} is not a commit of {repo}"
         claimed = datetime.strptime(comment, "%b %d, %Y").date()
         if claimed not in dates:
+            # Built by hand rather than with strftime: "%-d" for an unpadded
+            # day is a glibc extension and raises on Windows, and an error
+            # message that crashes is worse than the error it reports.
+            actual = sorted(dates)[0]
             return (
                 f"comment says {comment}, commit is dated "
-                f"{sorted(dates)[0].strftime('%b %-d, %Y')}"
+                f"{actual:%b} {actual.day}, {actual.year}"
             )
         return None
 
@@ -199,6 +226,6 @@ if __name__ == "__main__":
         sys.exit(main())
     except Unresolvable as error:
         # Exit 2, and loudly. A pin check that passes when it could not reach
-        # the API is a green tick that means nothing.
+        # the network is a green tick that means nothing.
         print(f"Could not verify pins: {error}", file=sys.stderr)
         sys.exit(2)
