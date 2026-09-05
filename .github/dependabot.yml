@@ -1,0 +1,47 @@
+# Keeps the SHA pins current, which is the obligation pinning creates.
+#
+# A step on @v5 collects security fixes by itself, because the tag moves. A
+# step on @fbc6f39 never does. That trade is worth making inside actions/ --
+# those run on the consumer's runner, and a tag someone else can move is a
+# change we ship without shipping anything -- but it turns "stay current" from
+# something GitHub did for us into something that has to be done. Nothing was
+# doing it.
+#
+# Dependabot rewrites the SHA and the "# v1.2.3" beside it together, which is
+# the other half of why this file exists: hand-maintained pins drift apart from
+# their comments. One arrived here already wrong -- an upload-artifact pinned
+# at v4.6.2 with a v7.0.1 comment, wrong in the commit that wrote it.
+# scripts/check-action-pins.py catches that; this avoids causing it.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    # "/" reaches .github/workflows and a root action.yml, and nothing else.
+    # Composite actions in subdirectories are invisible to it, so the nine
+    # third-party pins that actually run on consumer runners would go
+    # unmaintained -- the exact set this is for. The two globs cover both
+    # depths we use (actions/summarizer, actions/scanner/trivy). Single "*"
+    # only: "**" recursion is not something the reference spells out, and an
+    # unverified pattern that silently matches nothing is how this file would
+    # look like it was working.
+    directories:
+      - "/"
+      - "/actions/*"
+      - "/actions/*/*"
+    schedule:
+      interval: weekly
+    # One pull request for all of them. Ten separate bumps of an action nobody
+    # has heard of is how these start getting merged without being read.
+    groups:
+      actions:
+        patterns:
+          - "*"
+    ignore:
+      # Our own actions call their siblings at @v1 deliberately: a consumer
+      # pinning security-scan@v1 must not have a sibling resolve to something
+      # newer underneath them. Releasing moves that tag; Dependabot must not.
+      # See SECURITY.md F-6 and scripts/check-internal-action-refs.py, which
+      # fails the build if this drifts.
+      - dependency-name: Avarko/gh-security-toolkit/*
+    commit-message:
+      prefix: "ci"
