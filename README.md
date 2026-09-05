@@ -91,26 +91,30 @@ The bundled `.trivy.yaml`/`.trivyignore` in the repo root apply automatically, s
 Every scan begins by saying what it ran:
 
 ```
-==> Scanner ghcr.io/avarko/gh-security-toolkit:main | digest sha256:38a4dce76a2a | revision 2b8427fa9c17
-==> Trivy DB main 20260905, java 20260905 (0 day(s) old) | source ghcr.io/avarko/trivy-incremental-dbs | helper helper-v1.0.8
+==> gh-security-toolkit: image 'main' published 2026-09-04, digest sha256:38a4dce76a2a, revision 2b8427fa9c17
+==> trivy-incremental-dbs: main 2026-09-05, java 2026-09-05, fetched 0 day(s) ago, helper helper-v1.0.8
+🔍 Scanning image my-app:local (offline mode)...
 ```
 
-The first line comes from the local image and names the scanner: the tag, the
-digest it resolved to, and the commit it was built from. The second comes from
-the database helper and names the data: which database versions the scan will
-match against, where they were published, and which helper assembled them.
+One line per source, named by the repository it comes from. The first is the
+scanner: which image tag, when it was published, the digest it resolved to and
+the commit behind it. The second is the data: which version of each
+vulnerability database the scan will match against, how long ago this machine
+fetched it, and which helper assembled it.
+
+Each carries a date as well as an identifier. The date is what a reader can
+judge at a glance — a database from last week explains a finding that appeared
+overnight — while the digest and version are what they need when the run has to
+be reproduced exactly.
 
 Both go to stderr, so neither lands in a report redirected to a file.
 
 This matters because a tag is not an answer. `main` moves, and two developers
 scanning the same code on the same day can get different findings with nothing
-in the output to explain it. The digest and the database version are what make
-a result reproducible, and what let a disputed finding be traced back to
-something specific.
+in the output to explain it.
 
-`make sec/provenance` prints the same information in full, including the tool
-versions inside the image, without running a scan. `make sec/db/status` reports
-the database cache in detail.
+`make sec/provenance` prints the same in full, including the tool versions
+inside the image and the database cache in detail, without running a scan.
 
 Two things are worth knowing about the pin:
 
