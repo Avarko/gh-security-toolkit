@@ -179,7 +179,7 @@ sec/db/clean: # Remove the cached Trivy databases
 # Scan targets depend on this: it updates a stale cache and is a no-op when the
 # cache is current. GHST_OFFLINE=1 turns it into a freshness warning instead.
 .PHONY: __ghst-db-ensure
-__ghst-db-ensure: __ghst-image-ensure __ghst-provenance
+__ghst-db-ensure: __ghst-image-ensure
 	@$(__GHST_DB_PREPARE)
 	@$(__GHST_DB_RUN) -command ensure
 
@@ -226,17 +226,22 @@ __ghst-image-ensure:
 # ============================================================================
 # Provenance
 #
-# Every scan states what produced it: which image, resolved to a digest, and
-# which commit that image was built from. The database versions are printed
-# separately by the helper, which is the thing that knows them.
+# Every scan states what produced it, naming both sources by their repository:
+# the scanner image from gh-security-toolkit, and the vulnerability data from
+# trivy-incremental-dbs. Each line carries a publication date as well as a
+# digest or version, because a date is what a reader can judge at a glance and
+# a hash is what they need when they have to reproduce the run.
 #
 # This exists because a scan result is only worth something if it can be
 # reproduced, and until now nothing in the output said what it ran. A tag is
 # not an answer: `main` moved twice this week, and two developers scanning the
 # same code on the same day could get different findings with no way to tell.
 #
-# Everything here is read from the local image. No registry call, so the
-# banner costs nothing and works offline.
+# The image half is read from the local image, so it costs nothing and works
+# offline. The database half asks the helper inside that image, which is one
+# short container run against a cache that is already mounted. Asking the
+# helper rather than parsing the cache directly means this works with the
+# helper that is published today, not only with one built after this change.
 #
 # Output goes to stderr, so it cannot land in a report redirected to a file.
 # Note that the scan targets' own progress echoes still go to stdout, so
@@ -250,47 +255,81 @@ __GHST_LABEL = $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) \
 	--format '{{with index .Config.Labels "$(1)"}}{{.}}{{end}}' 2>/dev/null
 
 .PHONY: sec/provenance
-sec/provenance: ## Print what a scan on this machine would run: image, digest, commit, tool versions
+sec/provenance: ## Print what a scan on this machine would run: images, dates, digests, versions
 	@$(MAKE) --no-print-directory __ghst-provenance GHST_PROVENANCE_VERBOSE=1
 
 # Printed before every scan. Silent about anything it cannot determine rather
-# than guessing: an unknown digest is better than a wrong one.
+# than guessing: "unknown" is better than a plausible wrong answer.
 .PHONY: __ghst-provenance
-__ghst-provenance:
+__ghst-provenance: __ghst-db-ensure
 	@ref='$(__GHST_IMAGE)'; \
-	digest=$$($(__GHST_DOCKER_CMD) image inspect $$ref \
-		--format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null \
-		| sed 's/.*@//'); \
-	revision=$$($(call __GHST_LABEL,org.opencontainers.image.revision)); \
-	helper=$$($(call __GHST_LABEL,fi.evolver.ghst.trivy-db-helper.version)); \
-	trivy=$$($(call __GHST_LABEL,fi.evolver.ghst.trivy.version)); \
-	short_digest=$$(echo "$$digest" | cut -c1-19); \
-	short_revision=$$(echo "$$revision" | cut -c1-12); \
-	echo "==> Scanner $$ref$${short_digest:+ | digest $${short_digest}}$${short_revision:+ | revision $${short_revision}}" >&2; \
-	if [ "$(GHST_PROVENANCE_VERBOSE)" = "1" ]; then \
-		echo "    digest   $${digest:-unknown}" >&2; \
-		echo "    revision $${revision:-unknown}" >&2; \
-		echo "    trivy    $${trivy:-unknown}" >&2; \
-		echo "    helper   $${helper:-unknown}" >&2; \
-		echo "    makefile taken from $(__GHST_VERSION), image tag $(__GHST_IMAGE_TAG)" >&2; \
-	fi; \
 	if ! $(__GHST_DOCKER_CMD) image inspect $$ref >/dev/null 2>&1; then \
-		echo "warning: $$ref is not present locally, so nothing can be said about it " >&2; \
-		echo "         yet. A scan will pull it first." >&2; \
+		echo "==> gh-security-toolkit: $$ref is not present locally yet" >&2; \
 	else \
+		digest=$$($(__GHST_DOCKER_CMD) image inspect $$ref \
+			--format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null \
+			| sed 's/.*@//'); \
+		revision=$$($(call __GHST_LABEL,org.opencontainers.image.revision)); \
+		built=$$($(call __GHST_LABEL,org.opencontainers.image.created)); \
+		if [ -z "$$built" ]; then \
+			built=$$($(__GHST_DOCKER_CMD) image inspect $$ref --format '{{.Created}}' 2>/dev/null); \
+		fi; \
+		built=$$(echo "$$built" | cut -c1-10); \
+		echo "==> gh-security-toolkit: image '$(__GHST_IMAGE_TAG)' published $${built:-unknown}, digest $$(echo $${digest:-unknown} | cut -c1-19), revision $$(echo $${revision:-unknown} | cut -c1-12)" >&2; \
+		if [ "$(GHST_PROVENANCE_VERBOSE)" = "1" ]; then \
+			trivy_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.trivy.version)); \
+			th_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.trufflehog.version)); \
+			helper_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.trivy-db-helper.version)); \
+			echo "    digest      $${digest:-unknown}" >&2; \
+			echo "    revision    $${revision:-unknown}" >&2; \
+			echo "    trivy       $${trivy_ver:-unknown}" >&2; \
+			echo "    trufflehog  $${th_ver:-unknown}" >&2; \
+			echo "    db helper   $${helper_ver:-unknown}" >&2; \
+			echo "    makefile    taken from '$(__GHST_VERSION)', image tag '$(__GHST_IMAGE_TAG)'" >&2; \
+		fi; \
 		if [ -z "$$digest" ]; then \
-			echo "warning: $$ref has no registry digest. It was built or loaded locally, " >&2; \
-			echo "         so no published image corresponds to this scan." >&2; \
+			echo "    note: no registry digest. This image was built or loaded locally, so no" >&2; \
+			echo "          published image corresponds to this scan." >&2; \
 		fi; \
 		if [ -z "$$revision" ]; then \
-			echo "warning: $$ref carries no revision label, so the commit behind this scan " >&2; \
-			echo "         is unknown. Pull it again once a labelled image is published." >&2; \
+			echo "    note: no revision label, so the commit behind this scan is unknown." >&2; \
+			echo "          Pull the image again once a labelled one is published." >&2; \
 		fi; \
 	fi; \
+	$(__GHST_DB_PREPARE); \
+	status=$$($(__GHST_DB_RUN) -command status 2>/dev/null); \
+	echo "==> trivy-incremental-dbs: $$(echo "$$status" | $(__GHST_AWK_DB_VERSIONS))" >&2; \
+	if [ "$(GHST_PROVENANCE_VERBOSE)" = "1" ]; then \
+		echo "$$status" | sed 's/^/    /' >&2; \
+	fi; \
 	if [ "$(__GHST_VERSION)" != "$(__GHST_IMAGE_TAG)" ]; then \
-		echo "    note: Makefile pinned to '$(__GHST_VERSION)', image tag '$(__GHST_IMAGE_TAG)'. " >&2; \
+		echo "    note: Makefile pinned to '$(__GHST_VERSION)', image tag '$(__GHST_IMAGE_TAG)'." >&2; \
 		echo "          Pinning the include does not pin the scanner." >&2; \
 	fi
+
+# Reduces the helper's status report to one line: each database with the date
+# it was published, how long ago this machine fetched it, and which helper
+# assembled it.
+#
+# The version each database carries is a publication date in YYYYMMDD form,
+# which is why it can be rendered as one. Anything the helper did not report
+# comes out as "unknown" rather than being dropped, so a partial line cannot
+# read as a complete one.
+__GHST_AWK_DB_VERSIONS = awk ' \
+	/^  (main|java):/ { \
+		name = $$1; sub(":", "", name); \
+		v = $$2; \
+		if (v ~ /^[0-9]{8}$$/) \
+			v = substr(v,1,4) "-" substr(v,5,2) "-" substr(v,7,2); \
+		out = out (out ? ", " : "") name " " v; \
+	} \
+	/^  age:/    { age = $$2 } \
+	/^  helper:/ { helper = $$3 } \
+	END { \
+		printf "%s", (out ? out : "no database cached"); \
+		printf ", fetched %s day(s) ago", (age == "" ? "?" : age); \
+		printf ", helper %s", (helper ? helper : "unknown"); \
+	}'
 
 # ============================================================================
 # Trivy - Automatically uses .trivy.yaml if present
@@ -304,14 +343,14 @@ __ghst-provenance:
 # ============================================================================
 
 .PHONY: sec/scan/trivy/fs
-sec/scan/trivy/fs: __ghst-db-ensure # Scan filesystem (uses .trivy.yaml config)
+sec/scan/trivy/fs: __ghst-provenance # Scan filesystem (uses .trivy.yaml config)
 	@echo "🔍 Scanning filesystem with Trivy (offline mode)..."
 	@test -f .trivy.yaml && echo "ℹ️  Using .trivy.yaml configuration" || true
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	$(__GHST_IMAGE) trivy fs . --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/artifact
-sec/scan/trivy/artifact: __ghst-db-ensure # Scan built artifact - Gradle WAR/JAR/EAR (ARTIFACT=path/to/app.war)
+sec/scan/trivy/artifact: __ghst-provenance # Scan built artifact - Gradle WAR/JAR/EAR (ARTIFACT=path/to/app.war)
 	@[ -n "$(ARTIFACT)" ] || (echo "❌ Usage: make sec/scan/trivy/artifact ARTIFACT=build/libs/app.war" && exit 1)
 	@[ -e "$(ARTIFACT)" ] || (echo "❌ Artifact not found: $(ARTIFACT)" && exit 1)
 	@echo "🔍 Scanning artifact $(ARTIFACT) with Trivy (offline mode)..."
@@ -320,14 +359,14 @@ sec/scan/trivy/artifact: __ghst-db-ensure # Scan built artifact - Gradle WAR/JAR
 	$(__GHST_IMAGE) trivy fs $(ARTIFACT) --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/config
-sec/scan/trivy/config: __ghst-db-ensure # Scan IaC configs for misconfigurations - Terraform, Dockerfile, K8s, etc. (uses .trivy.yaml config)
+sec/scan/trivy/config: __ghst-provenance # Scan IaC configs for misconfigurations - Terraform, Dockerfile, K8s, etc. (uses .trivy.yaml config)
 	@echo "🔍 Scanning IaC configs with Trivy (offline mode)..."
 	@test -f .trivy.yaml && echo "ℹ️  Using .trivy.yaml configuration" || true
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	$(__GHST_IMAGE) trivy config . --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/img
-sec/scan/trivy/img: __ghst-db-ensure # Scan Docker image (IMAGE=name:tag)
+sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" && exit 1)
 	@echo "🔍 Scanning image $(IMAGE) (offline mode)..."
 	@echo "ℹ️  Note: this target mounts the Docker socket so Trivy can read the"
