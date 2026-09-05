@@ -272,7 +272,9 @@ jobs:
 
           # helper-latest is moved by the publishing pipeline, so the image
           # always picks up the current client. Resolve it to a concrete
-          # version for the build log and for provenance.
+          # version, which is passed to the build as HELPER_VER and ends up as
+          # an image label: the build log expires and cannot be read from a
+          # developer's terminal, so the version has to travel with the image.
           version=$("$CRANE" ls "$HELPER_PKG" | grep '^helper-v' | sort -V | tail -1)
           echo "helper_version=$version" >> "$GITHUB_OUTPUT"
           echo "Using database helper $version (via helper-latest)"
@@ -357,6 +359,7 @@ jobs:
             TRUFFLEHOG_VER=${{ steps.trufflehog.outputs.ver_trufflehog }}
             COSIGN_VER=${{ steps.cosign.outputs.ver_cosign }}
             CRANE_VER=${{ steps.crane.outputs.ver_crane }}
+            HELPER_VER=${{ steps.db-helper.outputs.helper_version }}
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
 
