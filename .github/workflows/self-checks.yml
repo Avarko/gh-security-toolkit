@@ -38,11 +38,9 @@ jobs:
       # Resolves each pin's "# v1.2.3" against the tag it names, which nothing
       # was doing: the comment is the only part of a pin a reader understands,
       # and an upload-artifact spent three majors wearing the wrong one before
-      # review caught it. Needs the token because the anonymous API allowance
-      # is sixty an hour per machine, shared across every job on that runner.
+      # review caught it. No token: it asks over git, which has no quota, so
+      # this runs the same here as on a laptop.
       - name: Third-party pins say what they are
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/check-action-pins.py
 
       - name: Workflows and actions parse
