@@ -77,6 +77,20 @@ def scratch_repo():
     return _scratch
 
 
+def variants(tag):
+    """The spellings of a version a reader might reasonably have written.
+
+    TAG_COMMENT accepts "v5.1.0" and "5.1.0" alike, so resolving only what is
+    written makes the check disagree with itself: a comment it welcomed as
+    well-formed then fails as "not a tag". Trying the other prefix cannot let a
+    bad pin through -- whichever spelling resolves, its commit still has to
+    equal the forty characters actually pinned -- and it stops the check from
+    failing a pin that is honest about everything except a letter.
+    """
+    yield tag
+    yield tag[1:] if tag.startswith("v") else "v" + tag
+
+
 def commit_for_tag(repo, tag):
     """The commit a tag points at, asked of the repository over git.
 
@@ -141,12 +155,20 @@ def check_comment(repo, sha, comment):
         return "no comment saying what this SHA is"
 
     if TAG_COMMENT.match(comment):
-        actual = commit_for_tag(repo, comment)
-        if actual is None:
-            return f"comment says {comment}, which is not a tag of {repo}"
-        if actual != sha:
-            return f"comment says {comment}, which is {actual[:12]}"
-        return None
+        tried = list(variants(comment))
+        # Every spelling is resolved before any is judged. Stopping at the
+        # first one that exists would fail a correct pin in the case where both
+        # spellings are tags of different commits and the pin names the second.
+        found = [(tag, commit_for_tag(repo, tag)) for tag in tried]
+        resolved = [(tag, actual) for tag, actual in found if actual]
+        if any(actual == sha for _, actual in resolved):
+            return None
+        if resolved:
+            # Report the spelling that resolved, since that is the tag whose
+            # commit the reader can go and look at.
+            tag, actual = resolved[0]
+            return f"comment says {comment}, but {tag} is {actual[:12]}"
+        return f"comment says {comment}, and {repo} has no tag {' or '.join(tried)}"
 
     if DATE_COMMENT.match(comment):
         dates = commit_dates(repo, sha)

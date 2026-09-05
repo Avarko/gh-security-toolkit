@@ -88,7 +88,7 @@ The bundled `.trivy.yaml`/`.trivyignore` in the repo root apply automatically, s
 
 ### What produced a scan
 
-Every scan begins by saying what it ran:
+Every Trivy scan begins by saying what it ran:
 
 ```
 ==> gh-security-toolkit: image 'main' published 2026-09-04, digest sha256:38a4dce76a2a, revision 2b8427fa9c17
@@ -108,6 +108,12 @@ overnight — while the digest and version are what they need when the run has t
 be reproduced exactly.
 
 Both go to stderr, so neither lands in a report redirected to a file.
+
+`sec/scan/semgrep` prints neither, and `sec/scan` therefore reports provenance
+for the Trivy half of its work only. Semgrep matches rules shipped inside the
+image rather than a vulnerability database, so the second line would have
+nothing true to say — and printing it would mean downloading a database the
+scan never reads.
 
 This matters because a tag is not an answer. `main` moves, and two developers
 scanning the same code on the same day can get different findings with nothing
