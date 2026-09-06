@@ -119,10 +119,12 @@ having failed and nothing having said so.
 Both go to stderr, so neither lands in a report redirected to a file.
 
 `sec/scan/semgrep` prints neither, and `sec/scan` therefore reports provenance
-for the Trivy half of its work only. Semgrep matches rules shipped inside the
-image rather than a vulnerability database, so the second line would have
-nothing true to say — and printing it would mean downloading a database the
-scan never reads.
+for the Trivy half of its work only. It runs a pinned Semgrep image over
+rulesets fetched from `semgrep.dev`, so the database line would have nothing
+true to say and printing it would mean downloading a database the scan never
+reads. What that leaves unsaid is the ruleset version, which the registry does
+not offer — a `p/` ruleset is whatever it is on the day, and two scans of the
+same commit a month apart can differ for that reason alone.
 
 This matters because a tag is not an answer. `main` moves, and two developers
 scanning the same code on the same day can get different findings with nothing
@@ -183,6 +185,17 @@ Everything that can be answered from what is already on the machine still is —
 versions, digests, the commit behind the image, how old the database is. The
 one thing that changes is that nothing claims to have looked.
 
+`sec/scan/semgrep` is skipped outright and says so, because there is nothing it
+could do: its rulesets come from `semgrep.dev` on every run and it has no
+offline mode to fall back on. `sec/scan` therefore does the Trivy half and
+reports the Semgrep half as skipped, rather than failing on a traceback halfway
+through:
+
+```
+⏭️  Skipping Semgrep: its rulesets are fetched from semgrep.dev and GHST_OFFLINE=1.
+   The Trivy scans do run air-gapped; this one has nothing to run without a network.
+```
+
 ### What keeps itself current
 
 Publishing a new version of the toolkit should not require asking anybody to
@@ -196,7 +209,8 @@ old data.
 | Scanner image | Docker | `docker pull` when the last check is more than `__GHST_IMAGE_MAX_AGE_DAYS` (1) old. The image it replaces is removed if nothing else tags it. | Scan refuses once nothing has confirmed it for `__GHST_MAX_STALE_DAYS` (14). |
 | Trivy databases | `~/.cache/gh-security-toolkit/trivy-db` | The helper updates them incrementally, applying deltas rather than re-downloading. | Scan refuses at `__GHST_DB_MAX_AGE_DAYS` (14). |
 | Containers | Docker | Nothing to refresh: every run is `--rm`, so none are kept. | — |
-| `semgrep/semgrep:latest` | Docker | **Nothing pulls it.** Docker runs whatever was cached the first time, for as long as that image exists. | Not covered. |
+| Semgrep | Docker | Pinned to an exact version **and digest**, so Docker fetches it once and it cannot change until the pin moves. Bumping it is a deliberate edit, matched by CI's `pip install semgrep==`. | Not applicable: it cannot go stale without someone moving the pin. |
+| Semgrep rulesets | `semgrep.dev` | Fetched on every scan, so they are always current — and never reproducible. | Scan fails; Semgrep has no offline mode. |
 
 `GHST_OFFLINE=1` turns all of it off, including the refusals — an air-gapped
 machine is not a broken one. That is the intended way to run without a
@@ -214,8 +228,12 @@ scanner image, so it is held to this file being current but not to that image
 having been pulled — making it wait on a pull it has no use for would be a toll
 rather than a safeguard. Every Trivy scan is held to both.
 
-The last row is a real gap rather than an oversight: pinning Semgrep would
-change what its scans report, so it is left to be decided on its own.
+Semgrep is the exception to all of this and the table says so twice. It is the
+only scanner that needs the network *while it runs*: its rulesets live in a
+registry, and under `--network=none` it does not degrade but dies, with a
+Python traceback and exit 2. So `GHST_OFFLINE=1` skips it rather than leaving
+it to crash, and an air-gapped scan means the Trivy half. A repository with its
+own `.semgrep.yaml` is not subject to that, since local rules need no registry.
 
 ### Ignore CVEs
 
@@ -393,7 +411,6 @@ gh-security-toolkit/
 │
 ├─ scripts/                     # JBang processing scripts
 │  ├─ github_pages_builder.java
-│  ├─ semgrep_summarize.java
 │  ├─ slack_integration.java
 │  └─ trivy_summarize.java
 │
@@ -754,11 +771,6 @@ channel: nightly-production  # Same history!
 jbang scripts/trivy_summarize.java \
   trivy-results.json \
   50 \
-  output-dir
-
-# Semgrep summary
-jbang scripts/semgrep_summarize.java \
-  semgrep-results.json \
   output-dir
 
 # GitHub Pages builder

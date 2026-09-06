@@ -670,33 +670,67 @@ sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 	$(__GHST_IMAGE) trivy image $(IMAGE) --format $(__GHST_TRIVY_FORMAT)
 
 # ============================================================================
-# Semgrep - Automatically uses .semgrep.yaml if present
+# Semgrep - uses .semgrep.yaml or .semgrep.yml if present
+#
+# The one scanner here that needs the network while it runs, which is worth
+# stating plainly because every other one is emphatic about not having it. The
+# p/ rulesets are fetched from semgrep.dev on each scan: under --network=none
+# Semgrep does not degrade, it dies -- a requests ConnectionError traceback and
+# exit 2. So GHST_OFFLINE=1 skips this target rather than leaving it to crash,
+# and "air-gapped" in this toolkit means the Trivy scans.
+#
+# A repository with its own .semgrep.yaml can be scanned without the registry,
+# unless that file pulls p/ rules of its own. Nothing here assumes either way.
 # ============================================================================
 
-SEMGREP_IMAGE_TAG ?= latest
-SEMGREP_DOCKER_OPTS := --rm -v $(PWD):/src:ro -w /src
+# Pinned to an exact version and digest, for the reason every action here is
+# pinned to a SHA: a tag moves and nothing ships. It was "latest" before, which
+# combined badly with nothing ever pulling it -- Docker kept whatever it had
+# first cached, indefinitely, so two developers could get different findings
+# from the same commit and neither could tell.
+#
+# actions/scanner/semgrep installs this same version with pip, so a local scan
+# and a CI scan run the same Semgrep. scripts/check-semgrep-config.py fails the
+# build if the two drift apart. Bumping means moving both, plus the digest:
+#   docker buildx imagetools inspect semgrep/semgrep:<version> --format '{{.Manifest.Digest}}'
+SEMGREP_VERSION ?= 1.176.1
+SEMGREP_DIGEST ?= sha256:34ab619bf1391a24bfda3f05debd0d8a6ce3093c2d5f9d39cfc00f83c1397823
+SEMGREP_IMAGE ?= semgrep/semgrep:$(SEMGREP_VERSION)@$(SEMGREP_DIGEST)
+
+# The same rulesets CI runs. They were different lists in three files, so a
+# local scan and a CI scan disagreed about what they had checked -- this one is
+# the union of what each used to have. check-semgrep-config.py keeps the three
+# in step.
+SEMGREP_CONFIGS ?= p/owasp-top-ten p/cwe-top-25 p/java p/javascript p/docker-compose p/dockerfile p/terraform p/secrets
+
+# Run as the invoking user, like every Trivy scan, rather than as root because
+# the image happens to default to it. HOME is set for the same reason it is
+# there: Semgrep wants somewhere writable for its own scratch state, and the
+# workspace is mounted read-only.
+SEMGREP_DOCKER_OPTS := --rm $(__GHST_USER_OPTS) \
+	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
+	-v $(PWD):/src:ro -w /src
 
 .PHONY: sec/scan/semgrep
 sec/scan/semgrep: __ghst-floor-makefile # Scan code with Semgrep (uses .semgrep.yaml config)
-	@echo "🔍 Scanning code with Semgrep..."
-	@if [ -f .semgrep.yaml ] || [ -f .semgrep.yml ]; then \
-		echo "ℹ️  Using .semgrep.yaml configuration"; \
-		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) semgrep/semgrep:$(SEMGREP_IMAGE_TAG) \
-			semgrep scan --config=.semgrep.yaml --metrics=off .; \
+	@if [ "$(GHST_OFFLINE)" = "1" ]; then \
+		echo "⏭️  Skipping Semgrep: its rulesets are fetched from semgrep.dev and GHST_OFFLINE=1."; \
+		echo "   The Trivy scans do run air-gapped; this one has nothing to run without a network."; \
+		exit 0; \
+	fi; \
+	echo "🔍 Scanning code with Semgrep $(SEMGREP_VERSION)..."; \
+	config=""; \
+	for candidate in .semgrep.yaml .semgrep.yml; do \
+		if [ -f "$$candidate" ]; then config="$$candidate"; break; fi; \
+	done; \
+	if [ -n "$$config" ]; then \
+		echo "ℹ️  Using $$config"; \
+		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) $(SEMGREP_IMAGE) \
+			semgrep scan --config="$$config" --metrics=off .; \
 	else \
 		echo "ℹ️  Using pre-defined rulesets"; \
-		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) semgrep/semgrep:$(SEMGREP_IMAGE_TAG) \
-			semgrep scan \
-			--config p/owasp-top-ten \
-			--config p/cwe-top-25 \
-			--config p/java \
-			--config p/javascript \
-			--config p/docker-compose \
-			--config p/dockerfile \
-			--config p/terraform \
-			--config p/secrets \
-			--metrics=off \
-			.; \
+		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) $(SEMGREP_IMAGE) \
+			semgrep scan $(addprefix --config ,$(SEMGREP_CONFIGS)) --metrics=off .; \
 	fi
 
 # ============================================================================
