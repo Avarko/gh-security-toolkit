@@ -344,7 +344,7 @@ jobs:
 
       - name: Checkout repository
         if: inputs.operation == 'DELETE_SCAN'
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup JBang
         if: inputs.operation == 'DELETE_SCAN'
@@ -437,7 +437,7 @@ jobs:
 
       - name: Upload updated site data artifact
         if: inputs.operation == 'DELETE_SCAN'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: __gh_security_toolkit__github_pages_site_data
           path: scan-history-updated.tar.gz

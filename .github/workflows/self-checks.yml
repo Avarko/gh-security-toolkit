@@ -27,7 +27,7 @@ jobs:
     name: Actions hygiene
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: "No expressions inside run: bodies"
         run: python3 scripts/check-no-expressions-in-run.py
@@ -59,7 +59,7 @@ jobs:
       run:
         working-directory: dashboard
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
@@ -89,12 +89,12 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Scanned with Trivy directly rather than through the toolkit image,
       # so a vulnerability in the toolkit cannot suppress its own report.
       - name: Scan the published toolkit image
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: ghcr.io/avarko/gh-security-toolkit:main
           # Pinned rather than left to the action's default, which trailed the
