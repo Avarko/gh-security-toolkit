@@ -28,7 +28,7 @@ jobs:
       labels: ${{ steps.meta.outputs.labels }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Login to GHCR
         uses: docker/login-action@v4
@@ -83,7 +83,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq openssl
 
       - name: Setup go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: '1.25.x'
 
@@ -142,17 +142,26 @@ jobs:
           CONTEXT="${CONTEXT}"
 
           # Pinned rather than resolved to releases/latest, because here newer
-          # is not safer. v0.22.0 dropped upstream's .go-version file in favour
-          # of go.mod's toolchain directive, but their release workflow sets
-          # GOTOOLCHAIN=local -- and setup-go skips the toolchain directive
-          # when that is set, falling back to the `go` directive. That one is a
-          # minimum-version floor (1.25.0), so v0.22.0 ships built with
-          # go1.25.0 where v0.21.9 shipped go1.26.5, carrying 14 extra
-          # unpatched stdlib highs. The floor only moves when upstream drops
-          # support for an old Go, so later releases inherit this until they
-          # notice. Before bumping, check the candidate: `go version -m crane`
-          # has to name a toolchain that covers the current stdlib advisories.
-          ver_crane=v0.21.9
+          # is not automatically safer. v0.22.0 dropped upstream's .go-version
+          # file in favour of go.mod's toolchain directive, but their release
+          # workflow sets GOTOOLCHAIN=local -- and setup-go skips the toolchain
+          # directive when that is set, falling back to the `go` directive.
+          # That one is a minimum-version floor, then reading 1.25.0, so
+          # v0.22.0 shipped built with go1.25.0 where v0.21.9 had shipped
+          # go1.26.5, carrying 14 extra unpatched stdlib highs. We held at
+          # v0.21.9 and waited for upstream to notice.
+          #
+          # They did. v0.22.1 declares `toolchain go1.26.6`, and both published
+          # Linux binaries verify as built with it, which clears the eight
+          # stdlib highs v0.21.9's go1.26.5 had accumulated by then. The pin
+          # stays a pin: what went wrong in v0.22.0 can recur the same way and
+          # just as quietly, since the floor only moves when upstream drops
+          # support for an old Go. Before bumping, check the candidate by hand
+          # -- download the release and run `go version -m crane`, which has to
+          # name a toolchain covering the current stdlib advisories. go.mod
+          # alone does not settle it; the v0.22.0 build disagreed with what its
+          # own go.mod asked for, and that is the whole reason for this pin.
+          ver_crane=v0.22.1
           echo "ver_crane=$ver_crane" >> "$GITHUB_OUTPUT"
 
           curl -sL "https://github.com/google/go-containerregistry/releases/download/${ver_crane}/multiple.intoto.jsonl" -o crane-provenance.intoto.jsonl
