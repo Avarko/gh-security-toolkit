@@ -6,8 +6,9 @@ Two rules, and the second is the one experience argued for.
 First: every third-party step inside actions/**/action.yml is pinned to a
 commit SHA. These run on the consumer's runner -- someone using
 security-scan@v1 executes them with that repository's token -- so a moved tag
-is a change to code we ship without shipping anything. Workflow files here are
-deliberately out of scope: they run only on this repository.
+is a change to code we ship without shipping anything. Workflow files are
+exempt from this one rule: they run only on this repository, and requiring a
+SHA for all thirteen of them is a decision nobody has made yet.
 
 Second: the "# v1.2.3" after a SHA is resolved against the tag it names. That
 comment is the only human-readable part of the pin and nothing has been
@@ -17,6 +18,13 @@ what runs still point at a release three majors back. It happened -- an
 upload-artifact pinned at v4.6.2 wearing a "# v7.0.1" label, found by review
 rather than by CI. A wrong comment is worse than no comment, because it is
 believed.
+
+The second rule applies to the workflows too, exemption from the first
+notwithstanding. Not having to pin is not the same as being allowed to pin to
+a lie: a workflow that has gone to the trouble of naming a commit is read by
+the same people, who believe the comment for the same reason. It costs an
+unpinned file nothing, since a file with no SHA pins gives it nothing to
+check.
 
 Where a pin names a commit with no tag, the comment carries the commit's date
 instead ("# Nov 11, 2025") and that is checked the same way.
