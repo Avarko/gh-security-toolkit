@@ -10,7 +10,7 @@ inputs:
     required: false
     default: ""
   trivy_config:
-    description: "Path to .trivy.yaml config file"
+    description: "Path to a Trivy config file, passed as --config. Only needed for one Trivy would not find itself; a trivy.yaml in the repository root is picked up without this."
     required: false
     default: ""
   trivy_severity:
