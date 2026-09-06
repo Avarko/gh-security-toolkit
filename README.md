@@ -119,10 +119,12 @@ having failed and nothing having said so.
 Both go to stderr, so neither lands in a report redirected to a file.
 
 `sec/scan/semgrep` prints neither, and `sec/scan` therefore reports provenance
-for the Trivy half of its work only. Semgrep matches rules shipped inside the
-image rather than a vulnerability database, so the second line would have
-nothing true to say — and printing it would mean downloading a database the
-scan never reads.
+for the Trivy half of its work only. It runs a pinned Semgrep image over
+rulesets fetched from `semgrep.dev`, so the database line would have nothing
+true to say and printing it would mean downloading a database the scan never
+reads. What that leaves unsaid is the ruleset version, which the registry does
+not offer — a `p/` ruleset is whatever it is on the day, and two scans of the
+same commit a month apart can differ for that reason alone.
 
 This matters because a tag is not an answer. `main` moves, and two developers
 scanning the same code on the same day can get different findings with nothing
@@ -148,15 +150,20 @@ repository set up in March is still running March's scan commands today, and
 moving the `v1` tag does nothing for it. A moved tag only reaches a machine
 that fetches again.
 
-Nothing can fix that on its own without this file rewriting itself in the
-middle of your build, so it reports instead. Once a day it compares its own
-sha256 against what is published at the version you pinned, and if they differ
-every scan says so:
+It fixes itself now, without ever rewriting itself behind your back. Once a
+day it fetches what is published at the version you pinned and compares the
+two files. When they differ it says so, and it marks itself out of date -- which
+makes Make re-fetch it through the include rule your own Makefile already has,
+before the next scan starts, restarting with the new file in the same command.
+The scan that discovers the update still runs on the old file; the one after it
+does not.
+
+While it is out of date, every scan says so:
 
 ```
     note: these scan commands are not the ones published at 'v1'
-          (checked 4 min ago). The image and database update themselves;
-          this file is fetched once. Run 'make sec/update'.
+          (checked 4 min ago). The next run with a
+          network re-fetches this file and restarts with it.
 ```
 
 Content, not version — pinning to a moving tag means the version string is
@@ -177,6 +184,56 @@ banner reports the checks it did not make as not made:
 Everything that can be answered from what is already on the machine still is —
 versions, digests, the commit behind the image, how old the database is. The
 one thing that changes is that nothing claims to have looked.
+
+`sec/scan/semgrep` is skipped outright and says so, because there is nothing it
+could do: its rulesets come from `semgrep.dev` on every run and it has no
+offline mode to fall back on. `sec/scan` therefore does the Trivy half and
+reports the Semgrep half as skipped, rather than failing on a traceback halfway
+through:
+
+```
+⏭️  Skipping Semgrep: its rulesets are fetched from semgrep.dev and GHST_OFFLINE=1.
+   The Trivy scans do run air-gapped; this one has nothing to run without a network.
+```
+
+### What keeps itself current
+
+Publishing a new version of the toolkit should not require asking anybody to
+run anything. Every part of what a scan uses refreshes on its own, and the
+parts that cannot reach the network refuse rather than quietly scanning with
+old data.
+
+| Artefact | Where it lives | How it refreshes | If it cannot |
+| --- | --- | --- | --- |
+| `Makefile.scanners` | `.gh-security-toolkit/` in your repository | Compared against the published file once a day during a scan. When a newer one exists, the next scan re-fetches it through your own include rule and Make restarts with it. | Scan refuses once nothing has confirmed it for `__GHST_MAX_STALE_DAYS` (14), unless the host has no `cmp` or no `curl` and so could never have compared them. |
+| Scanner image | Docker | `docker pull` when the last check is more than `__GHST_IMAGE_MAX_AGE_DAYS` (1) old. The image it replaces is removed if nothing else tags it. | Scan refuses once nothing has confirmed it for `__GHST_MAX_STALE_DAYS` (14). |
+| Trivy databases | `~/.cache/gh-security-toolkit/trivy-db` | The helper updates them incrementally, applying deltas rather than re-downloading. | Scan refuses at `__GHST_DB_MAX_AGE_DAYS` (14). |
+| Containers | Docker | Nothing to refresh: every run is `--rm`, so none are kept. | — |
+| Semgrep | Docker | Pinned to an exact version **and digest**, so Docker fetches it once and it cannot change until the pin moves. Bumping it is a deliberate edit, matched by CI's `pip install semgrep==`. | Not applicable: it cannot go stale without someone moving the pin. |
+| Semgrep rulesets | `semgrep.dev` | Fetched on every scan, so they are always current — and never reproducible. | Scan fails; Semgrep has no offline mode. |
+
+`GHST_OFFLINE=1` turns all of it off, including the refusals and including the
+re-fetch itself — an air-gapped machine is not a broken one. That is the intended way to run without a
+network, and the reason the refusals name it.
+
+The one exemption is deliberate. "We asked and got no answer" and "we have no
+way to ask" are different, and only the first is worth refusing over: a host
+missing `cmp` or `curl` would otherwise be told, a fortnight later, to fix a
+network that was never the problem. The scanner image is still enforced there,
+since pulling it needs neither.
+
+The two refusals apply where each is relevant, which is not the same set of
+scans. `sec/scan/semgrep` runs out of Semgrep's own image and never touches the
+scanner image, so it is held to this file being current but not to that image
+having been pulled — making it wait on a pull it has no use for would be a toll
+rather than a safeguard. Every Trivy scan is held to both.
+
+Semgrep is the exception to all of this and the table says so twice. It is the
+only scanner that needs the network *while it runs*: its rulesets live in a
+registry, and under `--network=none` it does not degrade but dies, with a
+Python traceback and exit 2. So `GHST_OFFLINE=1` skips it rather than leaving
+it to crash, and an air-gapped scan means the Trivy half. A repository with its
+own `.semgrep.yaml` is not subject to that, since local rules need no registry.
 
 ### Ignore CVEs
 
@@ -354,7 +411,6 @@ gh-security-toolkit/
 │
 ├─ scripts/                     # JBang processing scripts
 │  ├─ github_pages_builder.java
-│  ├─ semgrep_summarize.java
 │  ├─ slack_integration.java
 │  └─ trivy_summarize.java
 │
@@ -715,11 +771,6 @@ channel: nightly-production  # Same history!
 jbang scripts/trivy_summarize.java \
   trivy-results.json \
   50 \
-  output-dir
-
-# Semgrep summary
-jbang scripts/semgrep_summarize.java \
-  semgrep-results.json \
   output-dir
 
 # GitHub Pages builder

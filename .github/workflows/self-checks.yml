@@ -43,6 +43,13 @@ jobs:
       - name: Third-party pins say what they are
         run: python3 scripts/check-action-pins.py
 
+      # Semgrep is declared in three files that cannot share a variable, and
+      # they had already drifted: eight rulesets locally against six in CI,
+      # and two different Semgrep builds. A finding that shows up in one place
+      # and not the other then looks like a change in the code.
+      - name: Semgrep is configured the same way everywhere
+        run: python3 scripts/check-semgrep-config.py
+
       - name: Workflows and actions parse
         run: |
           set -euo pipefail

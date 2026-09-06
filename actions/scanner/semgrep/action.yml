@@ -10,7 +10,7 @@ inputs:
   semgrep_configs:
     description: "Semgrep rulesets to use (comma-separated)"
     required: false
-    default: "p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets"
+    default: "p/owasp-top-ten,p/cwe-top-25,p/java,p/javascript,p/docker-compose,p/dockerfile,p/terraform,p/secrets"
 runs:
   using: "composite"
   steps:
@@ -18,81 +18,32 @@ runs:
       shell: bash
       run: mkdir -p "${{ inputs.semgrep_output_dir }}"
 
+    # Pinned, because this installs on the consumer's runner with the
+    # consumer's token in the environment. It read "pip3 install semgrep",
+    # which resolved to whatever PyPI served that minute -- the same shape as
+    # the curl-into-bash that used to hide behind a SHA-pinned setup-jbang,
+    # and no better for being spelled in Python.
+    #
+    # The version matches SEMGREP_VERSION in Makefile.scanners so that a local
+    # scan and a CI scan run the same Semgrep on the same code and agree about
+    # what they found. scripts/check-semgrep-config.py fails the build if they
+    # drift. The pip upgrade that used to run first is gone: it mutated the
+    # runner's global pip to no purpose here.
     - name: Setup Semgrep
       shell: bash
-      run: |
-        python3 -m pip install --upgrade pip
-        pip3 install semgrep
+      run: pip3 install --disable-pip-version-check semgrep==1.176.1
 
-    - name: Create .semgrepignore
-      shell: bash
-      working-directory: ${{ inputs.filesystem_path }}
-      run: |
-        cat > .semgrepignore << 'EOF'
-        # Version control
-        .git/
-        .svn/
-        .hg/
-
-        # Dependencies
-        node_modules/
-        vendor/
-
-        # Build outputs (Java/JVM)
-        target/
-        build/
-        out/
-        bin/
-
-        # Build outputs (JavaScript/TypeScript)
-        dist/
-        .next/
-        .nuxt/
-
-        # Build outputs (Python)
-        __pycache__/
-        *.pyc
-        .pytest_cache/
-        venv/
-        .venv/
-
-        # Build outputs (Go)
-        *.exe
-        *.test
-
-        # Build outputs (.NET)
-        obj/
-
-        # IDE
-        .idea/
-        .vscode/
-        *.iml
-
-        # Test coverage
-        coverage/
-        .coverage
-        htmlcov/
-
-        # Generated files
-        *.min.js
-        *.min.css
-        *.map
-
-        # Lock files (often large, low value)
-        package-lock.json
-        yarn.lock
-        pnpm-lock.yaml
-        Gemfile.lock
-        Pipfile.lock
-        poetry.lock
-
-        # Documentation
-        docs/
-        documentation/
-        EOF
-
-        echo "Created .semgrepignore with common exclusions"
-
+    # --no-git-ignore is gone, and so is the .semgrepignore this step used to
+    # write into the consumer's checkout. That file was a hand-maintained list
+    # of node_modules, dist, target and the rest -- clobbering whatever the
+    # repository had there, which the README documents as a supported way to
+    # configure a scan. It was also unnecessary: Semgrep skips those
+    # directories on its own. Checked, on a tree with no .gitignore and no
+    # .semgrepignore at all, Semgrep scanned src/f.js and left node_modules
+    # and dist alone.
+    #
+    # Dropping both means CI now honours .gitignore and any .semgrepignore the
+    # repository actually has, which is what the local scan has always done.
     - name: Run Semgrep scan (JSON for parsing)
       shell: bash
       working-directory: ${{ inputs.filesystem_path }}
@@ -100,27 +51,57 @@ runs:
         INPUT_SEMGREP_CONFIGS: ${{ inputs.semgrep_configs }}
         INPUT_SEMGREP_OUTPUT_DIR: ${{ inputs.semgrep_output_dir }}
       run: |
-        # Split comma-separated configs into --config flags
-        CONFIGS="${INPUT_SEMGREP_CONFIGS}"
-        CONFIG_FLAGS=""
-        IFS=',' read -ra CONFIG_ARRAY <<< "$CONFIGS"
+        set -euo pipefail
+
+        # Built as an array so a ruleset name is one argument whatever it
+        # contains, rather than whatever word splitting makes of it.
+        CONFIG_FLAGS=()
+        IFS=',' read -ra CONFIG_ARRAY <<< "${INPUT_SEMGREP_CONFIGS}"
         for cfg in "${CONFIG_ARRAY[@]}"; do
-          CONFIG_FLAGS="$CONFIG_FLAGS --config $(echo $cfg | xargs)"
+          trimmed="$(echo "$cfg" | tr -d '[:space:]')"
+          [ -n "$trimmed" ] && CONFIG_FLAGS+=(--config "$trimmed")
         done
 
-        echo "Running Semgrep with configs: $CONFIG_FLAGS"
+        echo "Running Semgrep ${CONFIG_FLAGS[*]}"
 
-        # Run Semgrep JSON output (quiet mode to suppress progress output)
+        # No "|| true". Semgrep exits 0 whether or not it found anything and
+        # 2 or more when it could not run, so swallowing that turned a scan
+        # that never happened into a scan that found nothing.
+        rc=0
         semgrep scan \
-          $CONFIG_FLAGS \
+          "${CONFIG_FLAGS[@]}" \
           --json \
           --quiet \
           --metrics=off \
-          --no-git-ignore \
-          . > "${INPUT_SEMGREP_OUTPUT_DIR}/semgrep-results.json" || true
+          . > "${INPUT_SEMGREP_OUTPUT_DIR}/semgrep-results.json" || rc=$?
+
+        if [ "$rc" -ne 0 ]; then
+          echo "::error::Semgrep exited $rc; no usable results were produced." >&2
+          exit "$rc"
+        fi
+
+        # A zero exit is not enough on its own. Semgrep reports a ruleset it
+        # could not load in .errors[] and still writes a well-formed file with
+        # an empty .results[], which reads downstream as a clean scan.
+        #
+        # A missing .errors needs no guard, though review read it as one that
+        # does: in jq "null | length" is 0, not null, so output with no errors
+        # key counts as zero errors and passes. Checked against
+        # scripts/test-fixtures/semgrep-results.json, which has no errors key.
+        ERRORS=$(jq '.errors | length' "${INPUT_SEMGREP_OUTPUT_DIR}/semgrep-results.json")
+        if [ "$ERRORS" -gt 0 ]; then
+          echo "::error::Semgrep reported $ERRORS error(s); the findings below would be incomplete." >&2
+          jq -r '.errors[] | "  - " + (.message // .type // "unknown")' \
+            "${INPUT_SEMGREP_OUTPUT_DIR}/semgrep-results.json" >&2
+          exit 1
+        fi
 
         echo "Semgrep JSON scan completed"
 
+    # Best-effort, unlike the run above: this one only renders what the JSON
+    # already established, so a failure here costs a nicer report and not the
+    # result. Semgrep cannot write two formats in one run -- "--output cannot
+    # be repeated" -- which is why the scan happens twice.
     - name: Run Semgrep scan (text for full report)
       shell: bash
       working-directory: ${{ inputs.filesystem_path }}
@@ -128,19 +109,16 @@ runs:
         INPUT_SEMGREP_CONFIGS: ${{ inputs.semgrep_configs }}
         INPUT_SEMGREP_OUTPUT_DIR: ${{ inputs.semgrep_output_dir }}
       run: |
-        # Split comma-separated configs into --config flags
-        CONFIGS="${INPUT_SEMGREP_CONFIGS}"
-        CONFIG_FLAGS=""
-        IFS=',' read -ra CONFIG_ARRAY <<< "$CONFIGS"
+        CONFIG_FLAGS=()
+        IFS=',' read -ra CONFIG_ARRAY <<< "${INPUT_SEMGREP_CONFIGS}"
         for cfg in "${CONFIG_ARRAY[@]}"; do
-          CONFIG_FLAGS="$CONFIG_FLAGS --config $(echo $cfg | xargs)"
+          trimmed="$(echo "$cfg" | tr -d '[:space:]')"
+          [ -n "$trimmed" ] && CONFIG_FLAGS+=(--config "$trimmed")
         done
 
-        # Run Semgrep text output for full report
         semgrep scan \
-          $CONFIG_FLAGS \
+          "${CONFIG_FLAGS[@]}" \
           --metrics=off \
-          --no-git-ignore \
           . > "${INPUT_SEMGREP_OUTPUT_DIR}/semgrep-full-report.txt" 2>&1 || true
 
     - name: Create full report markdown
