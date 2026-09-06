@@ -212,8 +212,8 @@ old data.
 | Semgrep | Docker | Pinned to an exact version **and digest**, so Docker fetches it once and it cannot change until the pin moves. Bumping it is a deliberate edit, matched by CI's `pip install semgrep==`. | Not applicable: it cannot go stale without someone moving the pin. |
 | Semgrep rulesets | `semgrep.dev` | Fetched on every scan, so they are always current — and never reproducible. | Scan fails; Semgrep has no offline mode. |
 
-`GHST_OFFLINE=1` turns all of it off, including the refusals — an air-gapped
-machine is not a broken one. That is the intended way to run without a
+`GHST_OFFLINE=1` turns all of it off, including the refusals and including the
+re-fetch itself — an air-gapped machine is not a broken one. That is the intended way to run without a
 network, and the reason the refusals name it.
 
 The one exemption is deliberate. "We asked and got no answer" and "we have no
