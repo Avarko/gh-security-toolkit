@@ -402,32 +402,46 @@ $(__GHST_SELF_TRIGGER):
 
 __GHST_MAX_STALE_DAYS ?= 14
 
+# Two halves rather than one, because they guard different things at different
+# prices. Semgrep runs out of its own image and never touches the scanner
+# image, so making a Semgrep scan wait on a docker pull it has no use for --
+# or refusing it because that pull has not happened -- would be a toll and not
+# a safeguard. It does depend on this file being current, because the command
+# line it runs is written here, so it takes the Makefile half.
+#
+# Make stops at the first prerequisite that fails, so a machine stale in both
+# respects is told about one, fixes it, and is then told about the other.
+# Listing both at once was the earlier shape and cost the split; being told
+# the truth twice is better than being told half of it in one go.
+#
+# $(1) confirmation stamp   $(2) what to call it   $(3) verdict stamp, if any
+define __ghst-floor-check
+if [ "$(GHST_OFFLINE)" = "1" ]; then exit 0; fi; \
+mkdir -p "$(dir $(1))"; \
+if [ -n "$(3)" ] && [ "$$(cat "$(3)" 2>/dev/null)" = "unsupported" ]; then \
+	echo "⚠️  This host has no cmp or no curl, so $(__GHST_SELF) cannot be compared with the published one. Its age is reported but not enforced." >&2; \
+	exit 0; \
+fi; \
+if [ ! -e "$(1)" ]; then touch "$(1)"; exit 0; fi; \
+age=$$(( ( $$(date +%s) - $$(stat -c %Y "$(1)" 2>/dev/null || stat -f %m "$(1)" 2>/dev/null || echo 0) ) / 86400 )); \
+if [ "$$age" -lt "$(__GHST_MAX_STALE_DAYS)" ]; then exit 0; fi; \
+echo "❌ Refusing to scan: nothing has confirmed $(2) for $$age days." >&2; \
+echo "   A scan against a stale toolkit reports clean for everything published since." >&2; \
+echo "   Fix the network and re-run, or run 'make sec/update' to re-fetch by hand." >&2; \
+echo "   On a machine that is meant to be air-gapped, set GHST_OFFLINE=1." >&2; \
+exit 1
+endef
+
+.PHONY: __ghst-floor-makefile
+__ghst-floor-makefile: __ghst-self-check
+	@$(call __ghst-floor-check,$(__GHST_SELF_CONFIRMED),this toolkit Makefile,$(__GHST_SELF_STAMP))
+
+.PHONY: __ghst-floor-image
+__ghst-floor-image: __ghst-image-ensure
+	@$(call __ghst-floor-check,$(__GHST_IMAGE_CONFIRMED),the scanner image,)
+
 .PHONY: __ghst-freshness-floor
-__ghst-freshness-floor: __ghst-self-check __ghst-image-ensure
-	@if [ "$(GHST_OFFLINE)" = "1" ]; then exit 0; fi; \
-	mkdir -p "$(dir $(__GHST_SELF_CONFIRMED))"; \
-	failed=""; \
-	selfverdict=$$(cat "$(__GHST_SELF_STAMP)" 2>/dev/null); \
-	if [ "$$selfverdict" = "unsupported" ]; then \
-		echo "⚠️  This host has no cmp or no curl, so $(__GHST_SELF) cannot be compared with the published one. Its age is reported but not enforced." >&2; \
-	fi; \
-	for pair in "toolkit Makefile|$(__GHST_SELF_CONFIRMED)|$$selfverdict" "scanner image|$(__GHST_IMAGE_CONFIRMED)|"; do \
-		what=$${pair%%|*}; rest=$${pair#*|}; file=$${rest%%|*}; verdict=$${rest#*|}; \
-		if [ "$$verdict" = "unsupported" ]; then continue; fi; \
-		if [ ! -e "$$file" ]; then touch "$$file"; continue; fi; \
-		age=$$(( ( $$(date +%s) - $$(stat -c %Y "$$file" 2>/dev/null || stat -f %m "$$file" 2>/dev/null || echo 0) ) / 86400 )); \
-		if [ "$$age" -ge "$(__GHST_MAX_STALE_DAYS)" ]; then \
-			failed="$$failed   $$what, last confirmed $$age days ago\n"; \
-		fi; \
-	done; \
-	if [ -n "$$failed" ]; then \
-		echo "❌ Refusing to scan: nothing has confirmed for $(__GHST_MAX_STALE_DAYS) days that this is current." >&2; \
-		printf "%b" "$$failed" >&2; \
-		echo "   A scan against a stale toolkit reports clean for everything published since." >&2; \
-		echo "   Fix the network and re-run, or run 'make sec/update' to re-fetch by hand." >&2; \
-		echo "   On a machine that is meant to be air-gapped, set GHST_OFFLINE=1." >&2; \
-		exit 1; \
-	fi
+__ghst-freshness-floor: __ghst-floor-makefile __ghst-floor-image
 
 # ============================================================================
 # Provenance
@@ -663,7 +677,7 @@ SEMGREP_IMAGE_TAG ?= latest
 SEMGREP_DOCKER_OPTS := --rm -v $(PWD):/src:ro -w /src
 
 .PHONY: sec/scan/semgrep
-sec/scan/semgrep: # Scan code with Semgrep (uses .semgrep.yaml config)
+sec/scan/semgrep: __ghst-floor-makefile # Scan code with Semgrep (uses .semgrep.yaml config)
 	@echo "🔍 Scanning code with Semgrep..."
 	@if [ -f .semgrep.yaml ] || [ -f .semgrep.yml ]; then \
 		echo "ℹ️  Using .semgrep.yaml configuration"; \
@@ -713,5 +727,5 @@ sec/scan/clean: # Remove gh-security-toolkit image
 .PHONY: sec/scan/help
 sec/scan/help: # Print help
 	@echo "gh-security-toolkit commands (sec/ namespace):"
-	@grep -E '^sec/[a-zA-Z_/-]+:.*?# .*$$' $(MAKEFILE_LIST) | \
-	awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -hE '^sec/[a-zA-Z_/-]+:.*#' $(MAKEFILE_LIST) | \
+	awk 'BEGIN {FS = ":[^#]*#+[ ]*"}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'

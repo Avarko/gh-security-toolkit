@@ -208,6 +208,12 @@ missing `cmp` or `curl` would otherwise be told, a fortnight later, to fix a
 network that was never the problem. The scanner image is still enforced there,
 since pulling it needs neither.
 
+The two refusals apply where each is relevant, which is not the same set of
+scans. `sec/scan/semgrep` runs out of Semgrep's own image and never touches the
+scanner image, so it is held to this file being current but not to that image
+having been pulled — making it wait on a pull it has no use for would be a toll
+rather than a safeguard. Every Trivy scan is held to both.
+
 The last row is a real gap rather than an oversight: pinning Semgrep would
 change what its scans report, so it is left to be decided on its own.
 
