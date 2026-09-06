@@ -321,6 +321,12 @@ __GHST_SELF_TRIGGER := $(HOME)/.cache/gh-security-toolkit/.makefile-outdated-$(s
 # an empty file compares unequal to this one -- which would tell a developer
 # behind a captive portal that their scan commands are not the published ones.
 # That is the false alarm this whole section exists to avoid.
+#
+# The once-a-day gate does not apply to a "stale" verdict, which is the one
+# state that resolves itself: the re-fetch is already pending, and checking
+# again is how the verdict becomes "current" once it lands. Backdating the
+# stamp was the first way of arranging that, and it made the banner report the
+# backdate as fact -- "checked 20701 days ago", which is 1970 rendered as news.
 
 .PHONY: __ghst-self-check
 __ghst-self-check:
@@ -328,7 +334,7 @@ __ghst-self-check:
 	mkdir -p "$(dir $(__GHST_SELF_STAMP))"; \
 	verdict=$$(cat "$(__GHST_SELF_STAMP)" 2>/dev/null); \
 	case "$$verdict" in current|stale|unknown|unsupported) ;; *) verdict="" ;; esac; \
-	if [ -n "$$verdict" ]; then \
+	if [ -n "$$verdict" ] && [ "$$verdict" != "stale" ]; then \
 		now=$$(date +%s); \
 		checked=$$(stat -c %Y "$(__GHST_SELF_STAMP)" 2>/dev/null || stat -f %m "$(__GHST_SELF_STAMP)"); \
 		[ $$(( (now - checked) / 86400 )) -lt "$(__GHST_SELF_MAX_AGE_DAYS)" ] && exit 0; \
@@ -352,7 +358,6 @@ __ghst-self-check:
 		rm -f "$$body"; \
 		echo stale > "$(__GHST_SELF_STAMP)"; \
 		touch "$(__GHST_SELF_TRIGGER)"; \
-		touch -t 197001020000 "$(__GHST_SELF_STAMP)"; \
 	fi
 
 # The re-fetch itself, and the whole reason the trigger is a file rather than
@@ -452,7 +457,8 @@ age=$$(( ( $$(date +%s) - $$(stat -c %Y "$(1)" 2>/dev/null || stat -f %m "$(1)" 
 if [ "$$age" -lt "$(__GHST_MAX_STALE_DAYS)" ]; then exit 0; fi; \
 echo "❌ Refusing to scan: nothing has confirmed $(2) for $$age days." >&2; \
 echo "   A scan against a stale toolkit reports clean for everything published since." >&2; \
-echo "   Fix the network and re-run, or run 'make sec/update' to re-fetch by hand." >&2; \
+echo "   Fix the network and re-run. To re-fetch by hand, delete" >&2; \
+echo "   $(__GHST_SELF) and run make again." >&2; \
 echo "   On a machine that is meant to be air-gapped, set GHST_OFFLINE=1." >&2; \
 exit 1
 endef
@@ -607,8 +613,8 @@ __ghst-provenance: __ghst-db-ensure __ghst-self-check __ghst-freshness-floor
 	fi; \
 	if [ "$$selfverdict" = "stale" ]; then \
 		echo "    note: these scan commands are not the ones published at '$(__GHST_VERSION)'" >&2; \
-		echo "          (checked $$(stamp_age "$(__GHST_SELF_STAMP)")). The image and database" >&2; \
-		echo "          update themselves; this file is fetched once. Run 'make sec/update'." >&2; \
+		echo "          (checked $$(stamp_age "$(__GHST_SELF_STAMP)")). The next run with a" >&2; \
+		echo "          network re-fetches this file and restarts with it." >&2; \
 	fi
 
 # Reduces the helper's status report to one line: each database with the date

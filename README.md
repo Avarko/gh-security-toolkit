@@ -162,8 +162,8 @@ While it is out of date, every scan says so:
 
 ```
     note: these scan commands are not the ones published at 'v1'
-          (checked 4 min ago). The image and database update themselves;
-          this file is fetched once. Run 'make sec/update'.
+          (checked 4 min ago). The next run with a
+          network re-fetches this file and restarts with it.
 ```
 
 Content, not version — pinning to a moving tag means the version string is
