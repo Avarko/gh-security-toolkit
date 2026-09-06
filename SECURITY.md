@@ -97,8 +97,14 @@ runs during an update, the one moment a client is online by design.
 
 **Stale data fails rather than passes.** `__GHST_DB_MAX_AGE_DAYS` refuses to
 scan against a database older than 14 days, on the reasoning that stale
-vulnerability data reports "clean" for everything published since. The image
-has the same freshness check.
+vulnerability data reports "clean" for everything published since.
+`__GHST_MAX_STALE_DAYS` applies the same rule to the two things that decide
+what a scan even runs: the scanner image and `Makefile.scanners` itself. Both
+normally update on their own -- the image by pull, the Makefile by marking
+itself out of date so Make re-fetches it through the consumer's own include
+rule -- so the refusal is the backstop for a machine where that has not
+happened for a fortnight, not the mechanism. `GHST_OFFLINE=1` disables all
+three, which is what an air-gapped machine is supposed to set.
 
 **Third-party actions carrying real risk are SHA-pinned.**
 `aquasecurity/trivy-action` and `yogeshlonkar/trivy-cache-action` are pinned to

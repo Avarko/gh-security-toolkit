@@ -226,6 +226,11 @@ __ghst-db-ensure: __ghst-image-ensure
 __GHST_IMAGE_MAX_AGE_DAYS ?= 1
 __GHST_IMAGE_STAMP := $(HOME)/.cache/gh-security-toolkit/.image-checked-$(subst /,_,$(__GHST_IMAGE_TAG))
 
+# The registry answering at all is the confirmation, whether it handed over a
+# new image or said the cached one is still newest. Only "unreachable" leaves
+# this untouched, which is what the floor measures.
+__GHST_IMAGE_CONFIRMED := $(HOME)/.cache/gh-security-toolkit/.image-confirmed-$(subst /,_,$(__GHST_IMAGE_TAG))
+
 .PHONY: __ghst-image-ensure
 __ghst-image-ensure:
 	@mkdir -p "$(dir $(__GHST_IMAGE_STAMP))"
@@ -240,11 +245,21 @@ __ghst-image-ensure:
 		[ "$$age_days" -lt "$(__GHST_IMAGE_MAX_AGE_DAYS)" ] && exit 0; \
 	fi; \
 	echo "🔄 Checking for a newer $(__GHST_IMAGE)..."; \
+	before=$$($(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) --format '{{.Id}}' 2>/dev/null || true); \
 	if out=$$($(__GHST_DOCKER_CMD) pull $(__GHST_IMAGE) 2>&1); then \
+		touch "$(__GHST_IMAGE_CONFIRMED)"; \
 		case "$$out" in \
 			*"Image is up to date"*) echo current > "$(__GHST_IMAGE_STAMP)" ;; \
 			*)                       echo updated > "$(__GHST_IMAGE_STAMP)" ;; \
 		esac; \
+		after=$$($(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) --format '{{.Id}}' 2>/dev/null || true); \
+		if [ -n "$$before" ] && [ -n "$$after" ] && [ "$$before" != "$$after" ]; then \
+			if [ "$$($(__GHST_DOCKER_CMD) image inspect "$$before" --format '{{len .RepoTags}}' 2>/dev/null || echo 1)" = "0" ]; then \
+				$(__GHST_DOCKER_CMD) rmi "$$before" >/dev/null 2>&1 \
+					&& echo "🧹 Removed the image this one replaced." \
+					|| true; \
+			fi; \
+		fi; \
 	elif $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) >/dev/null 2>&1; then \
 		echo "⚠️  Could not reach the registry — using the cached image."; \
 		echo unreachable > "$(__GHST_IMAGE_STAMP)"; \
@@ -256,18 +271,20 @@ __ghst-image-ensure:
 # ============================================================================
 # Makefile freshness
 #
-# The image and the database refresh themselves; this file does not, and that
-# is the one gap in "run the scan and you are current". The client's include
-# rule fetches Makefile.scanners once into .gh-security-toolkit/ and has no
-# prerequisites, so Make never rebuilds it. A developer who set this up in
-# March is still running March's scan commands, and moving the v1 tag does
-# nothing for them -- a moved tag only reaches a machine that fetches again.
+# The image and the database refresh themselves. This file used to be the one
+# gap in "run the scan and you are current": the client's include rule fetches
+# Makefile.scanners once into .gh-security-toolkit/ and has no prerequisites,
+# so Make never rebuilt it. A developer who set this up in March was still
+# running March's scan commands, and moving the v1 tag did nothing for them --
+# a moved tag only reaches a machine that fetches again. Closing it is what
+# stops a release needing an email asking everybody to delete a directory.
 #
-# Nothing can fix that automatically without this file overwriting itself
-# mid-build, which is not a thing to do to somebody's repository. So it
-# reports instead, and the report has to be about content rather than about
-# versions: pinning to a moving tag like v1 or main means the version string
-# is identical on both sides while the file behind it has changed.
+# It closes in two halves. This half decides whether a newer file exists, and
+# has to ask about content rather than versions: pinning to a moving tag like
+# v1 or main means the version string is identical on both sides while the
+# file behind it has changed. The other half, further down, turns that answer
+# into a re-fetch without this file ever overwriting itself -- which would be
+# a thing to do to somebody's repository behind their back.
 #
 # One 30 kB fetch a day, no token, no registry. Skipped entirely when offline,
 # where the honest answer is that nobody asked.
@@ -276,6 +293,14 @@ __ghst-image-ensure:
 __GHST_SELF_MAX_AGE_DAYS ?= 1
 __GHST_SELF_URL ?= https://raw.githubusercontent.com/Avarko/gh-security-toolkit/$(__GHST_VERSION)/Makefile.scanners
 __GHST_SELF_STAMP := $(HOME)/.cache/gh-security-toolkit/.makefile-checked-$(subst /,_,$(__GHST_VERSION))
+
+# Touched only when a check confirms this file is the published one. The floor
+# below measures from it, so it has to mean "confirmed", never "attempted".
+__GHST_SELF_CONFIRMED := $(HOME)/.cache/gh-security-toolkit/.makefile-confirmed-$(subst /,_,$(__GHST_VERSION))
+
+# Touched only when a check finds a newer published file, which is what makes
+# the include below out of date and gets it re-fetched.
+__GHST_SELF_TRIGGER := $(HOME)/.cache/gh-security-toolkit/.makefile-outdated-$(subst /,_,$(__GHST_VERSION))
 
 # sha256sum is GNU, shasum is what macOS ships. Neither is worth a dependency
 # check that fails a scan, so the absence of both is reported as unknown.
@@ -309,8 +334,81 @@ __ghst-self-check:
 		echo unknown > "$(__GHST_SELF_STAMP)"; \
 	elif [ "$$mine" = "$$theirs" ]; then \
 		echo current > "$(__GHST_SELF_STAMP)"; \
+		touch "$(__GHST_SELF_CONFIRMED)"; \
 	else \
 		echo stale > "$(__GHST_SELF_STAMP)"; \
+		touch "$(__GHST_SELF_TRIGGER)"; \
+		touch -t 197001020000 "$(__GHST_SELF_STAMP)"; \
+	fi
+
+# The re-fetch itself, and the whole reason the trigger is a file rather than
+# a phony target.
+#
+# GNU Make re-reads an included makefile before it runs anything, and restarts
+# the build if it changed. Naming the trigger as a prerequisite here is enough
+# to get that: the consumer's own rule, the one their Makefile already has,
+# does the fetching, so this reaches a colleague who set the toolkit up months
+# ago without them editing anything. No recipe is given on purpose -- theirs
+# stays in charge, and a repository whose include is spelled differently
+# simply gets no rule and no re-fetch rather than an error.
+#
+# The trigger must be a real file with no prerequisites of its own. A phony in
+# this chain makes the include permanently out of date: Make re-fetches it,
+# restarts, finds it out of date again, and does that until it is killed --
+# measured at four and a half thousand fetches before the loop was stopped.
+# Created stamped 1970 so an install that has never been checked is not
+# instantly considered stale.
+$(__GHST_SELF): $(__GHST_SELF_TRIGGER)
+
+$(__GHST_SELF_TRIGGER):
+	@mkdir -p "$(dir $@)"
+	@touch -t 197001020000 "$@"
+
+# ============================================================================
+# The freshness floor
+#
+# Everything above is best-effort: it heals a stale toolkit on the next scan
+# and says so on this one. This is what happens when it does not work -- the
+# self-update never fires because a repository spells its include differently,
+# or a laptop spends a month off the network. Warnings are the wrong tool for
+# that, because a warning printed on every scan is one people stop reading,
+# and the failure it describes is silent: scanning with a toolkit from March
+# reports clean for everything published since.
+#
+# So it refuses, on the same reasoning and the same default as
+# __GHST_DB_MAX_AGE_DAYS: stale data fails rather than passes. GHST_OFFLINE=1
+# is the way out, and is meant to be -- an air-gapped machine is not a broken
+# one, and saying so out loud is cheaper than every developer discovering the
+# escape hatch by reading the source.
+#
+# Measured from the last confirmation, never from the last attempt. A first
+# install has nothing confirmed yet and starts its clock now, so a flaky
+# network on day one does not refuse a scan that has never had the chance to
+# be current.
+# ============================================================================
+
+__GHST_MAX_STALE_DAYS ?= 14
+
+.PHONY: __ghst-freshness-floor
+__ghst-freshness-floor: __ghst-self-check __ghst-image-ensure
+	@if [ "$(GHST_OFFLINE)" = "1" ]; then exit 0; fi; \
+	mkdir -p "$(dir $(__GHST_SELF_CONFIRMED))"; \
+	failed=""; \
+	for pair in "toolkit Makefile|$(__GHST_SELF_CONFIRMED)" "scanner image|$(__GHST_IMAGE_CONFIRMED)"; do \
+		what=$${pair%%|*}; file=$${pair#*|}; \
+		if [ ! -e "$$file" ]; then touch "$$file"; continue; fi; \
+		age=$$(( ( $$(date +%s) - $$(stat -c %Y "$$file" 2>/dev/null || stat -f %m "$$file" 2>/dev/null || echo 0) ) / 86400 )); \
+		if [ "$$age" -ge "$(__GHST_MAX_STALE_DAYS)" ]; then \
+			failed="$$failed   $$what, last confirmed $$age days ago\n"; \
+		fi; \
+	done; \
+	if [ -n "$$failed" ]; then \
+		echo "❌ Refusing to scan: nothing has confirmed for $(__GHST_MAX_STALE_DAYS) days that this is current." >&2; \
+		printf "%b" "$$failed" >&2; \
+		echo "   A scan against a stale toolkit reports clean for everything published since." >&2; \
+		echo "   Fix the network and re-run, or run 'make sec/update' to re-fetch by hand." >&2; \
+		echo "   On a machine that is meant to be air-gapped, set GHST_OFFLINE=1." >&2; \
+		exit 1; \
 	fi
 
 # ============================================================================
@@ -363,7 +461,12 @@ sec/provenance: ## Print what a scan on this machine would run: images, dates, d
 # database got here and how its signature was checked, so "the database was
 # verified" means exactly as much as the cosign version behind it.
 .PHONY: __ghst-provenance
-__ghst-provenance: __ghst-db-ensure __ghst-self-check
+# The floor is a prerequisite rather than a step inside the banner, so the
+# ordering holds under -j: the checks it reads have finished before it reads
+# them. It refuses without printing the banner first, which is the right way
+# round -- the refusal names the artefact and its age itself, and a banner
+# describing a scan that is not going to happen is noise.
+__ghst-provenance: __ghst-db-ensure __ghst-self-check __ghst-freshness-floor
 	@stamp_age() { \
 		s=$$(stat -c %Y "$$1" 2>/dev/null || stat -f %m "$$1" 2>/dev/null); \
 		[ -n "$$s" ] || { echo "never"; return; }; \
