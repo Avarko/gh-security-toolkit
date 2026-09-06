@@ -226,6 +226,13 @@ __ghst-db-ensure: __ghst-image-ensure
 __GHST_IMAGE_MAX_AGE_DAYS ?= 1
 __GHST_IMAGE_STAMP := $(HOME)/.cache/gh-security-toolkit/.image-checked-$(subst /,_,$(__GHST_IMAGE_TAG))
 
+# The registry answering at all is the confirmation, whether it handed over a
+# new image or said the cached one is still newest. Only "unreachable" leaves
+# this untouched, which is what the floor measures -- and, as with the Makefile
+# stamp beside it, the floor creates this one on first sight so a machine with
+# nothing yet confirmed starts a clock rather than failing.
+__GHST_IMAGE_CONFIRMED := $(HOME)/.cache/gh-security-toolkit/.image-confirmed-$(subst /,_,$(__GHST_IMAGE_TAG))
+
 .PHONY: __ghst-image-ensure
 __ghst-image-ensure:
 	@mkdir -p "$(dir $(__GHST_IMAGE_STAMP))"
@@ -240,11 +247,21 @@ __ghst-image-ensure:
 		[ "$$age_days" -lt "$(__GHST_IMAGE_MAX_AGE_DAYS)" ] && exit 0; \
 	fi; \
 	echo "🔄 Checking for a newer $(__GHST_IMAGE)..."; \
+	before=$$($(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) --format '{{.Id}}' 2>/dev/null || true); \
 	if out=$$($(__GHST_DOCKER_CMD) pull $(__GHST_IMAGE) 2>&1); then \
+		touch "$(__GHST_IMAGE_CONFIRMED)"; \
 		case "$$out" in \
 			*"Image is up to date"*) echo current > "$(__GHST_IMAGE_STAMP)" ;; \
 			*)                       echo updated > "$(__GHST_IMAGE_STAMP)" ;; \
 		esac; \
+		after=$$($(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) --format '{{.Id}}' 2>/dev/null || true); \
+		if [ -n "$$before" ] && [ -n "$$after" ] && [ "$$before" != "$$after" ]; then \
+			if [ "$$($(__GHST_DOCKER_CMD) image inspect "$$before" --format '{{len .RepoTags}}' 2>/dev/null || echo 1)" = "0" ]; then \
+				$(__GHST_DOCKER_CMD) rmi "$$before" >/dev/null 2>&1 \
+					&& echo "🧹 Removed the image this one replaced." \
+					|| true; \
+			fi; \
+		fi; \
 	elif $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) >/dev/null 2>&1; then \
 		echo "⚠️  Could not reach the registry — using the cached image."; \
 		echo unreachable > "$(__GHST_IMAGE_STAMP)"; \
@@ -256,18 +273,20 @@ __ghst-image-ensure:
 # ============================================================================
 # Makefile freshness
 #
-# The image and the database refresh themselves; this file does not, and that
-# is the one gap in "run the scan and you are current". The client's include
-# rule fetches Makefile.scanners once into .gh-security-toolkit/ and has no
-# prerequisites, so Make never rebuilds it. A developer who set this up in
-# March is still running March's scan commands, and moving the v1 tag does
-# nothing for them -- a moved tag only reaches a machine that fetches again.
+# The image and the database refresh themselves. This file used to be the one
+# gap in "run the scan and you are current": the client's include rule fetches
+# Makefile.scanners once into .gh-security-toolkit/ and has no prerequisites,
+# so Make never rebuilt it. A developer who set this up in March was still
+# running March's scan commands, and moving the v1 tag did nothing for them --
+# a moved tag only reaches a machine that fetches again. Closing it is what
+# stops a release needing an email asking everybody to delete a directory.
 #
-# Nothing can fix that automatically without this file overwriting itself
-# mid-build, which is not a thing to do to somebody's repository. So it
-# reports instead, and the report has to be about content rather than about
-# versions: pinning to a moving tag like v1 or main means the version string
-# is identical on both sides while the file behind it has changed.
+# It closes in two halves. This half decides whether a newer file exists, and
+# has to ask about content rather than versions: pinning to a moving tag like
+# v1 or main means the version string is identical on both sides while the
+# file behind it has changed. The other half, further down, turns that answer
+# into a re-fetch without this file ever overwriting itself -- which would be
+# a thing to do to somebody's repository behind their back.
 #
 # One 30 kB fetch a day, no token, no registry. Skipped entirely when offline,
 # where the honest answer is that nobody asked.
@@ -277,41 +296,188 @@ __GHST_SELF_MAX_AGE_DAYS ?= 1
 __GHST_SELF_URL ?= https://raw.githubusercontent.com/Avarko/gh-security-toolkit/$(__GHST_VERSION)/Makefile.scanners
 __GHST_SELF_STAMP := $(HOME)/.cache/gh-security-toolkit/.makefile-checked-$(subst /,_,$(__GHST_VERSION))
 
-# sha256sum is GNU, shasum is what macOS ships. Neither is worth a dependency
-# check that fails a scan, so the absence of both is reported as unknown.
+# Touched when a check confirms this file is the published one, and once more
+# by the floor itself if the stamp does not exist yet. The floor measures from
+# it, so it has to mean "confirmed", never "attempted" -- but a machine that
+# has never confirmed anything has nothing to measure from either, and
+# refusing on day one because the first check happened to fail is not the
+# behaviour anybody wants. The bootstrap touch is where the clock starts on
+# such a machine, and it reads as "confirmed" only in the sense that nothing
+# has yet had the chance to be otherwise.
+__GHST_SELF_CONFIRMED := $(HOME)/.cache/gh-security-toolkit/.makefile-confirmed-$(subst /,_,$(__GHST_VERSION))
+
+# Touched only when a check finds a newer published file, which is what makes
+# the include below out of date and gets it re-fetched.
+__GHST_SELF_TRIGGER := $(HOME)/.cache/gh-security-toolkit/.makefile-outdated-$(subst /,_,$(__GHST_VERSION))
+
+# Compared with cmp rather than by hashing. The two files are both on this
+# disk by the time the question is asked, so a digest buys nothing, and it cost
+# a portability split: sha256sum is GNU, shasum is what macOS ships, and the
+# absence of both had to mean something. cmp is one name on every system this
+# runs on.
 #
-# Whether each side was read is decided before hashing, never after. Both
-# hashers answer an empty stream with e3b0c442..., so a failed fetch produces a
-# perfectly good hash of nothing that matches no file -- which is to say a
-# developer behind a captive portal would be told their scan commands are not
-# the published ones. That is the false alarm this whole section exists to
-# avoid, and inferring reachability from a hash walks straight into it.
-__GHST_SHA256 = { command -v sha256sum >/dev/null 2>&1 && sha256sum || shasum -a 256; } 2>/dev/null | cut -d' ' -f1
+# Whether the remote side was read at all is still decided from curl's exit
+# status, never from the comparison. A failed fetch leaves an empty file, and
+# an empty file compares unequal to this one -- which would tell a developer
+# behind a captive portal that their scan commands are not the published ones.
+# That is the false alarm this whole section exists to avoid.
+#
+# The once-a-day gate does not apply to a "stale" verdict, which is the one
+# state that resolves itself: the re-fetch is already pending, and checking
+# again is how the verdict becomes "current" once it lands. Backdating the
+# stamp was the first way of arranging that, and it made the banner report the
+# backdate as fact -- "checked 20701 days ago", which is 1970 rendered as news.
 
 .PHONY: __ghst-self-check
 __ghst-self-check:
 	@if [ "$(GHST_OFFLINE)" = "1" ]; then exit 0; fi; \
 	mkdir -p "$(dir $(__GHST_SELF_STAMP))"; \
 	verdict=$$(cat "$(__GHST_SELF_STAMP)" 2>/dev/null); \
-	case "$$verdict" in current|stale|unknown) ;; *) verdict="" ;; esac; \
-	if [ -n "$$verdict" ]; then \
+	case "$$verdict" in current|stale|unknown|unsupported) ;; *) verdict="" ;; esac; \
+	if [ -n "$$verdict" ] && [ "$$verdict" != "stale" ]; then \
 		now=$$(date +%s); \
 		checked=$$(stat -c %Y "$(__GHST_SELF_STAMP)" 2>/dev/null || stat -f %m "$(__GHST_SELF_STAMP)"); \
 		[ $$(( (now - checked) / 86400 )) -lt "$(__GHST_SELF_MAX_AGE_DAYS)" ] && exit 0; \
 	fi; \
-	mine=""; theirs=""; \
-	[ -r "$(__GHST_SELF)" ] && mine=$$(cat "$(__GHST_SELF)" | $(__GHST_SHA256)); \
+	if ! command -v cmp >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 \
+	   || [ ! -r "$(__GHST_SELF)" ]; then \
+		echo unsupported > "$(__GHST_SELF_STAMP)"; \
+		exit 0; \
+	fi; \
+	reached=""; \
 	body=$$(mktemp); \
-	curl -fsSL --max-time 10 "$(__GHST_SELF_URL)" -o "$$body" 2>/dev/null \
-		&& theirs=$$(cat "$$body" | $(__GHST_SHA256)); \
-	rm -f "$$body"; \
-	if [ -z "$$mine" ] || [ -z "$$theirs" ]; then \
+	curl -fsSL --max-time 10 "$(__GHST_SELF_URL)" -o "$$body" 2>/dev/null && reached=yes; \
+	if [ -z "$$reached" ]; then \
+		rm -f "$$body"; \
 		echo unknown > "$(__GHST_SELF_STAMP)"; \
-	elif [ "$$mine" = "$$theirs" ]; then \
+	elif cmp -s "$(__GHST_SELF)" "$$body"; then \
+		rm -f "$$body"; \
 		echo current > "$(__GHST_SELF_STAMP)"; \
+		touch "$(__GHST_SELF_CONFIRMED)"; \
 	else \
+		rm -f "$$body"; \
 		echo stale > "$(__GHST_SELF_STAMP)"; \
+		touch "$(__GHST_SELF_TRIGGER)"; \
 	fi
+
+# The re-fetch itself, and the whole reason the trigger is a file rather than
+# a phony target.
+#
+# GNU Make re-reads an included makefile before it runs anything, and restarts
+# the build if it changed. Naming the trigger as a prerequisite here is enough
+# to get that: the consumer's own rule, the one their Makefile already has,
+# does the fetching, so this reaches a colleague who set the toolkit up months
+# ago without them editing anything. No recipe is given on purpose -- theirs
+# stays in charge, and a repository whose include is spelled differently
+# simply gets no rule and no re-fetch rather than an error.
+#
+# The trigger must be a real file with no prerequisites of its own. A phony in
+# this chain makes the include permanently out of date: Make re-fetches it,
+# restarts, finds it out of date again, and does that until it is killed --
+# measured at four and a half thousand fetches before the loop was stopped.
+# Created stamped 1970 so an install that has never been checked is not
+# instantly considered stale.
+#
+# The prerequisite is declared conditionally, and it has to be: makefile
+# remaking happens before any recipe runs, so a GHST_OFFLINE=1 check inside one
+# is too late to stop it. An online run that found an update leaves the trigger
+# newer than the include, and the next run re-fetches on that basis whether or
+# not it has a network. Measured on an air-gapped machine with the README's own
+# fetch rule, that is not a slow scan but no scan at all -- "Could not fetch",
+# exit 2, before anything starts -- and it repeats on every invocation, because
+# nothing offline can move the trigger back. An air-gapped machine that once
+# saw a newer toolkit could never scan again.
+#
+# GHST_OFFLINE is available while Make is still parsing, from the environment
+# or the command line alike, so declaring nothing here is enough: with no
+# prerequisite the include is never out of date, and offline goes back to
+# meaning that nobody asked.
+ifneq ($(GHST_OFFLINE),1)
+$(__GHST_SELF): $(__GHST_SELF_TRIGGER)
+endif
+
+$(__GHST_SELF_TRIGGER):
+	@mkdir -p "$(dir $@)"
+	@touch -t 197001020000 "$@"
+
+# ============================================================================
+# The freshness floor
+#
+# Everything above is best-effort: it heals a stale toolkit on the next scan
+# and says so on this one. This is what happens when it does not work -- the
+# self-update never fires because a repository spells its include differently,
+# or a laptop spends a month off the network. Warnings are the wrong tool for
+# that, because a warning printed on every scan is one people stop reading,
+# and the failure it describes is silent: scanning with a toolkit from March
+# reports clean for everything published since.
+#
+# So it refuses, on the same reasoning and the same default as
+# __GHST_DB_MAX_AGE_DAYS: stale data fails rather than passes. GHST_OFFLINE=1
+# is the way out, and is meant to be -- an air-gapped machine is not a broken
+# one, and saying so out loud is cheaper than every developer discovering the
+# escape hatch by reading the source.
+#
+# Measured from the last confirmation, never from the last attempt. A first
+# install has nothing confirmed yet and starts its clock now, so a flaky
+# network on day one does not refuse a scan that has never had the chance to
+# be current.
+#
+# A host that cannot run the comparison at all is exempted from the Makefile
+# half rather than refused by it. "We asked and got no answer" and "we have no
+# way to ask" both used to be recorded as unknown, and collapsing them here
+# would have meant telling somebody to fix a network that was never the
+# problem -- fourteen days after the fact, with no way to act on the advice.
+# The image half still applies to them, because a docker pull needs neither.
+# ============================================================================
+
+__GHST_MAX_STALE_DAYS ?= 14
+
+# Two halves rather than one, because they guard different things at different
+# prices. Semgrep runs out of its own image and never touches the scanner
+# image, so making a Semgrep scan wait on a docker pull it has no use for --
+# or refusing it because that pull has not happened -- would be a toll and not
+# a safeguard. It does depend on this file being current, because the command
+# line it runs is written here, so it takes the Makefile half.
+#
+# Make stops at the first prerequisite that fails, so a machine stale in both
+# respects is told about one, fixes it, and is then told about the other.
+# Listing both at once was the earlier shape and cost the split; being told
+# the truth twice is better than being told half of it in one go.
+#
+# The remedy is a parameter rather than a sentence in the body, because the
+# body is shared and the two halves are fixed differently. Written once into
+# the body it told somebody whose scanner image had gone stale to delete a
+# Makefile, which does nothing for a stale image.
+#
+# $(1) confirmation stamp   $(2) what to call it   $(3) verdict stamp, if any
+# $(4) how to fix it by hand
+define __ghst-floor-check
+if [ "$(GHST_OFFLINE)" = "1" ]; then exit 0; fi; \
+mkdir -p "$(dir $(1))"; \
+if [ -n "$(3)" ] && [ "$$(cat "$(3)" 2>/dev/null)" = "unsupported" ]; then \
+	echo "⚠️  This host has no cmp or no curl, so $(__GHST_SELF) cannot be compared with the published one. Its age is reported but not enforced." >&2; \
+	exit 0; \
+fi; \
+if [ ! -e "$(1)" ]; then touch "$(1)"; exit 0; fi; \
+age=$$(( ( $$(date +%s) - $$(stat -c %Y "$(1)" 2>/dev/null || stat -f %m "$(1)" 2>/dev/null || echo 0) ) / 86400 )); \
+if [ "$$age" -lt "$(__GHST_MAX_STALE_DAYS)" ]; then exit 0; fi; \
+echo "❌ Refusing to scan: nothing has confirmed $(2) for $$age days." >&2; \
+echo "   A scan against a stale toolkit reports clean for everything published since." >&2; \
+echo "   Fix the network and re-run, or $(4)." >&2; \
+echo "   On a machine that is meant to be air-gapped, set GHST_OFFLINE=1." >&2; \
+exit 1
+endef
+
+.PHONY: __ghst-floor-makefile
+__ghst-floor-makefile: __ghst-self-check
+	@$(call __ghst-floor-check,$(__GHST_SELF_CONFIRMED),this toolkit Makefile,$(__GHST_SELF_STAMP),delete $(__GHST_SELF) and run make again)
+
+.PHONY: __ghst-floor-image
+__ghst-floor-image: __ghst-image-ensure
+	@$(call __ghst-floor-check,$(__GHST_IMAGE_CONFIRMED),the scanner image,,run 'make sec/scan/clean' to drop the cached image)
+
+.PHONY: __ghst-freshness-floor
+__ghst-freshness-floor: __ghst-floor-makefile __ghst-floor-image
 
 # ============================================================================
 # Provenance
@@ -363,7 +529,12 @@ sec/provenance: ## Print what a scan on this machine would run: images, dates, d
 # database got here and how its signature was checked, so "the database was
 # verified" means exactly as much as the cosign version behind it.
 .PHONY: __ghst-provenance
-__ghst-provenance: __ghst-db-ensure __ghst-self-check
+# The floor is a prerequisite rather than a step inside the banner, so the
+# ordering holds under -j: the checks it reads have finished before it reads
+# them. It refuses without printing the banner first, which is the right way
+# round -- the refusal names the artefact and its age itself, and a banner
+# describing a scan that is not going to happen is noise.
+__ghst-provenance: __ghst-db-ensure __ghst-self-check __ghst-freshness-floor
 	@stamp_age() { \
 		s=$$(stat -c %Y "$$1" 2>/dev/null || stat -f %m "$$1" 2>/dev/null); \
 		[ -n "$$s" ] || { echo "never"; return; }; \
@@ -382,7 +553,7 @@ __ghst-provenance: __ghst-db-ensure __ghst-self-check
 		esac; \
 	fi; \
 	selfverdict=$$(cat "$(__GHST_SELF_STAMP)" 2>/dev/null); \
-	case "$$selfverdict" in current|stale|unknown) ;; *) selfverdict="" ;; esac; \
+	case "$$selfverdict" in current|stale|unknown|unsupported) ;; *) selfverdict="" ;; esac; \
 	if [ -n "$$selfverdict" ]; then \
 		selfstate="$$selfverdict as of $$(stamp_age "$(__GHST_SELF_STAMP)")"; \
 	elif [ "$(GHST_OFFLINE)" = "1" ]; then \
@@ -447,8 +618,8 @@ __ghst-provenance: __ghst-db-ensure __ghst-self-check
 	fi; \
 	if [ "$$selfverdict" = "stale" ]; then \
 		echo "    note: these scan commands are not the ones published at '$(__GHST_VERSION)'" >&2; \
-		echo "          (checked $$(stamp_age "$(__GHST_SELF_STAMP)")). The image and database" >&2; \
-		echo "          update themselves; this file is fetched once. Run 'make sec/update'." >&2; \
+		echo "          (checked $$(stamp_age "$(__GHST_SELF_STAMP)")). The next run with a" >&2; \
+		echo "          network re-fetches this file and restarts with it." >&2; \
 	fi
 
 # Reduces the helper's status report to one line: each database with the date
@@ -535,33 +706,67 @@ sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 	$(__GHST_IMAGE) trivy image $(IMAGE) --format $(__GHST_TRIVY_FORMAT)
 
 # ============================================================================
-# Semgrep - Automatically uses .semgrep.yaml if present
+# Semgrep - uses .semgrep.yaml or .semgrep.yml if present
+#
+# The one scanner here that needs the network while it runs, which is worth
+# stating plainly because every other one is emphatic about not having it. The
+# p/ rulesets are fetched from semgrep.dev on each scan: under --network=none
+# Semgrep does not degrade, it dies -- a requests ConnectionError traceback and
+# exit 2. So GHST_OFFLINE=1 skips this target rather than leaving it to crash,
+# and "air-gapped" in this toolkit means the Trivy scans.
+#
+# A repository with its own .semgrep.yaml can be scanned without the registry,
+# unless that file pulls p/ rules of its own. Nothing here assumes either way.
 # ============================================================================
 
-SEMGREP_IMAGE_TAG ?= latest
-SEMGREP_DOCKER_OPTS := --rm -v $(PWD):/src:ro -w /src
+# Pinned to an exact version and digest, for the reason every action here is
+# pinned to a SHA: a tag moves and nothing ships. It was "latest" before, which
+# combined badly with nothing ever pulling it -- Docker kept whatever it had
+# first cached, indefinitely, so two developers could get different findings
+# from the same commit and neither could tell.
+#
+# actions/scanner/semgrep installs this same version with pip, so a local scan
+# and a CI scan run the same Semgrep. scripts/check-semgrep-config.py fails the
+# build if the two drift apart. Bumping means moving both, plus the digest:
+#   docker buildx imagetools inspect semgrep/semgrep:<version> --format '{{.Manifest.Digest}}'
+SEMGREP_VERSION ?= 1.176.1
+SEMGREP_DIGEST ?= sha256:34ab619bf1391a24bfda3f05debd0d8a6ce3093c2d5f9d39cfc00f83c1397823
+SEMGREP_IMAGE ?= semgrep/semgrep:$(SEMGREP_VERSION)@$(SEMGREP_DIGEST)
+
+# The same rulesets CI runs. They were different lists in three files, so a
+# local scan and a CI scan disagreed about what they had checked -- this one is
+# the union of what each used to have. check-semgrep-config.py keeps the three
+# in step.
+SEMGREP_CONFIGS ?= p/owasp-top-ten p/cwe-top-25 p/java p/javascript p/docker-compose p/dockerfile p/terraform p/secrets
+
+# Run as the invoking user, like every Trivy scan, rather than as root because
+# the image happens to default to it. HOME is set for the same reason it is
+# there: Semgrep wants somewhere writable for its own scratch state, and the
+# workspace is mounted read-only.
+SEMGREP_DOCKER_OPTS := --rm $(__GHST_USER_OPTS) \
+	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
+	-v $(PWD):/src:ro -w /src
 
 .PHONY: sec/scan/semgrep
-sec/scan/semgrep: # Scan code with Semgrep (uses .semgrep.yaml config)
-	@echo "🔍 Scanning code with Semgrep..."
-	@if [ -f .semgrep.yaml ] || [ -f .semgrep.yml ]; then \
-		echo "ℹ️  Using .semgrep.yaml configuration"; \
-		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) semgrep/semgrep:$(SEMGREP_IMAGE_TAG) \
-			semgrep scan --config=.semgrep.yaml --metrics=off .; \
+sec/scan/semgrep: __ghst-floor-makefile # Scan code with Semgrep (uses .semgrep.yaml config)
+	@if [ "$(GHST_OFFLINE)" = "1" ]; then \
+		echo "⏭️  Skipping Semgrep: its rulesets are fetched from semgrep.dev and GHST_OFFLINE=1."; \
+		echo "   The Trivy scans do run air-gapped; this one has nothing to run without a network."; \
+		exit 0; \
+	fi; \
+	echo "🔍 Scanning code with Semgrep $(SEMGREP_VERSION)..."; \
+	config=""; \
+	for candidate in .semgrep.yaml .semgrep.yml; do \
+		if [ -f "$$candidate" ]; then config="$$candidate"; break; fi; \
+	done; \
+	if [ -n "$$config" ]; then \
+		echo "ℹ️  Using $$config"; \
+		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) $(SEMGREP_IMAGE) \
+			semgrep scan --config="$$config" --metrics=off .; \
 	else \
 		echo "ℹ️  Using pre-defined rulesets"; \
-		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) semgrep/semgrep:$(SEMGREP_IMAGE_TAG) \
-			semgrep scan \
-			--config p/owasp-top-ten \
-			--config p/cwe-top-25 \
-			--config p/java \
-			--config p/javascript \
-			--config p/docker-compose \
-			--config p/dockerfile \
-			--config p/terraform \
-			--config p/secrets \
-			--metrics=off \
-			.; \
+		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) $(SEMGREP_IMAGE) \
+			semgrep scan $(addprefix --config ,$(SEMGREP_CONFIGS)) --metrics=off .; \
 	fi
 
 # ============================================================================
@@ -592,5 +797,5 @@ sec/scan/clean: # Remove gh-security-toolkit image
 .PHONY: sec/scan/help
 sec/scan/help: # Print help
 	@echo "gh-security-toolkit commands (sec/ namespace):"
-	@grep -E '^sec/[a-zA-Z_/-]+:.*?# .*$$' $(MAKEFILE_LIST) | \
-	awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@grep -hE '^sec/[a-zA-Z_/-]+:.*#' $(MAKEFILE_LIST) | \
+	awk 'BEGIN {FS = ":[^#]*#+[ ]*"}; {printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2}'

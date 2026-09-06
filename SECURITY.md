@@ -97,8 +97,18 @@ runs during an update, the one moment a client is online by design.
 
 **Stale data fails rather than passes.** `__GHST_DB_MAX_AGE_DAYS` refuses to
 scan against a database older than 14 days, on the reasoning that stale
-vulnerability data reports "clean" for everything published since. The image
-has the same freshness check.
+vulnerability data reports "clean" for everything published since.
+`__GHST_MAX_STALE_DAYS` applies the same rule to the two things that decide
+what a scan even runs: the scanner image and `Makefile.scanners` itself. Both
+normally update on their own -- the image by pull, the Makefile by marking
+itself out of date so Make re-fetches it through the consumer's own include
+rule -- so the refusal is the backstop for a machine where that has not
+happened for a fortnight, not the mechanism. `GHST_OFFLINE=1` disables all
+three, which is what an air-gapped machine is supposed to set. A host that
+cannot run the Makefile comparison at all -- no `cmp`, no `curl` -- is exempt
+from that half rather than refused by it: being unable to ask is not the same
+as asking and getting no answer, and only the second is the developer's to
+fix.
 
 **Third-party actions carrying real risk are SHA-pinned.**
 `aquasecurity/trivy-action` and `yogeshlonkar/trivy-cache-action` are pinned to
@@ -116,6 +126,25 @@ version, on the consumer's runner and inside their token's reach.
 GitHub and checked against a sha256 recorded here, failing closed on a
 mismatch. Reviewing pins by checking that a SHA is present would never have
 found this; reading the action did.
+
+**The same thing was true of Semgrep, spelled in Python.**
+`actions/scanner/semgrep` ran `pip3 install semgrep`, with no version, on the
+consumer's runner and inside the same token's reach — resolved from PyPI at the
+moment of the run. It is pinned to an exact version now, and the Makefile
+installs that same version by digest, so a local scan and a CI scan run the same
+binary. `scripts/check-semgrep-config.py` fails the build if the two drift, and
+also if the rulesets they run drift, which they already had: eight locally
+against six in CI. That action also used to write its own `.semgrepignore` into
+the repository being scanned, overwriting whatever the project had there —
+documented elsewhere in this repository as a supported way to configure a scan.
+It does not any more; Semgrep already skips `node_modules` and the rest without
+being told.
+
+Semgrep's rulesets remain the one thing here that is fetched over the network
+during a scan rather than before it, and cannot be pinned: a `p/` ruleset is
+whatever the registry serves that day. Scans are therefore not reproducible
+across time, and `GHST_OFFLINE=1` skips Semgrep rather than pretending
+otherwise.
 
 **The safe input idiom exists and is used at the entry point.**
 `actions/security-scan/action.yml` passes every value through `env:` and its

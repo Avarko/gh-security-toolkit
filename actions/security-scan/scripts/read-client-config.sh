@@ -28,7 +28,11 @@ ORG_LOGO_URL=""
 REPO_DISPLAY_NAME=""
 TRIVY_CONFIG=""
 TRIVY_SEVERITY="MEDIUM,HIGH,CRITICAL"
-SEMGREP_CONFIGS="p/owasp-top-ten,p/java,p/javascript,p/dockerfile,p/terraform,p/secrets"
+# Kept identical to SEMGREP_CONFIGS in Makefile.scanners and to the default on
+# actions/scanner/semgrep, so a local scan and a CI scan check the same rules.
+# The three used to disagree; scripts/check-semgrep-config.py now fails the
+# build when they do.
+SEMGREP_CONFIGS="p/owasp-top-ten,p/cwe-top-25,p/java,p/javascript,p/docker-compose,p/dockerfile,p/terraform,p/secrets"
 RETENTION_KEEP="10"
 RETENTION_DAYS="30"
 
