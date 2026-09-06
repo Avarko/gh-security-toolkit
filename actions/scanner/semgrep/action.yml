@@ -55,12 +55,29 @@ runs:
 
         # Built as an array so a ruleset name is one argument whatever it
         # contains, rather than whatever word splitting makes of it.
+        #
+        # Expanded as ${a[@]+"${a[@]}"} rather than "${a[@]}", which is not
+        # decoration: under set -u an empty array is an unbound variable on
+        # bash before 4.4, and the runners this can land on include macOS,
+        # where /bin/bash is still 3.2. Verified on both -- 3.2 aborts with
+        # "CONFIG_ARRAY[@]: unbound variable" on the plain form and is fine on
+        # this one.
         CONFIG_FLAGS=()
         IFS=',' read -ra CONFIG_ARRAY <<< "${INPUT_SEMGREP_CONFIGS}"
-        for cfg in "${CONFIG_ARRAY[@]}"; do
+        for cfg in ${CONFIG_ARRAY[@]+"${CONFIG_ARRAY[@]}"}; do
           trimmed="$(echo "$cfg" | tr -d '[:space:]')"
           [ -n "$trimmed" ] && CONFIG_FLAGS+=(--config "$trimmed")
         done
+
+        # An empty list is refused rather than passed on. Semgrep with no
+        # --config scans with no rules and reports nothing, which is the same
+        # false clean the .errors check below exists to prevent, arrived at
+        # from the other end. A client config with an empty
+        # scanning.semgrep.configs reaches here as an empty string.
+        if [ ${#CONFIG_FLAGS[@]} -eq 0 ]; then
+          echo "::error::No Semgrep rulesets configured, so there is nothing to scan for." >&2
+          exit 1
+        fi
 
         echo "Running Semgrep ${CONFIG_FLAGS[*]}"
 
@@ -111,7 +128,7 @@ runs:
       run: |
         CONFIG_FLAGS=()
         IFS=',' read -ra CONFIG_ARRAY <<< "${INPUT_SEMGREP_CONFIGS}"
-        for cfg in "${CONFIG_ARRAY[@]}"; do
+        for cfg in ${CONFIG_ARRAY[@]+"${CONFIG_ARRAY[@]}"}; do
           trimmed="$(echo "$cfg" | tr -d '[:space:]')"
           [ -n "$trimmed" ] && CONFIG_FLAGS+=(--config "$trimmed")
         done
