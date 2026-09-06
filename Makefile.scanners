@@ -721,6 +721,7 @@ sec/scan/trivy/config: __ghst-provenance # Scan IaC configs for misconfiguration
 sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" && exit 1)
 	@echo "🔍 Scanning image $(IMAGE) (offline mode)..."
+	@$(__GHST_TRIVY_CONFIG_NOTE)
 	@echo "ℹ️  Note: this target mounts the Docker socket so Trivy can read the"
 	@echo "   image. That is root-equivalent access to this host, and this is the"
 	@echo "   only target that needs it. The scan itself still runs with"
