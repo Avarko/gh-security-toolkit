@@ -657,7 +657,30 @@ __GHST_AWK_DB_VERSIONS = awk ' \
 	}'
 
 # ============================================================================
-# Trivy - Automatically uses .trivy.yaml if present
+# Trivy - uses trivy.yaml or .trivy.yaml if present
+#
+# Trivy's own default config file is trivy.yaml, with no dot. .trivy.yaml is a
+# widespread convention across other tools and Trivy does not implement it.
+# Verified rather than read off a manual: each candidate was given deliberately
+# broken YAML to see which one Trivy chokes on.
+#
+#   trivy.yaml   -> FATAL, config file "trivy.yaml" loading error
+#   .trivy.yaml  -> exit 0, scan completed. Read by nothing.
+#   trivy.yml    -> exit 0
+#   .trivy.yml   -> exit 0
+#
+# This file used to print "Using .trivy.yaml configuration" from a bare test -f
+# and then run Trivy with no --config at all, so a consumer who followed this
+# toolkit's own documentation configured nothing and was told otherwise. What
+# that costs depends on what they wrote: a severity filter or an ignore rule
+# silently not applying means over-reporting, which is the safe direction, but
+# a config that switches extra scanners on means they were never running.
+#
+# Both names work now, Trivy's own winning if both exist, and the message names
+# the file actually passed. The dot is not wrong everywhere, which is how this
+# happened in the first place: .trivyignore does take one and has always
+# worked. Checked the same way -- with the dot an ignored ID disappears from
+# the results, without it nothing changes.
 #
 # Scans run with --network=none against a database mounted from the host
 # cache, so no scan reaches the network. Only sec/db/update does.
@@ -667,33 +690,38 @@ __GHST_AWK_DB_VERSIONS = awk ' \
 #   Option B: Scan built artifacts:       make sec/scan/trivy/artifact ARTIFACT=build/libs/app.war
 # ============================================================================
 
+__GHST_TRIVY_CONFIG := $(firstword $(wildcard trivy.yaml .trivy.yaml))
+__GHST_TRIVY_CONFIG_OPT := $(if $(__GHST_TRIVY_CONFIG),--config $(__GHST_TRIVY_CONFIG),)
+__GHST_TRIVY_CONFIG_NOTE = $(if $(__GHST_TRIVY_CONFIG),echo "ℹ️  Using $(__GHST_TRIVY_CONFIG) configuration",:)
+
 .PHONY: sec/scan/trivy/fs
-sec/scan/trivy/fs: __ghst-provenance # Scan filesystem (uses .trivy.yaml config)
+sec/scan/trivy/fs: __ghst-provenance # Scan filesystem (uses trivy.yaml or .trivy.yaml)
 	@echo "🔍 Scanning filesystem with Trivy (offline mode)..."
-	@test -f .trivy.yaml && echo "ℹ️  Using .trivy.yaml configuration" || true
+	@$(__GHST_TRIVY_CONFIG_NOTE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
-	$(__GHST_IMAGE) trivy fs . --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
+	$(__GHST_IMAGE) trivy fs . $(__GHST_TRIVY_CONFIG_OPT) --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/artifact
 sec/scan/trivy/artifact: __ghst-provenance # Scan built artifact - Gradle WAR/JAR/EAR (ARTIFACT=path/to/app.war)
 	@[ -n "$(ARTIFACT)" ] || (echo "❌ Usage: make sec/scan/trivy/artifact ARTIFACT=build/libs/app.war" && exit 1)
 	@[ -e "$(ARTIFACT)" ] || (echo "❌ Artifact not found: $(ARTIFACT)" && exit 1)
 	@echo "🔍 Scanning artifact $(ARTIFACT) with Trivy (offline mode)..."
-	@test -f .trivy.yaml && echo "ℹ️  Using .trivy.yaml configuration" || true
+	@$(__GHST_TRIVY_CONFIG_NOTE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
-	$(__GHST_IMAGE) trivy fs $(ARTIFACT) --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
+	$(__GHST_IMAGE) trivy fs $(ARTIFACT) $(__GHST_TRIVY_CONFIG_OPT) --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/config
-sec/scan/trivy/config: __ghst-provenance # Scan IaC configs for misconfigurations - Terraform, Dockerfile, K8s, etc. (uses .trivy.yaml config)
+sec/scan/trivy/config: __ghst-provenance # Scan IaC configs for misconfigurations - Terraform, Dockerfile, K8s, etc. (uses trivy.yaml or .trivy.yaml)
 	@echo "🔍 Scanning IaC configs with Trivy (offline mode)..."
-	@test -f .trivy.yaml && echo "ℹ️  Using .trivy.yaml configuration" || true
+	@$(__GHST_TRIVY_CONFIG_NOTE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
-	$(__GHST_IMAGE) trivy config . --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
+	$(__GHST_IMAGE) trivy config . $(__GHST_TRIVY_CONFIG_OPT) --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/img
 sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" && exit 1)
 	@echo "🔍 Scanning image $(IMAGE) (offline mode)..."
+	@$(__GHST_TRIVY_CONFIG_NOTE)
 	@echo "ℹ️  Note: this target mounts the Docker socket so Trivy can read the"
 	@echo "   image. That is root-equivalent access to this host, and this is the"
 	@echo "   only target that needs it. The scan itself still runs with"
@@ -703,7 +731,7 @@ sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	-v /var/run/docker.sock:/var/run/docker.sock \
 	-v $(PWD):/workspace:ro $(__GHST_DB_MOUNT) -w /workspace \
-	$(__GHST_IMAGE) trivy image $(IMAGE) --format $(__GHST_TRIVY_FORMAT)
+	$(__GHST_IMAGE) trivy image $(IMAGE) $(__GHST_TRIVY_CONFIG_OPT) --format $(__GHST_TRIVY_FORMAT)
 
 # ============================================================================
 # Semgrep - uses .semgrep.yaml or .semgrep.yml if present
