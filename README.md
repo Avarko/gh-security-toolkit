@@ -84,7 +84,7 @@ Then ask the agent to work through it, e.g.:
 
 > Go through `scan-results.json` and list every CRITICAL and HIGH CVE. For each one, find the fixed version — check the actual current release of the affected library (its releases page, changelog, or package registry) rather than relying on your own memory of version numbers, since that can be outdated. Then tell me which upgrades are safe to apply now and which have dependency conflicts.
 
-The bundled `.trivy.yaml`/`.trivyignore` in the repo root apply automatically, so a re-run after upgrading only shows what is genuinely still open.
+Nothing is bundled: `trivy.yaml` and `.trivyignore` are files you write in your own repository root, and Trivy picks them up on its own when they are there. With them in place, a re-run after upgrading only shows what is genuinely still open.
 
 ### What produced a scan
 
@@ -349,7 +349,7 @@ Enable and run local scans with just a few additional lines in the Makefile.
 ### 2. **Manage findings lifecycle**
 > "As a developer, I want to configure which vulnerabilities and misconfigurations to report, so the results remain actionable."
 
-The toolkit supports `.trivy.yaml` and `.semgrepignore` configuration files to customize what gets scanned and reported.
+The scanners read `trivy.yaml`, `.trivyignore` and `.semgrepignore` from your repository when you provide them; the toolkit ships none of them.
 
 ### 3. **Nightly Continuous Scans**
 > "As a security engineer, I want nightly scans of all main branches with historical diffs and results to GitHub Releases with alerts to Slack."
@@ -582,7 +582,7 @@ publishing:
 
 1. **Action inputs** - Workflow-specific overrides
 2. **`.gh-security-toolkit/config.yaml`** - Repository-level defaults
-3. **Native tool configs** - `.trivy.yaml`, `.trivyignore`, `.semgrepignore`
+3. **Native tool configs** - `trivy.yaml`, `.trivyignore`, `.semgrepignore`
 4. **Toolkit defaults** - Built-in default values
 
 ### Ignoring findings (`.trivyignore`)
@@ -643,7 +643,7 @@ Both files are read straight from the repository root by the `trivy` binary the 
 | `retention_days` | Days to retain results | `30` |
 | `retention_keep` | Max results per channel | `10` |
 | `trivy_severity` | Minimum severity to report | `MEDIUM,HIGH,CRITICAL` |
-| `trivy_config` | Path to `.trivy.yaml` config | `""` |
+| `trivy_config` | Path to a Trivy config file, passed to Trivy as `--config`. Only needed for a file Trivy would not find by itself — one outside the repository root, or under another name such as `.trivy.yaml`. | `""` |
 | `semgrep_configs` | Semgrep rule configurations | `p/owasp-top-ten,...` |
 | `org_display_name` | Organization display name (overrides config.yaml) | `""` |
 | `org_logo_url` | Organization logo URL (overrides config.yaml) | `""` |
@@ -661,7 +661,29 @@ permissions:
 
 ### Trivy configuration
 
-Create `.trivy.yaml` in your repository:
+Create `trivy.yaml` in your repository — **no leading dot**:
+
+Trivy's own default config name is `trivy.yaml`. The dotted `.trivy.yaml` is a
+convention elsewhere and Trivy does not look for it, so a file under that name
+is read only when something passes `--config`. Local scans now pass it for
+you if that is the name you have, and prefer `trivy.yaml` when both exist,
+but `trivy.yaml` is the name to reach for.
+
+Note the two files disagree about the dot, which is the trap: `.trivyignore`
+*does* take one, and always worked.
+
+CI runs Trivy from your repository root as well, so a `trivy.yaml` there is
+found the same way. Two things differ from a local scan and are worth knowing:
+
+- The scan action passes `severity`, `format`, `output`, `scanners` and
+  `timeout` as explicit inputs, and an input beats the config file. Setting
+  those keys in `trivy.yaml` will not change a CI scan.
+- `scanning.trivy.config` in `.gh-security-toolkit/config.yaml` names a config
+  file at some other path, for when the file is not in the root or is not
+  called `trivy.yaml`.
+
+`.trivyignore` needs no setting in either place: Trivy finds it by itself.
+
 
 ```yaml
 vulnerability:

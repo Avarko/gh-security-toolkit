@@ -37,7 +37,9 @@ repository:
 
 scanning:
   trivy:
-    config: ".trivy.yaml"
+    # Only needed for a config Trivy would not find itself. A trivy.yaml in
+    # the repository root is picked up without this, in CI and locally.
+    config: "config/trivy.yaml"
     severity: "MEDIUM,HIGH,CRITICAL"
   semgrep:
     configs:
@@ -55,7 +57,7 @@ publishing:
 1. Action inputs          → Workflow-specific overrides
 2. .gh-security-toolkit/  → Repository-level config
    └── config.yaml
-3. Native tool configs    → .trivy.yaml, .trivyignore, .semgrepignore
+3. Native tool configs    → trivy.yaml, .trivyignore, .semgrepignore
 4. Toolkit defaults       → Built-in default values
 ```
 
@@ -124,7 +126,9 @@ gh-security-toolkit/
 my-app/
 ├── .gh-security-toolkit/
 │   └── config.yaml             # Client configuration (org branding, defaults)
-├── .trivy.yaml                 # Native Trivy config (optional)
+├── trivy.yaml                  # Native Trivy config (optional, NO leading dot:
+│                               # .trivy.yaml is a convention Trivy does not
+│                               # implement and will not find on its own)
 ├── .semgrepignore              # Native Semgrep ignores (optional)
 ├── .github/
 │   └── workflows/
