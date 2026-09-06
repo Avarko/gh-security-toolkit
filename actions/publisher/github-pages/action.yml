@@ -60,7 +60,7 @@ runs:
 
 
     - name: Setup JBang
-      uses: jbangdev/setup-jbang@312c53a4221283f9c8e4aa84d8261b82f0c680fb  # Nov 11, 2025
+      uses: jbangdev/setup-jbang@cc28889678db839e29433f42f9ff25f148b6d8de  # Nov 11, 2025
 
     - name: Create optional config overrides (if provided)
       id: config_overrides
@@ -177,7 +177,7 @@ runs:
 
     - name: Upload GitHub Pages site data artifact
       id: upload_site_data
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       with:
         name: __gh_security_toolkit__github_pages_site_data
         path: ${{ steps.temp.outputs.site_data_output }}/scan-history.tar.gz
