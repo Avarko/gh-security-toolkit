@@ -52,7 +52,8 @@ runs:
   using: "composite"
   steps:
     - name: Setup JBang
-      uses: jbangdev/setup-jbang@312c53a4221283f9c8e4aa84d8261b82f0c680fb  # Nov 11, 2025
+      shell: bash
+      run: "${GITHUB_ACTION_PATH}/../../scripts/install-jbang.sh"
 
     - name: Summarize FS (if provided)
       if: ${{ inputs.fs_json != '' }}

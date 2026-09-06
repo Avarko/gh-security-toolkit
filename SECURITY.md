@@ -101,9 +101,21 @@ vulnerability data reports "clean" for everything published since. The image
 has the same freshness check.
 
 **Third-party actions carrying real risk are SHA-pinned.**
-`jbangdev/setup-jbang`, `aquasecurity/trivy-action` and
-`yogeshlonkar/trivy-cache-action` are pinned to commit SHAs with a dated
-comment.
+`aquasecurity/trivy-action` and `yogeshlonkar/trivy-cache-action` are pinned to
+commit SHAs, each with a comment naming the release, which
+`scripts/check-action-pins.py` resolves against the tag on every run.
+
+**A pin is worth only what the pinned code does.** `jbangdev/setup-jbang` used
+to be on that list and is now gone from the repository. It was pinned to a SHA
+and the pin was honest, but the commit it named held one instruction --
+`curl -Ls https://sh.jbang.dev | bash -s - app setup` -- so what forty
+characters bought was the shape of a download and not its contents: an
+unpinned script, from a host that is not github.com, installing an unpinned
+version, on the consumer's runner and inside their token's reach.
+`scripts/install-jbang.sh` replaces it with a named jbang release fetched from
+GitHub and checked against a sha256 recorded here, failing closed on a
+mismatch. Reviewing pins by checking that a SHA is present would never have
+found this; reading the action did.
 
 **The safe input idiom exists and is used at the entry point.**
 `actions/security-scan/action.yml` passes every value through `env:` and its
