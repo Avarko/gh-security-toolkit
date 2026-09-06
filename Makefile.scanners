@@ -444,7 +444,13 @@ __GHST_MAX_STALE_DAYS ?= 14
 # Listing both at once was the earlier shape and cost the split; being told
 # the truth twice is better than being told half of it in one go.
 #
+# The remedy is a parameter rather than a sentence in the body, because the
+# body is shared and the two halves are fixed differently. Written once into
+# the body it told somebody whose scanner image had gone stale to delete a
+# Makefile, which does nothing for a stale image.
+#
 # $(1) confirmation stamp   $(2) what to call it   $(3) verdict stamp, if any
+# $(4) how to fix it by hand
 define __ghst-floor-check
 if [ "$(GHST_OFFLINE)" = "1" ]; then exit 0; fi; \
 mkdir -p "$(dir $(1))"; \
@@ -457,19 +463,18 @@ age=$$(( ( $$(date +%s) - $$(stat -c %Y "$(1)" 2>/dev/null || stat -f %m "$(1)" 
 if [ "$$age" -lt "$(__GHST_MAX_STALE_DAYS)" ]; then exit 0; fi; \
 echo "❌ Refusing to scan: nothing has confirmed $(2) for $$age days." >&2; \
 echo "   A scan against a stale toolkit reports clean for everything published since." >&2; \
-echo "   Fix the network and re-run. To re-fetch by hand, delete" >&2; \
-echo "   $(__GHST_SELF) and run make again." >&2; \
+echo "   Fix the network and re-run, or $(4)." >&2; \
 echo "   On a machine that is meant to be air-gapped, set GHST_OFFLINE=1." >&2; \
 exit 1
 endef
 
 .PHONY: __ghst-floor-makefile
 __ghst-floor-makefile: __ghst-self-check
-	@$(call __ghst-floor-check,$(__GHST_SELF_CONFIRMED),this toolkit Makefile,$(__GHST_SELF_STAMP))
+	@$(call __ghst-floor-check,$(__GHST_SELF_CONFIRMED),this toolkit Makefile,$(__GHST_SELF_STAMP),delete $(__GHST_SELF) and run make again)
 
 .PHONY: __ghst-floor-image
 __ghst-floor-image: __ghst-image-ensure
-	@$(call __ghst-floor-check,$(__GHST_IMAGE_CONFIRMED),the scanner image,)
+	@$(call __ghst-floor-check,$(__GHST_IMAGE_CONFIRMED),the scanner image,,run 'make sec/scan/clean' to drop the cached image)
 
 .PHONY: __ghst-freshness-floor
 __ghst-freshness-floor: __ghst-floor-makefile __ghst-floor-image
