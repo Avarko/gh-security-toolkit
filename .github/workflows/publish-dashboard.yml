@@ -52,7 +52,7 @@ jobs:
 
     steps:
       - name: Checkout client repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Generate timestamp
         id: ts
