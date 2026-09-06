@@ -452,13 +452,19 @@ __ghst-provenance: __ghst-db-ensure __ghst-self-check
 	fi
 
 # Reduces the helper's status report to one line: each database with the date
-# it was published, how long ago this machine fetched it, and which helper
+# it was published, whether it is the newest published, and which helper
 # assembled it.
 #
 # The version each database carries is a publication date in YYYYMMDD form,
 # which is why it can be rendered as one. Anything the helper did not report
 # comes out as "unknown" rather than being dropped, so a partial line cannot
 # read as a complete one.
+#
+# "checked:" is preferred over "age:" and "age:" is kept as the fallback,
+# because the two sides ship separately: this file arrives by curl and the
+# helper inside whatever scanner image is pulled, so a Makefile updated today
+# routinely runs against a helper that predates the line. Falling back keeps
+# that pairing reporting what it always did instead of "fetched ? day(s) ago".
 __GHST_AWK_DB_VERSIONS = awk ' \
 	/^  (main|java):/ { \
 		name = $$1; sub(":", "", name); \
@@ -467,11 +473,15 @@ __GHST_AWK_DB_VERSIONS = awk ' \
 			v = substr(v,1,4) "-" substr(v,5,2) "-" substr(v,7,2); \
 		out = out (out ? ", " : "") name " " v; \
 	} \
-	/^  age:/    { age = $$2 } \
-	/^  helper:/ { helper = $$3 } \
+	/^  age:/     { age = $$2 } \
+	/^  checked:/ { sub(/^  checked: */, ""); checked = $$0 } \
+	/^  helper:/  { helper = $$3 } \
 	END { \
 		printf "%s", (out ? out : "no database cached"); \
-		printf ", fetched %s day(s) ago", (age == "" ? "?" : age); \
+		if (checked) \
+			printf ", %s", checked; \
+		else \
+			printf ", fetched %s day(s) ago", (age == "" ? "?" : age); \
 		printf ", helper %s", (helper ? helper : "unknown"); \
 	}'
 
