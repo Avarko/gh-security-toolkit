@@ -364,7 +364,24 @@ __ghst-self-check:
 # measured at four and a half thousand fetches before the loop was stopped.
 # Created stamped 1970 so an install that has never been checked is not
 # instantly considered stale.
+#
+# The prerequisite is declared conditionally, and it has to be: makefile
+# remaking happens before any recipe runs, so a GHST_OFFLINE=1 check inside one
+# is too late to stop it. An online run that found an update leaves the trigger
+# newer than the include, and the next run re-fetches on that basis whether or
+# not it has a network. Measured on an air-gapped machine with the README's own
+# fetch rule, that is not a slow scan but no scan at all -- "Could not fetch",
+# exit 2, before anything starts -- and it repeats on every invocation, because
+# nothing offline can move the trigger back. An air-gapped machine that once
+# saw a newer toolkit could never scan again.
+#
+# GHST_OFFLINE is available while Make is still parsing, from the environment
+# or the command line alike, so declaring nothing here is enough: with no
+# prerequisite the include is never out of date, and offline goes back to
+# meaning that nobody asked.
+ifneq ($(GHST_OFFLINE),1)
 $(__GHST_SELF): $(__GHST_SELF_TRIGGER)
+endif
 
 $(__GHST_SELF_TRIGGER):
 	@mkdir -p "$(dir $@)"
