@@ -83,6 +83,11 @@ runs:
         # A zero exit is not enough on its own. Semgrep reports a ruleset it
         # could not load in .errors[] and still writes a well-formed file with
         # an empty .results[], which reads downstream as a clean scan.
+        #
+        # A missing .errors needs no guard, though review read it as one that
+        # does: in jq "null | length" is 0, not null, so output with no errors
+        # key counts as zero errors and passes. Checked against
+        # scripts/test-fixtures/semgrep-results.json, which has no errors key.
         ERRORS=$(jq '.errors | length' "${INPUT_SEMGREP_OUTPUT_DIR}/semgrep-results.json")
         if [ "$ERRORS" -gt 0 ]; then
           echo "::error::Semgrep reported $ERRORS error(s); the findings below would be incomplete." >&2
