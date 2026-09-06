@@ -148,10 +148,15 @@ repository set up in March is still running March's scan commands today, and
 moving the `v1` tag does nothing for it. A moved tag only reaches a machine
 that fetches again.
 
-Nothing can fix that on its own without this file rewriting itself in the
-middle of your build, so it reports instead. Once a day it compares its own
-sha256 against what is published at the version you pinned, and if they differ
-every scan says so:
+It fixes itself now, without ever rewriting itself behind your back. Once a
+day it compares its own sha256 against what is published at the version you
+pinned. When they differ it says so, and it marks itself out of date -- which
+makes Make re-fetch it through the include rule your own Makefile already has,
+before the next scan starts, restarting with the new file in the same command.
+The scan that discovers the update still runs on the old file; the one after it
+does not.
+
+While it is out of date, every scan says so:
 
 ```
     note: these scan commands are not the ones published at 'v1'
@@ -177,6 +182,28 @@ banner reports the checks it did not make as not made:
 Everything that can be answered from what is already on the machine still is —
 versions, digests, the commit behind the image, how old the database is. The
 one thing that changes is that nothing claims to have looked.
+
+### What keeps itself current
+
+Publishing a new version of the toolkit should not require asking anybody to
+run anything. Every part of what a scan uses refreshes on its own, and the
+parts that cannot reach the network refuse rather than quietly scanning with
+old data.
+
+| Artefact | Where it lives | How it refreshes | If it cannot |
+| --- | --- | --- | --- |
+| `Makefile.scanners` | `.gh-security-toolkit/` in your repository | Compared against the published file once a day during a scan. When a newer one exists, the next scan re-fetches it through your own include rule and Make restarts with it. | Scan refuses once nothing has confirmed it for `__GHST_MAX_STALE_DAYS` (14). |
+| Scanner image | Docker | `docker pull` when the last check is more than `__GHST_IMAGE_MAX_AGE_DAYS` (1) old. The image it replaces is removed if nothing else tags it. | Scan refuses once nothing has confirmed it for `__GHST_MAX_STALE_DAYS` (14). |
+| Trivy databases | `~/.cache/gh-security-toolkit/trivy-db` | The helper updates them incrementally, applying deltas rather than re-downloading. | Scan refuses at `__GHST_DB_MAX_AGE_DAYS` (14). |
+| Containers | Docker | Nothing to refresh: every run is `--rm`, so none are kept. | — |
+| `semgrep/semgrep:latest` | Docker | **Nothing pulls it.** Docker runs whatever was cached the first time, for as long as that image exists. | Not covered. |
+
+`GHST_OFFLINE=1` turns all of it off, including the refusals — an air-gapped
+machine is not a broken one. That is the intended way to run without a
+network, and the reason the refusals name it.
+
+The last row is a real gap rather than an oversight: pinning Semgrep would
+change what its scans report, so it is left to be decided on its own.
 
 ### Ignore CVEs
 
