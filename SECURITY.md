@@ -104,7 +104,11 @@ normally update on their own -- the image by pull, the Makefile by marking
 itself out of date so Make re-fetches it through the consumer's own include
 rule -- so the refusal is the backstop for a machine where that has not
 happened for a fortnight, not the mechanism. `GHST_OFFLINE=1` disables all
-three, which is what an air-gapped machine is supposed to set.
+three, which is what an air-gapped machine is supposed to set. A host that
+cannot run the Makefile comparison at all -- no `cmp`, no `curl` -- is exempt
+from that half rather than refused by it: being unable to ask is not the same
+as asking and getting no answer, and only the second is the developer's to
+fix.
 
 **Third-party actions carrying real risk are SHA-pinned.**
 `aquasecurity/trivy-action` and `yogeshlonkar/trivy-cache-action` are pinned to
