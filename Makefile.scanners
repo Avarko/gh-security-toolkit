@@ -228,7 +228,9 @@ __GHST_IMAGE_STAMP := $(HOME)/.cache/gh-security-toolkit/.image-checked-$(subst 
 
 # The registry answering at all is the confirmation, whether it handed over a
 # new image or said the cached one is still newest. Only "unreachable" leaves
-# this untouched, which is what the floor measures.
+# this untouched, which is what the floor measures -- and, as with the Makefile
+# stamp beside it, the floor creates this one on first sight so a machine with
+# nothing yet confirmed starts a clock rather than failing.
 __GHST_IMAGE_CONFIRMED := $(HOME)/.cache/gh-security-toolkit/.image-confirmed-$(subst /,_,$(__GHST_IMAGE_TAG))
 
 .PHONY: __ghst-image-ensure
@@ -294,8 +296,14 @@ __GHST_SELF_MAX_AGE_DAYS ?= 1
 __GHST_SELF_URL ?= https://raw.githubusercontent.com/Avarko/gh-security-toolkit/$(__GHST_VERSION)/Makefile.scanners
 __GHST_SELF_STAMP := $(HOME)/.cache/gh-security-toolkit/.makefile-checked-$(subst /,_,$(__GHST_VERSION))
 
-# Touched only when a check confirms this file is the published one. The floor
-# below measures from it, so it has to mean "confirmed", never "attempted".
+# Touched when a check confirms this file is the published one, and once more
+# by the floor itself if the stamp does not exist yet. The floor measures from
+# it, so it has to mean "confirmed", never "attempted" -- but a machine that
+# has never confirmed anything has nothing to measure from either, and
+# refusing on day one because the first check happened to fail is not the
+# behaviour anybody wants. The bootstrap touch is where the clock starts on
+# such a machine, and it reads as "confirmed" only in the sense that nothing
+# has yet had the chance to be otherwise.
 __GHST_SELF_CONFIRMED := $(HOME)/.cache/gh-security-toolkit/.makefile-confirmed-$(subst /,_,$(__GHST_VERSION))
 
 # Touched only when a check finds a newer published file, which is what makes
