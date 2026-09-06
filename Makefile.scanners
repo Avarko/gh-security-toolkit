@@ -7,6 +7,14 @@
 
 __GHST_VERSION ?= main
 
+# Where this file was loaded from, captured while Make is still reading it.
+# MAKEFILE_LIST grows with every include, so lastword names this file here and
+# something else later. Needed because the client's copy is fetched once and
+# then never refetched -- the include rule has no prerequisites -- so the only
+# way this file can tell a developer it has gone stale is to compare itself
+# against what is published.
+__GHST_SELF := $(lastword $(MAKEFILE_LIST))
+
 # Image tag, which defaults to the makefile version but is separate on
 # purpose: testing this makefile from a branch does not imply an image
 # published under that branch's name. Set __GHST_IMAGE_TAG to point at a
@@ -196,6 +204,23 @@ __ghst-db-ensure: __ghst-image-ensure
 # an otherwise offline scan does not pay a registry round-trip each time. Same
 # shape as __GHST_DB_MAX_AGE_DAYS above, and for the same reason: a stale tool
 # should be refreshed on a schedule, not left to a developer noticing.
+#
+# The stamp records what the check found, not just that it happened. `docker
+# pull` already answers the question a developer actually has -- am I running
+# the newest scanner -- and it was being thrown away by `-q` and a redirect to
+# /dev/null. Without it the banner's publication date reads identically whether
+# it was confirmed newest twenty minutes ago or last looked at on Wednesday.
+#
+# Three verdicts, and "unreachable" is the one worth having: it also stamps the
+# file, so the next scan will not retry for a day. That is deliberate -- a
+# developer on a train should not wait for a registry timeout before every scan
+# -- but it means the image can be arbitrarily old with nothing having failed,
+# which is only defensible now that the banner says so.
+#
+# What the stamp says is what decides whether to skip, not that it exists. A
+# scan interrupted between the truncation and the write leaves an empty file,
+# and on mere existence that would suppress the check for a day while the
+# banner reported the freshness it had just been stopped from learning.
 # ============================================================================
 
 __GHST_IMAGE_MAX_AGE_DAYS ?= 1
@@ -205,23 +230,260 @@ __GHST_IMAGE_STAMP := $(HOME)/.cache/gh-security-toolkit/.image-checked-$(subst 
 __ghst-image-ensure:
 	@mkdir -p "$(dir $(__GHST_IMAGE_STAMP))"
 	@if [ "$(GHST_OFFLINE)" = "1" ]; then exit 0; fi; \
-	if $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) >/dev/null 2>&1 \
-	   && [ -f "$(__GHST_IMAGE_STAMP)" ]; then \
+	verdict=$$(cat "$(__GHST_IMAGE_STAMP)" 2>/dev/null); \
+	case "$$verdict" in current|updated|unreachable) ;; *) verdict="" ;; esac; \
+	if [ -n "$$verdict" ] \
+	   && $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) >/dev/null 2>&1; then \
 		now=$$(date +%s); \
 		checked=$$(stat -c %Y "$(__GHST_IMAGE_STAMP)" 2>/dev/null || stat -f %m "$(__GHST_IMAGE_STAMP)"); \
 		age_days=$$(( (now - checked) / 86400 )); \
 		[ "$$age_days" -lt "$(__GHST_IMAGE_MAX_AGE_DAYS)" ] && exit 0; \
 	fi; \
 	echo "🔄 Checking for a newer $(__GHST_IMAGE)..."; \
-	if $(__GHST_DOCKER_CMD) pull -q $(__GHST_IMAGE) >/dev/null 2>&1; then \
-		touch "$(__GHST_IMAGE_STAMP)"; \
+	if out=$$($(__GHST_DOCKER_CMD) pull $(__GHST_IMAGE) 2>&1); then \
+		case "$$out" in \
+			*"Image is up to date"*) echo current > "$(__GHST_IMAGE_STAMP)" ;; \
+			*)                       echo updated > "$(__GHST_IMAGE_STAMP)" ;; \
+		esac; \
 	elif $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) >/dev/null 2>&1; then \
 		echo "⚠️  Could not reach the registry — using the cached image."; \
-		touch "$(__GHST_IMAGE_STAMP)"; \
+		echo unreachable > "$(__GHST_IMAGE_STAMP)"; \
 	else \
 		echo "❌ $(__GHST_IMAGE) is not available locally and the registry could not be reached."; \
 		exit 1; \
 	fi
+
+# ============================================================================
+# Makefile freshness
+#
+# The image and the database refresh themselves; this file does not, and that
+# is the one gap in "run the scan and you are current". The client's include
+# rule fetches Makefile.scanners once into .gh-security-toolkit/ and has no
+# prerequisites, so Make never rebuilds it. A developer who set this up in
+# March is still running March's scan commands, and moving the v1 tag does
+# nothing for them -- a moved tag only reaches a machine that fetches again.
+#
+# Nothing can fix that automatically without this file overwriting itself
+# mid-build, which is not a thing to do to somebody's repository. So it
+# reports instead, and the report has to be about content rather than about
+# versions: pinning to a moving tag like v1 or main means the version string
+# is identical on both sides while the file behind it has changed.
+#
+# One 30 kB fetch a day, no token, no registry. Skipped entirely when offline,
+# where the honest answer is that nobody asked.
+# ============================================================================
+
+__GHST_SELF_MAX_AGE_DAYS ?= 1
+__GHST_SELF_URL ?= https://raw.githubusercontent.com/Avarko/gh-security-toolkit/$(__GHST_VERSION)/Makefile.scanners
+__GHST_SELF_STAMP := $(HOME)/.cache/gh-security-toolkit/.makefile-checked-$(subst /,_,$(__GHST_VERSION))
+
+# sha256sum is GNU, shasum is what macOS ships. Neither is worth a dependency
+# check that fails a scan, so the absence of both is reported as unknown.
+#
+# Whether each side was read is decided before hashing, never after. Both
+# hashers answer an empty stream with e3b0c442..., so a failed fetch produces a
+# perfectly good hash of nothing that matches no file -- which is to say a
+# developer behind a captive portal would be told their scan commands are not
+# the published ones. That is the false alarm this whole section exists to
+# avoid, and inferring reachability from a hash walks straight into it.
+__GHST_SHA256 = { command -v sha256sum >/dev/null 2>&1 && sha256sum || shasum -a 256; } 2>/dev/null | cut -d' ' -f1
+
+.PHONY: __ghst-self-check
+__ghst-self-check:
+	@if [ "$(GHST_OFFLINE)" = "1" ]; then exit 0; fi; \
+	mkdir -p "$(dir $(__GHST_SELF_STAMP))"; \
+	verdict=$$(cat "$(__GHST_SELF_STAMP)" 2>/dev/null); \
+	case "$$verdict" in current|stale|unknown) ;; *) verdict="" ;; esac; \
+	if [ -n "$$verdict" ]; then \
+		now=$$(date +%s); \
+		checked=$$(stat -c %Y "$(__GHST_SELF_STAMP)" 2>/dev/null || stat -f %m "$(__GHST_SELF_STAMP)"); \
+		[ $$(( (now - checked) / 86400 )) -lt "$(__GHST_SELF_MAX_AGE_DAYS)" ] && exit 0; \
+	fi; \
+	mine=""; theirs=""; \
+	[ -r "$(__GHST_SELF)" ] && mine=$$(cat "$(__GHST_SELF)" | $(__GHST_SHA256)); \
+	body=$$(mktemp); \
+	curl -fsSL --max-time 10 "$(__GHST_SELF_URL)" -o "$$body" 2>/dev/null \
+		&& theirs=$$(cat "$$body" | $(__GHST_SHA256)); \
+	rm -f "$$body"; \
+	if [ -z "$$mine" ] || [ -z "$$theirs" ]; then \
+		echo unknown > "$(__GHST_SELF_STAMP)"; \
+	elif [ "$$mine" = "$$theirs" ]; then \
+		echo current > "$(__GHST_SELF_STAMP)"; \
+	else \
+		echo stale > "$(__GHST_SELF_STAMP)"; \
+	fi
+
+# ============================================================================
+# Provenance
+#
+# Every scan states what produced it, naming both sources by their repository:
+# the scanner image from gh-security-toolkit, and the vulnerability data from
+# trivy-incremental-dbs. Each line carries a publication date as well as a
+# digest or version, because a date is what a reader can judge at a glance and
+# a hash is what they need when they have to reproduce the run.
+#
+# This exists because a scan result is only worth something if it can be
+# reproduced, and until now nothing in the output said what it ran. A tag is
+# not an answer: `main` moved twice this week, and two developers scanning the
+# same code on the same day could get different findings with no way to tell.
+#
+# The image half is read from the local image, so it costs nothing and works
+# offline. The database half asks the helper inside that image, which is one
+# short container run against a cache that is already mounted. Asking the
+# helper rather than parsing the cache directly means this works with the
+# helper that is published today, not only with one built after this change.
+#
+# Output goes to stderr, so it cannot land in a report redirected to a file.
+# Note that the scan targets' own progress echoes still go to stdout, so
+# `__GHST_TRIVY_FORMAT=json > report.json` is not clean today for reasons that
+# predate this banner.
+# ============================================================================
+
+# Docker's template language has no "or" for missing map keys, so each value
+# is fetched with `with`, which prints nothing when the label is absent.
+__GHST_LABEL = $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) \
+	--format '{{with index .Config.Labels "$(1)"}}{{.}}{{end}}' 2>/dev/null
+
+.PHONY: sec/provenance
+sec/provenance: ## Print what a scan on this machine would run: images, dates, digests, versions
+	@$(MAKE) --no-print-directory __ghst-provenance GHST_PROVENANCE_VERBOSE=1
+
+# Printed before every Trivy scan. Silent about anything it cannot determine
+# rather than guessing: "unknown" is better than a plausible wrong answer.
+#
+# That rule was broken in the one place it mattered. Asking the helper for the
+# database version discarded its stderr and ignored its exit status, so a
+# container that would not start -- no image, no daemon, a helper that crashed
+# -- came out as "no database cached": a factual claim about the cache, made by
+# code that had not managed to look at it. A developer reads that as an empty
+# cache and reruns the scan, which is the one response that cannot help. The
+# failure now says it is a failure and shows what the helper said.
+#
+# Verbose also names cosign and crane, not only the scanners. They are how the
+# database got here and how its signature was checked, so "the database was
+# verified" means exactly as much as the cosign version behind it.
+.PHONY: __ghst-provenance
+__ghst-provenance: __ghst-db-ensure __ghst-self-check
+	@stamp_age() { \
+		s=$$(stat -c %Y "$$1" 2>/dev/null || stat -f %m "$$1" 2>/dev/null); \
+		[ -n "$$s" ] || { echo "never"; return; }; \
+		d=$$(( $$(date +%s) - s )); \
+		if [ "$$d" -lt 3600 ]; then echo "$$(( d / 60 )) min ago"; \
+		elif [ "$$d" -lt 172800 ]; then echo "$$(( d / 3600 )) h ago"; \
+		else echo "$$(( d / 86400 )) days ago"; fi; \
+	}; \
+	if [ "$(GHST_OFFLINE)" = "1" ]; then \
+		fresh="not checked, GHST_OFFLINE=1"; \
+	else \
+		case "$$(cat "$(__GHST_IMAGE_STAMP)" 2>/dev/null)" in \
+			current|updated) fresh="newest as of $$(stamp_age "$(__GHST_IMAGE_STAMP)")" ;; \
+			unreachable)     fresh="registry unreachable $$(stamp_age "$(__GHST_IMAGE_STAMP)")" ;; \
+			*)               fresh="freshness unknown" ;; \
+		esac; \
+	fi; \
+	selfverdict=$$(cat "$(__GHST_SELF_STAMP)" 2>/dev/null); \
+	case "$$selfverdict" in current|stale|unknown) ;; *) selfverdict="" ;; esac; \
+	if [ -n "$$selfverdict" ]; then \
+		selfstate="$$selfverdict as of $$(stamp_age "$(__GHST_SELF_STAMP)")"; \
+	elif [ "$(GHST_OFFLINE)" = "1" ]; then \
+		selfstate="not checked, GHST_OFFLINE=1"; \
+	else \
+		selfstate="not checked"; \
+	fi; \
+	ref='$(__GHST_IMAGE)'; \
+	if ! $(__GHST_DOCKER_CMD) image inspect $$ref >/dev/null 2>&1; then \
+		echo "==> gh-security-toolkit: $$ref is not present locally yet" >&2; \
+	else \
+		digest=$$($(__GHST_DOCKER_CMD) image inspect $$ref \
+			--format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null \
+			| sed 's/.*@//'); \
+		revision=$$($(call __GHST_LABEL,org.opencontainers.image.revision)); \
+		built=$$($(call __GHST_LABEL,org.opencontainers.image.created)); \
+		if [ -z "$$built" ]; then \
+			built=$$($(__GHST_DOCKER_CMD) image inspect $$ref --format '{{.Created}}' 2>/dev/null); \
+		fi; \
+		built=$$(echo "$$built" | cut -c1-10); \
+		echo "==> gh-security-toolkit: image '$(__GHST_IMAGE_TAG)' published $${built:-unknown} ($$fresh), digest $$(echo $${digest:-unknown} | cut -c1-19), revision $$(echo $${revision:-unknown} | cut -c1-12)" >&2; \
+		if [ "$(GHST_PROVENANCE_VERBOSE)" = "1" ]; then \
+			trivy_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.trivy.version)); \
+			th_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.trufflehog.version)); \
+			cosign_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.cosign.version)); \
+			crane_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.crane.version)); \
+			helper_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.trivy-db-helper.version)); \
+			echo "    digest      $${digest:-unknown}" >&2; \
+			echo "    revision    $${revision:-unknown}" >&2; \
+			echo "    trivy       $${trivy_ver:-unknown}" >&2; \
+			echo "    trufflehog  $${th_ver:-unknown}" >&2; \
+			echo "    cosign      $${cosign_ver:-unknown}" >&2; \
+			echo "    crane       $${crane_ver:-unknown}" >&2; \
+			echo "    db helper   $${helper_ver:-unknown}" >&2; \
+			echo "    makefile    taken from '$(__GHST_VERSION)', image tag '$(__GHST_IMAGE_TAG)'" >&2; \
+			echo "    self-check  $$selfstate, $(__GHST_SELF)" >&2; \
+		fi; \
+		if [ -z "$$digest" ]; then \
+			echo "    note: no registry digest. This image was built or loaded locally, so no" >&2; \
+			echo "          published image corresponds to this scan." >&2; \
+		fi; \
+		if [ -z "$$revision" ]; then \
+			echo "    note: no revision label, so the commit behind this scan is unknown." >&2; \
+			echo "          Pull the image again once a labelled one is published." >&2; \
+		fi; \
+	fi; \
+	$(__GHST_DB_PREPARE); \
+	dberr=$$(mktemp); \
+	if status=$$($(__GHST_DB_RUN) -command status 2>"$$dberr"); then \
+		echo "==> trivy-incremental-dbs: $$(echo "$$status" | $(__GHST_AWK_DB_VERSIONS))" >&2; \
+		if [ "$(GHST_PROVENANCE_VERBOSE)" = "1" ]; then \
+			echo "$$status" | sed 's/^/    /' >&2; \
+		fi; \
+	else \
+		echo "==> trivy-incremental-dbs: could not be asked, so the database behind this scan is unknown" >&2; \
+		sed 's/^/    /' "$$dberr" >&2; \
+	fi; \
+	rm -f "$$dberr"; \
+	if [ "$(__GHST_VERSION)" != "$(__GHST_IMAGE_TAG)" ]; then \
+		echo "    note: Makefile pinned to '$(__GHST_VERSION)', image tag '$(__GHST_IMAGE_TAG)'." >&2; \
+		echo "          Pinning the include does not pin the scanner." >&2; \
+	fi; \
+	if [ "$$selfverdict" = "stale" ]; then \
+		echo "    note: these scan commands are not the ones published at '$(__GHST_VERSION)'" >&2; \
+		echo "          (checked $$(stamp_age "$(__GHST_SELF_STAMP)")). The image and database" >&2; \
+		echo "          update themselves; this file is fetched once. Run 'make sec/update'." >&2; \
+	fi
+
+# Reduces the helper's status report to one line: each database with the date
+# it was published, whether it is the newest published, and which helper
+# assembled it.
+#
+# The version each database carries is a publication date in YYYYMMDD form,
+# which is why it can be rendered as one. Anything the helper did not report
+# comes out as "unknown" rather than being dropped, so a partial line cannot
+# read as a complete one.
+#
+# "checked:" is preferred over "age:" and "age:" is kept as the fallback,
+# because the two sides ship separately: this file arrives by curl and the
+# helper inside whatever scanner image is pulled, so a Makefile updated today
+# routinely runs against a helper that predates the line. Falling back keeps
+# that pairing reporting what it always did instead of "fetched ? day(s) ago".
+__GHST_AWK_DB_VERSIONS = awk ' \
+	/^  (main|java):/ { \
+		name = $$1; sub(":", "", name); \
+		v = $$2; \
+		if (v ~ /^[0-9]{8}$$/) \
+			v = substr(v,1,4) "-" substr(v,5,2) "-" substr(v,7,2); \
+		out = out (out ? ", " : "") name " " v; \
+	} \
+	/^  age:/     { age = $$2 } \
+	/^  checked:/ { sub(/^  checked: */, ""); checked = $$0 } \
+	/^  helper:/  { helper = $$3 } \
+	END { \
+		printf "%s", (out ? out : "no database cached"); \
+		if (checked) \
+			printf ", %s", checked; \
+		else \
+			printf ", fetched %s day(s) ago", (age == "" ? "?" : age); \
+		printf ", helper %s", (helper ? helper : "unknown"); \
+	}'
 
 # ============================================================================
 # Trivy - Automatically uses .trivy.yaml if present
@@ -235,14 +497,14 @@ __ghst-image-ensure:
 # ============================================================================
 
 .PHONY: sec/scan/trivy/fs
-sec/scan/trivy/fs: __ghst-db-ensure # Scan filesystem (uses .trivy.yaml config)
+sec/scan/trivy/fs: __ghst-provenance # Scan filesystem (uses .trivy.yaml config)
 	@echo "🔍 Scanning filesystem with Trivy (offline mode)..."
 	@test -f .trivy.yaml && echo "ℹ️  Using .trivy.yaml configuration" || true
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	$(__GHST_IMAGE) trivy fs . --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/artifact
-sec/scan/trivy/artifact: __ghst-db-ensure # Scan built artifact - Gradle WAR/JAR/EAR (ARTIFACT=path/to/app.war)
+sec/scan/trivy/artifact: __ghst-provenance # Scan built artifact - Gradle WAR/JAR/EAR (ARTIFACT=path/to/app.war)
 	@[ -n "$(ARTIFACT)" ] || (echo "❌ Usage: make sec/scan/trivy/artifact ARTIFACT=build/libs/app.war" && exit 1)
 	@[ -e "$(ARTIFACT)" ] || (echo "❌ Artifact not found: $(ARTIFACT)" && exit 1)
 	@echo "🔍 Scanning artifact $(ARTIFACT) with Trivy (offline mode)..."
@@ -251,14 +513,14 @@ sec/scan/trivy/artifact: __ghst-db-ensure # Scan built artifact - Gradle WAR/JAR
 	$(__GHST_IMAGE) trivy fs $(ARTIFACT) --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/config
-sec/scan/trivy/config: __ghst-db-ensure # Scan IaC configs for misconfigurations - Terraform, Dockerfile, K8s, etc. (uses .trivy.yaml config)
+sec/scan/trivy/config: __ghst-provenance # Scan IaC configs for misconfigurations - Terraform, Dockerfile, K8s, etc. (uses .trivy.yaml config)
 	@echo "🔍 Scanning IaC configs with Trivy (offline mode)..."
 	@test -f .trivy.yaml && echo "ℹ️  Using .trivy.yaml configuration" || true
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	$(__GHST_IMAGE) trivy config . --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/img
-sec/scan/trivy/img: __ghst-db-ensure # Scan Docker image (IMAGE=name:tag)
+sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" && exit 1)
 	@echo "🔍 Scanning image $(IMAGE) (offline mode)..."
 	@echo "ℹ️  Note: this target mounts the Docker socket so Trivy can read the"

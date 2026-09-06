@@ -5,6 +5,7 @@ ARG TRIVY_VER
 ARG TRUFFLEHOG_VER
 ARG COSIGN_VER
 ARG CRANE_VER
+ARG HELPER_VER
 
 FROM cgr.dev/chainguard/wolfi-base:latest
 
@@ -83,6 +84,26 @@ COPY --chown=ghst:ghst verified-binaries/trivy-db/policy /opt/trivy-cache/policy
 # Helper that applies incremental database updates, copied from CI alongside
 # the other verified binaries.
 COPY --chown=ghst:ghst verified-binaries/linux-${TARGETARCH}/trivy-db-helper /usr/local/bin/trivy-db-helper
+
+# What this image is made of, as labels.
+#
+# CI resolves each of these versions and until now kept them to its own build
+# log, which is unreachable from a developer's terminal and expires. A scan
+# result that cannot be traced to the tools that produced it cannot be
+# reproduced or disputed, so the versions travel with the image.
+#
+# The image also inherits labels from wolfi-base, including a vendor of
+# "Chainguard". Ours are namespaced so they cannot be confused with those.
+ARG TRIVY_VER
+ARG TRUFFLEHOG_VER
+ARG COSIGN_VER
+ARG CRANE_VER
+ARG HELPER_VER
+LABEL fi.evolver.ghst.trivy.version="${TRIVY_VER}" \
+      fi.evolver.ghst.trufflehog.version="${TRUFFLEHOG_VER}" \
+      fi.evolver.ghst.cosign.version="${COSIGN_VER}" \
+      fi.evolver.ghst.crane.version="${CRANE_VER}" \
+      fi.evolver.ghst.trivy-db-helper.version="${HELPER_VER}"
 
 # Non-root user
 USER ghst
