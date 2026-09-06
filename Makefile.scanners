@@ -302,40 +302,46 @@ __GHST_SELF_CONFIRMED := $(HOME)/.cache/gh-security-toolkit/.makefile-confirmed-
 # the include below out of date and gets it re-fetched.
 __GHST_SELF_TRIGGER := $(HOME)/.cache/gh-security-toolkit/.makefile-outdated-$(subst /,_,$(__GHST_VERSION))
 
-# sha256sum is GNU, shasum is what macOS ships. Neither is worth a dependency
-# check that fails a scan, so the absence of both is reported as unknown.
+# Compared with cmp rather than by hashing. The two files are both on this
+# disk by the time the question is asked, so a digest buys nothing, and it cost
+# a portability split: sha256sum is GNU, shasum is what macOS ships, and the
+# absence of both had to mean something. cmp is one name on every system this
+# runs on.
 #
-# Whether each side was read is decided before hashing, never after. Both
-# hashers answer an empty stream with e3b0c442..., so a failed fetch produces a
-# perfectly good hash of nothing that matches no file -- which is to say a
-# developer behind a captive portal would be told their scan commands are not
-# the published ones. That is the false alarm this whole section exists to
-# avoid, and inferring reachability from a hash walks straight into it.
-__GHST_SHA256 = { command -v sha256sum >/dev/null 2>&1 && sha256sum || shasum -a 256; } 2>/dev/null | cut -d' ' -f1
+# Whether the remote side was read at all is still decided from curl's exit
+# status, never from the comparison. A failed fetch leaves an empty file, and
+# an empty file compares unequal to this one -- which would tell a developer
+# behind a captive portal that their scan commands are not the published ones.
+# That is the false alarm this whole section exists to avoid.
 
 .PHONY: __ghst-self-check
 __ghst-self-check:
 	@if [ "$(GHST_OFFLINE)" = "1" ]; then exit 0; fi; \
 	mkdir -p "$(dir $(__GHST_SELF_STAMP))"; \
 	verdict=$$(cat "$(__GHST_SELF_STAMP)" 2>/dev/null); \
-	case "$$verdict" in current|stale|unknown) ;; *) verdict="" ;; esac; \
+	case "$$verdict" in current|stale|unknown|unsupported) ;; *) verdict="" ;; esac; \
 	if [ -n "$$verdict" ]; then \
 		now=$$(date +%s); \
 		checked=$$(stat -c %Y "$(__GHST_SELF_STAMP)" 2>/dev/null || stat -f %m "$(__GHST_SELF_STAMP)"); \
 		[ $$(( (now - checked) / 86400 )) -lt "$(__GHST_SELF_MAX_AGE_DAYS)" ] && exit 0; \
 	fi; \
-	mine=""; theirs=""; \
-	[ -r "$(__GHST_SELF)" ] && mine=$$(cat "$(__GHST_SELF)" | $(__GHST_SHA256)); \
+	if ! command -v cmp >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 \
+	   || [ ! -r "$(__GHST_SELF)" ]; then \
+		echo unsupported > "$(__GHST_SELF_STAMP)"; \
+		exit 0; \
+	fi; \
+	reached=""; \
 	body=$$(mktemp); \
-	curl -fsSL --max-time 10 "$(__GHST_SELF_URL)" -o "$$body" 2>/dev/null \
-		&& theirs=$$(cat "$$body" | $(__GHST_SHA256)); \
-	rm -f "$$body"; \
-	if [ -z "$$mine" ] || [ -z "$$theirs" ]; then \
+	curl -fsSL --max-time 10 "$(__GHST_SELF_URL)" -o "$$body" 2>/dev/null && reached=yes; \
+	if [ -z "$$reached" ]; then \
+		rm -f "$$body"; \
 		echo unknown > "$(__GHST_SELF_STAMP)"; \
-	elif [ "$$mine" = "$$theirs" ]; then \
+	elif cmp -s "$(__GHST_SELF)" "$$body"; then \
+		rm -f "$$body"; \
 		echo current > "$(__GHST_SELF_STAMP)"; \
 		touch "$(__GHST_SELF_CONFIRMED)"; \
 	else \
+		rm -f "$$body"; \
 		echo stale > "$(__GHST_SELF_STAMP)"; \
 		touch "$(__GHST_SELF_TRIGGER)"; \
 		touch -t 197001020000 "$(__GHST_SELF_STAMP)"; \
@@ -385,6 +391,13 @@ $(__GHST_SELF_TRIGGER):
 # install has nothing confirmed yet and starts its clock now, so a flaky
 # network on day one does not refuse a scan that has never had the chance to
 # be current.
+#
+# A host that cannot run the comparison at all is exempted from the Makefile
+# half rather than refused by it. "We asked and got no answer" and "we have no
+# way to ask" both used to be recorded as unknown, and collapsing them here
+# would have meant telling somebody to fix a network that was never the
+# problem -- fourteen days after the fact, with no way to act on the advice.
+# The image half still applies to them, because a docker pull needs neither.
 # ============================================================================
 
 __GHST_MAX_STALE_DAYS ?= 14
@@ -394,8 +407,13 @@ __ghst-freshness-floor: __ghst-self-check __ghst-image-ensure
 	@if [ "$(GHST_OFFLINE)" = "1" ]; then exit 0; fi; \
 	mkdir -p "$(dir $(__GHST_SELF_CONFIRMED))"; \
 	failed=""; \
-	for pair in "toolkit Makefile|$(__GHST_SELF_CONFIRMED)" "scanner image|$(__GHST_IMAGE_CONFIRMED)"; do \
-		what=$${pair%%|*}; file=$${pair#*|}; \
+	selfverdict=$$(cat "$(__GHST_SELF_STAMP)" 2>/dev/null); \
+	if [ "$$selfverdict" = "unsupported" ]; then \
+		echo "⚠️  This host has no cmp or no curl, so $(__GHST_SELF) cannot be compared with the published one. Its age is reported but not enforced." >&2; \
+	fi; \
+	for pair in "toolkit Makefile|$(__GHST_SELF_CONFIRMED)|$$selfverdict" "scanner image|$(__GHST_IMAGE_CONFIRMED)|"; do \
+		what=$${pair%%|*}; rest=$${pair#*|}; file=$${rest%%|*}; verdict=$${rest#*|}; \
+		if [ "$$verdict" = "unsupported" ]; then continue; fi; \
 		if [ ! -e "$$file" ]; then touch "$$file"; continue; fi; \
 		age=$$(( ( $$(date +%s) - $$(stat -c %Y "$$file" 2>/dev/null || stat -f %m "$$file" 2>/dev/null || echo 0) ) / 86400 )); \
 		if [ "$$age" -ge "$(__GHST_MAX_STALE_DAYS)" ]; then \
@@ -485,7 +503,7 @@ __ghst-provenance: __ghst-db-ensure __ghst-self-check __ghst-freshness-floor
 		esac; \
 	fi; \
 	selfverdict=$$(cat "$(__GHST_SELF_STAMP)" 2>/dev/null); \
-	case "$$selfverdict" in current|stale|unknown) ;; *) selfverdict="" ;; esac; \
+	case "$$selfverdict" in current|stale|unknown|unsupported) ;; *) selfverdict="" ;; esac; \
 	if [ -n "$$selfverdict" ]; then \
 		selfstate="$$selfverdict as of $$(stamp_age "$(__GHST_SELF_STAMP)")"; \
 	elif [ "$(GHST_OFFLINE)" = "1" ]; then \
