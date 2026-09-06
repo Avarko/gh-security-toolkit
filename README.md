@@ -643,7 +643,7 @@ Both files are read straight from the repository root by the `trivy` binary the 
 | `retention_days` | Days to retain results | `30` |
 | `retention_keep` | Max results per channel | `10` |
 | `trivy_severity` | Minimum severity to report | `MEDIUM,HIGH,CRITICAL` |
-| `trivy_config` | Path to a Trivy config file, passed to Trivy as `--config`. CI applies one only when this is set. | `""` |
+| `trivy_config` | Path to a Trivy config file, passed to Trivy as `--config`. Only needed for a file Trivy would not find by itself — one outside the repository root, or under another name such as `.trivy.yaml`. | `""` |
 | `semgrep_configs` | Semgrep rule configurations | `p/owasp-top-ten,...` |
 | `org_display_name` | Organization display name (overrides config.yaml) | `""` |
 | `org_logo_url` | Organization logo URL (overrides config.yaml) | `""` |
