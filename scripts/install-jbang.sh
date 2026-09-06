@@ -61,6 +61,13 @@ if [ -x "${bin}/jbang" ]; then
     exit 0
 fi
 
+# A bare "mktemp -d" with no template, which review has flagged as GNU-only.
+# It is not: all three implementations this can meet substitute the same
+# default. GNU coreutils treats it as "-t tmp.XXXXXX"; FreeBSD and Apple's
+# mktemp take the "if (!tflag && argc < 1)" branch, present in Apple's
+# shell_cmds as far back as shell_cmds-81; busybox copies coreutils outright,
+# with the comment saying so. The macOS path lands in $TMPDIR rather than /tmp,
+# which nothing here depends on.
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 
