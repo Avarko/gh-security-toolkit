@@ -258,8 +258,20 @@ __GHST_LABEL = $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) \
 sec/provenance: ## Print what a scan on this machine would run: images, dates, digests, versions
 	@$(MAKE) --no-print-directory __ghst-provenance GHST_PROVENANCE_VERBOSE=1
 
-# Printed before every scan. Silent about anything it cannot determine rather
-# than guessing: "unknown" is better than a plausible wrong answer.
+# Printed before every Trivy scan. Silent about anything it cannot determine
+# rather than guessing: "unknown" is better than a plausible wrong answer.
+#
+# That rule was broken in the one place it mattered. Asking the helper for the
+# database version discarded its stderr and ignored its exit status, so a
+# container that would not start -- no image, no daemon, a helper that crashed
+# -- came out as "no database cached": a factual claim about the cache, made by
+# code that had not managed to look at it. A developer reads that as an empty
+# cache and reruns the scan, which is the one response that cannot help. The
+# failure now says it is a failure and shows what the helper said.
+#
+# Verbose also names cosign and crane, not only the scanners. They are how the
+# database got here and how its signature was checked, so "the database was
+# verified" means exactly as much as the cosign version behind it.
 .PHONY: __ghst-provenance
 __ghst-provenance: __ghst-db-ensure
 	@ref='$(__GHST_IMAGE)'; \
@@ -279,11 +291,15 @@ __ghst-provenance: __ghst-db-ensure
 		if [ "$(GHST_PROVENANCE_VERBOSE)" = "1" ]; then \
 			trivy_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.trivy.version)); \
 			th_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.trufflehog.version)); \
+			cosign_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.cosign.version)); \
+			crane_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.crane.version)); \
 			helper_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.trivy-db-helper.version)); \
 			echo "    digest      $${digest:-unknown}" >&2; \
 			echo "    revision    $${revision:-unknown}" >&2; \
 			echo "    trivy       $${trivy_ver:-unknown}" >&2; \
 			echo "    trufflehog  $${th_ver:-unknown}" >&2; \
+			echo "    cosign      $${cosign_ver:-unknown}" >&2; \
+			echo "    crane       $${crane_ver:-unknown}" >&2; \
 			echo "    db helper   $${helper_ver:-unknown}" >&2; \
 			echo "    makefile    taken from '$(__GHST_VERSION)', image tag '$(__GHST_IMAGE_TAG)'" >&2; \
 		fi; \
@@ -297,11 +313,17 @@ __ghst-provenance: __ghst-db-ensure
 		fi; \
 	fi; \
 	$(__GHST_DB_PREPARE); \
-	status=$$($(__GHST_DB_RUN) -command status 2>/dev/null); \
-	echo "==> trivy-incremental-dbs: $$(echo "$$status" | $(__GHST_AWK_DB_VERSIONS))" >&2; \
-	if [ "$(GHST_PROVENANCE_VERBOSE)" = "1" ]; then \
-		echo "$$status" | sed 's/^/    /' >&2; \
+	dberr=$$(mktemp); \
+	if status=$$($(__GHST_DB_RUN) -command status 2>"$$dberr"); then \
+		echo "==> trivy-incremental-dbs: $$(echo "$$status" | $(__GHST_AWK_DB_VERSIONS))" >&2; \
+		if [ "$(GHST_PROVENANCE_VERBOSE)" = "1" ]; then \
+			echo "$$status" | sed 's/^/    /' >&2; \
+		fi; \
+	else \
+		echo "==> trivy-incremental-dbs: could not be asked, so the database behind this scan is unknown" >&2; \
+		sed 's/^/    /' "$$dberr" >&2; \
 	fi; \
+	rm -f "$$dberr"; \
 	if [ "$(__GHST_VERSION)" != "$(__GHST_IMAGE_TAG)" ]; then \
 		echo "    note: Makefile pinned to '$(__GHST_VERSION)', image tag '$(__GHST_IMAGE_TAG)'." >&2; \
 		echo "          Pinning the include does not pin the scanner." >&2; \
