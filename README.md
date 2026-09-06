@@ -51,7 +51,7 @@ __GHST_URL := https://raw.githubusercontent.com/Avarko/gh-security-toolkit/$(__G
 $(__GHST_MAKEFILE):
 	@echo "Fetching gh-security-toolkit ($(__GHST_VERSION))..."
 	@mkdir -p $(__GHST_DIR)
-	@curl -fsSL "$(__GHST_URL)" -o $(__GHST_MAKEFILE).tmp || { \
+	@curl -fsSL --max-time 30 "$(__GHST_URL)" -o $(__GHST_MAKEFILE).tmp || { \
 		echo "Could not fetch $(__GHST_URL)"; \
 		rm -f $(__GHST_MAKEFILE).tmp; \
 		exit 1; \
