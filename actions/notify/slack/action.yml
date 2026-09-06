@@ -46,6 +46,14 @@ outputs:
 runs:
   using: "composite"
   steps:
+    # This action runs two jbang scripts but never installed jbang, working
+    # only because the summarizer happens to run earlier in the same job and
+    # leaves it on PATH. The install is idempotent, so saying so here costs
+    # nothing and stops the action from depending on its neighbours.
+    - name: Setup JBang
+      shell: bash
+      run: "${GITHUB_ACTION_PATH}/../../../scripts/install-jbang.sh"
+
     - name: Download scan history artifact
       shell: bash
       env:

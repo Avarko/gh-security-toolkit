@@ -44,26 +44,17 @@ updates:
       # fails the build if this drifts.
       - dependency-name: Avarko/gh-security-toolkit/*
 
-      # setup-jbang has no releases worth tracking: its newest tag is v0.1.1
-      # from July 2023, and everything since lives only on main. Our pin is
-      # therefore an untagged commit, which leaves Dependabot no version to
-      # compare -- the first run said so out loud, "Updating
-      # jbangdev/setup-jbang from  to cc28889", with nothing between "from"
-      # and "to". With no version it falls back to the default branch head, so
-      # the weekly proposal is not an upgrade to a release but whatever landed
-      # on main since Tuesday, with no notes to read. The 3-day cooldown does
-      # not catch it either: that counts from the last release, which is three
-      # years old. And Dependabot cannot fix the "# Nov 11, 2025" comment,
-      # because computing a commit date is not something it does -- which is
-      # how five pins failed check-action-pins.py at once.
-      #
-      # The cost of this line is that the pin now moves only when a person
-      # moves it, and nothing will prompt them: every GitHub Actions advisory
-      # in the GHSA database states its affected set as a version range (all
-      # 55 of them, checked), and a commit with no version matches no range.
-      # Neither Dependabot alerts nor the Trivy self-check, which scans the
-      # published image and not this repository's actions, can see a CVE here.
-      # Read setup-jbang's own history before touching this pin.
-      - dependency-name: jbangdev/setup-jbang
+      # jbangdev/setup-jbang was ignored here for one commit and then deleted
+      # instead, so no rule is needed for it. The reasoning is worth keeping in
+      # mind for the next dependency that behaves this way: it had no tag newer
+      # than v0.1.1 from 2023, our pin was therefore an untagged commit, and
+      # Dependabot said so out loud on its first run -- "Updating
+      # jbangdev/setup-jbang from  to cc28889", nothing between "from" and
+      # "to". With no version it falls back to the default branch head, which
+      # makes the weekly proposal not an upgrade to a release but whatever
+      # landed on main since Tuesday. Nothing could have alerted on it either:
+      # every GitHub Actions advisory in GHSA states its affected set as a
+      # version range, and a commit with no version matches no range. An
+      # action upstream has stopped releasing is not one to keep.
     commit-message:
       prefix: "ci"
