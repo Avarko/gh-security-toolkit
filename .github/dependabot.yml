@@ -43,5 +43,18 @@ updates:
       # See SECURITY.md F-6 and scripts/check-internal-action-refs.py, which
       # fails the build if this drifts.
       - dependency-name: Avarko/gh-security-toolkit/*
+
+      # jbangdev/setup-jbang was ignored here for one commit and then deleted
+      # instead, so no rule is needed for it. The reasoning is worth keeping in
+      # mind for the next dependency that behaves this way: it had no tag newer
+      # than v0.1.1 from 2023, our pin was therefore an untagged commit, and
+      # Dependabot said so out loud on its first run -- "Updating
+      # jbangdev/setup-jbang from  to cc28889", nothing between "from" and
+      # "to". With no version it falls back to the default branch head, which
+      # makes the weekly proposal not an upgrade to a release but whatever
+      # landed on main since Tuesday. Nothing could have alerted on it either:
+      # every GitHub Actions advisory in GHSA states its affected set as a
+      # version range, and a commit with no version matches no range. An
+      # action upstream has stopped releasing is not one to keep.
     commit-message:
       prefix: "ci"
