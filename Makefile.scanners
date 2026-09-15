@@ -120,13 +120,19 @@ __GRADLE_MOUNT   := $(if $(filter yes,$(__GRADLE_EXISTS)),-v $$HOME/.gradle/cach
 # provides without touching the workspace.
 __GHST_USER_OPTS := --user $(__GHST_HOST_UID):$(__GHST_HOST_GID) -e HOME=/tmp
 
+# The image's entrypoint starts a VEX Hub HTTP server by default and announces
+# it on stdout, ahead of the scan result. No scan here passes --vex, so the
+# server has no reader; switching it off keeps stdout to the result alone, the
+# same way the database runs already do.
+__GHST_SCAN_ENV := -e GHST_VEX_SERVE=0
+
 # Network isolation: --network=none ensures air-gapped execution (no data leaves your machine)
 ifeq ($(__GHST_MOUNT_RO),true)
-	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_USER_OPTS) \
+	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_USER_OPTS) $(__GHST_SCAN_ENV) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	 -v $(PWD):/workspace:ro $(__GHST_DB_MOUNT) $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
 else
-	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_USER_OPTS) \
+	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_USER_OPTS) $(__GHST_SCAN_ENV) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	-v $(PWD):/workspace $(__GHST_DB_MOUNT) $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
 endif
@@ -795,7 +801,7 @@ sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 	@echo "   image. That is root-equivalent access to this host, and this is the" >&2
 	@echo "   only target that needs it. The scan itself still runs with" >&2
 	@echo "   --network=none, like every other scan." >&2
-	$(__GHST_DOCKER_CMD) run --rm --network=none \
+	$(__GHST_DOCKER_CMD) run --rm --network=none $(__GHST_SCAN_ENV) \
 	$(if $(__DOCKER_SOCK_GID),--group-add $(__DOCKER_SOCK_GID),) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	-v /var/run/docker.sock:/var/run/docker.sock \
