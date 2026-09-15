@@ -77,6 +77,9 @@ publishing:
 
 ```
 gh-security-toolkit/
+├── bin/scanx                   # Local scan command: POSIX sh wrapper, runs Makefile.scanners targets in the caller's cwd
+├── install.sh / uninstall.sh   # Link / unlink bin/scanx into ~/.local/bin (SCANX_BIN_DIR)
+├── Makefile.scanners           # The local scans (sec/ targets); used by scanx and by legacy Makefile includes
 ├── actions/
 │   ├── security-scan/          # Main composite action for security scanning
 │   │   └── action.yml          # Reads config, runs Trivy, Semgrep, publishes
