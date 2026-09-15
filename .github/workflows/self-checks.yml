@@ -50,6 +50,11 @@ jobs:
       - name: Semgrep is configured the same way everywhere
         run: python3 scripts/check-semgrep-config.py
 
+      # scanx is POSIX sh so it runs unchanged on macOS; shellcheck is what
+      # notices a bashism before a Mac does.
+      - name: scanx scripts pass shellcheck
+        run: shellcheck --shell=sh bin/scanx install.sh uninstall.sh
+
       - name: Workflows and actions parse
         run: |
           set -euo pipefail
