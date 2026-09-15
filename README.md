@@ -96,9 +96,16 @@ jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' t
 
 ### Project configuration
 
-Read from the repository root, as Trivy and Semgrep read them themselves:
-`trivy.yaml` (or `.trivy.yaml`), `.trivyignore` / `.trivyignore.yaml`,
-`.semgrep.yaml`, `.semgrepignore`. See [Ignore CVEs](#ignore-cves).
+Read from the repository root:
+
+- `trivy.yaml` (preferred) or `.trivy.yaml`: `scanx` passes whichever exists
+  to Trivy as `--config`. Trivy itself would only find `trivy.yaml`.
+- `.semgrep.yaml` or `.semgrep.yml`: when present, `scanx` runs Semgrep with
+  it instead of the registry rulesets. Semgrep does not pick it up by itself.
+- `.trivyignore` / `.trivyignore.yaml` and `.semgrepignore`: read by Trivy
+  and Semgrep directly.
+
+See [Ignore CVEs](#ignore-cves).
 
 ### Staying current
 
