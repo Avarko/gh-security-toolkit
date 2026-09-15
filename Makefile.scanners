@@ -5,6 +5,15 @@
 # All commands are namespaced under sec/ to avoid conflicts
 # ============================================================================
 
+# Run by scanx (bin/scanx), this file is a -f makefile inside a git clone of
+# the toolkit rather than a copy fetched into a project. SCANX_HOME is that
+# clone. Stamps are keyed by __GHST_VERSION, so scanx gets its own rather than
+# sharing a legacy include's; the image is the published main either way.
+ifneq ($(SCANX_HOME),)
+__GHST_VERSION ?= scanx
+__GHST_IMAGE_TAG ?= main
+endif
+
 __GHST_VERSION ?= main
 
 # Where this file was loaded from, captured while Make is still reading it.
@@ -189,7 +198,7 @@ sec/db/clean: # Remove the cached Trivy databases
 .PHONY: __ghst-db-ensure
 __ghst-db-ensure: __ghst-image-ensure
 	@$(__GHST_DB_PREPARE)
-	@$(__GHST_DB_RUN) -command ensure
+	@$(__GHST_DB_RUN) -command ensure >&2
 
 # ============================================================================
 # Toolkit image freshness
@@ -246,7 +255,7 @@ __ghst-image-ensure:
 		age_days=$$(( (now - checked) / 86400 )); \
 		[ "$$age_days" -lt "$(__GHST_IMAGE_MAX_AGE_DAYS)" ] && exit 0; \
 	fi; \
-	echo "🔄 Checking for a newer $(__GHST_IMAGE)..."; \
+	echo "🔄 Checking for a newer $(__GHST_IMAGE)..." >&2; \
 	before=$$($(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) --format '{{.Id}}' 2>/dev/null || true); \
 	if out=$$($(__GHST_DOCKER_CMD) pull $(__GHST_IMAGE) 2>&1); then \
 		touch "$(__GHST_IMAGE_CONFIRMED)"; \
@@ -258,15 +267,15 @@ __ghst-image-ensure:
 		if [ -n "$$before" ] && [ -n "$$after" ] && [ "$$before" != "$$after" ]; then \
 			if [ "$$($(__GHST_DOCKER_CMD) image inspect "$$before" --format '{{len .RepoTags}}' 2>/dev/null || echo 1)" = "0" ]; then \
 				$(__GHST_DOCKER_CMD) rmi "$$before" >/dev/null 2>&1 \
-					&& echo "🧹 Removed the image this one replaced." \
+					&& echo "🧹 Removed the image this one replaced." >&2 \
 					|| true; \
 			fi; \
 		fi; \
 	elif $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) >/dev/null 2>&1; then \
-		echo "⚠️  Could not reach the registry — using the cached image."; \
+		echo "⚠️  Could not reach the registry — using the cached image." >&2; \
 		echo unreachable > "$(__GHST_IMAGE_STAMP)"; \
 	else \
-		echo "❌ $(__GHST_IMAGE) is not available locally and the registry could not be reached."; \
+		echo "❌ $(__GHST_IMAGE) is not available locally and the registry could not be reached." >&2; \
 		exit 1; \
 	fi
 
@@ -290,6 +299,13 @@ __ghst-image-ensure:
 #
 # One 30 kB fetch a day, no token, no registry. Skipped entirely when offline,
 # where the honest answer is that nobody asked.
+#
+# Under scanx the question is the same but asked of git: the toolkit is a clone,
+# so `git fetch` and a comparison with the upstream of its current branch
+# replace the curl. That keeps working when the repository is private, since
+# git uses the developer's own credentials. The verdicts mean what they mean
+# for an include; only the remedy differs -- scanx never rewrites its own clone,
+# a stale one is told to run `scanx update`.
 # ============================================================================
 
 __GHST_SELF_MAX_AGE_DAYS ?= 1
@@ -338,6 +354,34 @@ __ghst-self-check:
 		now=$$(date +%s); \
 		checked=$$(stat -c %Y "$(__GHST_SELF_STAMP)" 2>/dev/null || stat -f %m "$(__GHST_SELF_STAMP)"); \
 		[ $$(( (now - checked) / 86400 )) -lt "$(__GHST_SELF_MAX_AGE_DAYS)" ] && exit 0; \
+	fi; \
+	if [ -n "$(SCANX_HOME)" ]; then \
+		upstream=""; \
+		if command -v git >/dev/null 2>&1 && command -v cmp >/dev/null 2>&1 \
+		   && [ -r "$(__GHST_SELF)" ] \
+		   && git -C "$(SCANX_HOME)" rev-parse --git-dir >/dev/null 2>&1; then \
+			upstream=$$(git -C "$(SCANX_HOME)" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true); \
+		fi; \
+		if [ -z "$$upstream" ]; then \
+			echo unsupported > "$(__GHST_SELF_STAMP)"; \
+			exit 0; \
+		fi; \
+		to=""; command -v timeout >/dev/null 2>&1 && to="timeout 60"; \
+		if GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="$${GIT_SSH_COMMAND:-ssh -o BatchMode=yes -o ConnectTimeout=10}" \
+		   $$to git -C "$(SCANX_HOME)" fetch --quiet >/dev/null 2>&1; then \
+			body=$$(mktemp); \
+			if git -C "$(SCANX_HOME)" show "$$upstream:Makefile.scanners" > "$$body" 2>/dev/null \
+			   && cmp -s "$(__GHST_SELF)" "$$body"; then \
+				echo current > "$(__GHST_SELF_STAMP)"; \
+				touch "$(__GHST_SELF_CONFIRMED)"; \
+			else \
+				echo stale > "$(__GHST_SELF_STAMP)"; \
+			fi; \
+			rm -f "$$body"; \
+		else \
+			echo unknown > "$(__GHST_SELF_STAMP)"; \
+		fi; \
+		exit 0; \
 	fi; \
 	if ! command -v cmp >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 \
 	   || [ ! -r "$(__GHST_SELF)" ]; then \
@@ -392,8 +436,14 @@ __ghst-self-check:
 # or the command line alike, so declaring nothing here is enough: with no
 # prerequisite the include is never out of date, and offline goes back to
 # meaning that nobody asked.
+#
+# Under scanx there is no include rule to do the fetching, and GNU make tries to
+# remake a -f makefile too, so the prerequisite is left out: a stale verdict
+# there is reported with "run: scanx update" and nothing is re-fetched.
 ifneq ($(GHST_OFFLINE),1)
+ifeq ($(SCANX_HOME),)
 $(__GHST_SELF): $(__GHST_SELF_TRIGGER)
+endif
 endif
 
 $(__GHST_SELF_TRIGGER):
@@ -451,11 +501,15 @@ __GHST_MAX_STALE_DAYS ?= 14
 #
 # $(1) confirmation stamp   $(2) what to call it   $(3) verdict stamp, if any
 # $(4) how to fix it by hand
+__GHST_SELF_UNSUPPORTED = $(if $(SCANX_HOME),There is no git or cmp here or $(SCANX_HOME) is not a git clone tracking an upstream branch,This host has no cmp or no curl)
+__GHST_SELF_REMEDY = $(if $(SCANX_HOME),run: scanx update,delete $(__GHST_SELF) and run make again)
+__GHST_IMAGE_REMEDY = $(if $(SCANX_HOME),run 'scanx clean' to drop the cached image,run 'make sec/scan/clean' to drop the cached image)
+
 define __ghst-floor-check
 if [ "$(GHST_OFFLINE)" = "1" ]; then exit 0; fi; \
 mkdir -p "$(dir $(1))"; \
 if [ -n "$(3)" ] && [ "$$(cat "$(3)" 2>/dev/null)" = "unsupported" ]; then \
-	echo "⚠️  This host has no cmp or no curl, so $(__GHST_SELF) cannot be compared with the published one. Its age is reported but not enforced." >&2; \
+	echo "⚠️  $(__GHST_SELF_UNSUPPORTED), so $(__GHST_SELF) cannot be compared with the published one. Its age is reported but not enforced." >&2; \
 	exit 0; \
 fi; \
 if [ ! -e "$(1)" ]; then touch "$(1)"; exit 0; fi; \
@@ -470,11 +524,11 @@ endef
 
 .PHONY: __ghst-floor-makefile
 __ghst-floor-makefile: __ghst-self-check
-	@$(call __ghst-floor-check,$(__GHST_SELF_CONFIRMED),this toolkit Makefile,$(__GHST_SELF_STAMP),delete $(__GHST_SELF) and run make again)
+	@$(call __ghst-floor-check,$(__GHST_SELF_CONFIRMED),this toolkit Makefile,$(__GHST_SELF_STAMP),$(__GHST_SELF_REMEDY))
 
 .PHONY: __ghst-floor-image
 __ghst-floor-image: __ghst-image-ensure
-	@$(call __ghst-floor-check,$(__GHST_IMAGE_CONFIRMED),the scanner image,,run 'make sec/scan/clean' to drop the cached image)
+	@$(call __ghst-floor-check,$(__GHST_IMAGE_CONFIRMED),the scanner image,,$(__GHST_IMAGE_REMEDY))
 
 .PHONY: __ghst-freshness-floor
 __ghst-freshness-floor: __ghst-floor-makefile __ghst-floor-image
@@ -500,9 +554,9 @@ __ghst-freshness-floor: __ghst-floor-makefile __ghst-floor-image
 # helper that is published today, not only with one built after this change.
 #
 # Output goes to stderr, so it cannot land in a report redirected to a file.
-# Note that the scan targets' own progress echoes still go to stdout, so
-# `__GHST_TRIVY_FORMAT=json > report.json` is not clean today for reasons that
-# predate this banner.
+# The scan targets' progress echoes go there too, so with make's recipe echo
+# silenced (`make -s`, which scanx always uses) `__GHST_TRIVY_FORMAT=json >
+# report.json` is clean JSON.
 # ============================================================================
 
 # Docker's template language has no "or" for missing map keys, so each value
@@ -512,7 +566,7 @@ __GHST_LABEL = $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) \
 
 .PHONY: sec/provenance
 sec/provenance: ## Print what a scan on this machine would run: images, dates, digests, versions
-	@$(MAKE) --no-print-directory __ghst-provenance GHST_PROVENANCE_VERBOSE=1
+	@$(MAKE) --no-print-directory $(if $(SCANX_HOME),-f $(__GHST_SELF)) __ghst-provenance GHST_PROVENANCE_VERBOSE=1
 
 # Printed before every Trivy scan. Silent about anything it cannot determine
 # rather than guessing: "unknown" is better than a plausible wrong answer.
@@ -588,7 +642,11 @@ __ghst-provenance: __ghst-db-ensure __ghst-self-check __ghst-freshness-floor
 			echo "    cosign      $${cosign_ver:-unknown}" >&2; \
 			echo "    crane       $${crane_ver:-unknown}" >&2; \
 			echo "    db helper   $${helper_ver:-unknown}" >&2; \
-			echo "    makefile    taken from '$(__GHST_VERSION)', image tag '$(__GHST_IMAGE_TAG)'" >&2; \
+			if [ -n "$(SCANX_HOME)" ]; then \
+				echo "    makefile    scanx $$(git -C "$(SCANX_HOME)" describe --tags --always --dirty 2>/dev/null || echo unknown) in $(SCANX_HOME), image tag '$(__GHST_IMAGE_TAG)'" >&2; \
+			else \
+				echo "    makefile    taken from '$(__GHST_VERSION)', image tag '$(__GHST_IMAGE_TAG)'" >&2; \
+			fi; \
 			echo "    self-check  $$selfstate, $(__GHST_SELF)" >&2; \
 		fi; \
 		if [ -z "$$digest" ]; then \
@@ -612,14 +670,19 @@ __ghst-provenance: __ghst-db-ensure __ghst-self-check __ghst-freshness-floor
 		sed 's/^/    /' "$$dberr" >&2; \
 	fi; \
 	rm -f "$$dberr"; \
-	if [ "$(__GHST_VERSION)" != "$(__GHST_IMAGE_TAG)" ]; then \
+	if [ -z "$(SCANX_HOME)" ] && [ "$(__GHST_VERSION)" != "$(__GHST_IMAGE_TAG)" ]; then \
 		echo "    note: Makefile pinned to '$(__GHST_VERSION)', image tag '$(__GHST_IMAGE_TAG)'." >&2; \
 		echo "          Pinning the include does not pin the scanner." >&2; \
 	fi; \
 	if [ "$$selfverdict" = "stale" ]; then \
-		echo "    note: these scan commands are not the ones published at '$(__GHST_VERSION)'" >&2; \
-		echo "          (checked $$(stamp_age "$(__GHST_SELF_STAMP)")). The next run with a" >&2; \
-		echo "          network re-fetches this file and restarts with it." >&2; \
+		if [ -n "$(SCANX_HOME)" ]; then \
+			echo "    note: these scan commands differ from the upstream of $(SCANX_HOME)" >&2; \
+			echo "          (checked $$(stamp_age "$(__GHST_SELF_STAMP)")). run: scanx update" >&2; \
+		else \
+			echo "    note: these scan commands are not the ones published at '$(__GHST_VERSION)'" >&2; \
+			echo "          (checked $$(stamp_age "$(__GHST_SELF_STAMP)")). The next run with a" >&2; \
+			echo "          network re-fetches this file and restarts with it." >&2; \
+		fi; \
 	fi
 
 # Reduces the helper's status report to one line: each database with the date
@@ -692,40 +755,46 @@ __GHST_AWK_DB_VERSIONS = awk ' \
 
 __GHST_TRIVY_CONFIG := $(firstword $(wildcard trivy.yaml .trivy.yaml))
 __GHST_TRIVY_CONFIG_OPT := $(if $(__GHST_TRIVY_CONFIG),--config $(__GHST_TRIVY_CONFIG),)
-__GHST_TRIVY_CONFIG_NOTE = $(if $(__GHST_TRIVY_CONFIG),echo "ℹ️  Using $(__GHST_TRIVY_CONFIG) configuration",:)
+__GHST_TRIVY_CONFIG_NOTE = $(if $(__GHST_TRIVY_CONFIG),echo "ℹ️  Using $(__GHST_TRIVY_CONFIG) configuration" >&2,:)
+
+# Progress and notes go to stderr throughout, so stdout is the scan result and
+# nothing else: `__GHST_TRIVY_FORMAT=json` (scanx: SCANX_FORMAT=json) can be
+# redirected straight into a file. The recipe echo of the docker command lines
+# below is make's own; scanx runs make -s, and a legacy include silences it
+# the same way with `make -s`.
 
 .PHONY: sec/scan/trivy/fs
 sec/scan/trivy/fs: __ghst-provenance # Scan filesystem (uses trivy.yaml or .trivy.yaml)
-	@echo "🔍 Scanning filesystem with Trivy (offline mode)..."
+	@echo "🔍 Scanning filesystem with Trivy (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	$(__GHST_IMAGE) trivy fs . $(__GHST_TRIVY_CONFIG_OPT) --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/artifact
 sec/scan/trivy/artifact: __ghst-provenance # Scan built artifact - Gradle WAR/JAR/EAR (ARTIFACT=path/to/app.war)
-	@[ -n "$(ARTIFACT)" ] || (echo "❌ Usage: make sec/scan/trivy/artifact ARTIFACT=build/libs/app.war" && exit 1)
-	@[ -e "$(ARTIFACT)" ] || (echo "❌ Artifact not found: $(ARTIFACT)" && exit 1)
-	@echo "🔍 Scanning artifact $(ARTIFACT) with Trivy (offline mode)..."
+	@[ -n "$(ARTIFACT)" ] || (echo "❌ Usage: make sec/scan/trivy/artifact ARTIFACT=build/libs/app.war" >&2 && exit 1)
+	@[ -e "$(ARTIFACT)" ] || (echo "❌ Artifact not found: $(ARTIFACT)" >&2 && exit 1)
+	@echo "🔍 Scanning artifact $(ARTIFACT) with Trivy (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	$(__GHST_IMAGE) trivy fs $(ARTIFACT) $(__GHST_TRIVY_CONFIG_OPT) --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/config
 sec/scan/trivy/config: __ghst-provenance # Scan IaC configs for misconfigurations - Terraform, Dockerfile, K8s, etc. (uses trivy.yaml or .trivy.yaml)
-	@echo "🔍 Scanning IaC configs with Trivy (offline mode)..."
+	@echo "🔍 Scanning IaC configs with Trivy (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	$(__GHST_IMAGE) trivy config . $(__GHST_TRIVY_CONFIG_OPT) --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
 
 .PHONY: sec/scan/trivy/img
 sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
-	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" && exit 1)
-	@echo "🔍 Scanning image $(IMAGE) (offline mode)..."
+	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" >&2 && exit 1)
+	@echo "🔍 Scanning image $(IMAGE) (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
-	@echo "ℹ️  Note: this target mounts the Docker socket so Trivy can read the"
-	@echo "   image. That is root-equivalent access to this host, and this is the"
-	@echo "   only target that needs it. The scan itself still runs with"
-	@echo "   --network=none, like every other scan."
+	@echo "ℹ️  Note: this target mounts the Docker socket so Trivy can read the" >&2
+	@echo "   image. That is root-equivalent access to this host, and this is the" >&2
+	@echo "   only target that needs it. The scan itself still runs with" >&2
+	@echo "   --network=none, like every other scan." >&2
 	$(__GHST_DOCKER_CMD) run --rm --network=none \
 	$(if $(__DOCKER_SOCK_GID),--group-add $(__DOCKER_SOCK_GID),) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
@@ -778,21 +847,21 @@ SEMGREP_DOCKER_OPTS := --rm $(__GHST_USER_OPTS) \
 .PHONY: sec/scan/semgrep
 sec/scan/semgrep: __ghst-floor-makefile # Scan code with Semgrep (uses .semgrep.yaml config)
 	@if [ "$(GHST_OFFLINE)" = "1" ]; then \
-		echo "⏭️  Skipping Semgrep: its rulesets are fetched from semgrep.dev and GHST_OFFLINE=1."; \
-		echo "   The Trivy scans do run air-gapped; this one has nothing to run without a network."; \
+		echo "⏭️  Skipping Semgrep: its rulesets are fetched from semgrep.dev and GHST_OFFLINE=1." >&2; \
+		echo "   The Trivy scans do run air-gapped; this one has nothing to run without a network." >&2; \
 		exit 0; \
 	fi; \
-	echo "🔍 Scanning code with Semgrep $(SEMGREP_VERSION)..."; \
+	echo "🔍 Scanning code with Semgrep $(SEMGREP_VERSION)..." >&2; \
 	config=""; \
 	for candidate in .semgrep.yaml .semgrep.yml; do \
 		if [ -f "$$candidate" ]; then config="$$candidate"; break; fi; \
 	done; \
 	if [ -n "$$config" ]; then \
-		echo "ℹ️  Using $$config"; \
+		echo "ℹ️  Using $$config" >&2; \
 		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) $(SEMGREP_IMAGE) \
 			semgrep scan --config="$$config" --metrics=off .; \
 	else \
-		echo "ℹ️  Using pre-defined rulesets"; \
+		echo "ℹ️  Using pre-defined rulesets" >&2; \
 		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) $(SEMGREP_IMAGE) \
 			semgrep scan $(addprefix --config ,$(SEMGREP_CONFIGS)) --metrics=off .; \
 	fi
@@ -803,7 +872,7 @@ sec/scan/semgrep: __ghst-floor-makefile # Scan code with Semgrep (uses .semgrep.
 
 .PHONY: sec/scan
 sec/scan: sec/scan/trivy/fs sec/scan/trivy/config sec/scan/semgrep ## Full scan. Subcommands: sec/scan/[trivy/fs,trivy/config,trivy/artifact ARTIFACT=<path>,trivy/img IMAGE=<Docker img tag>,/semgrep,/clean,/help]. Databases: sec/db/[update,status,clean].
-	@echo "✅ All scans complete"
+	@echo "✅ All scans complete" >&2
 
 # ============================================================================
 # Maintenance
