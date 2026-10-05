@@ -120,7 +120,7 @@ set -euo pipefail
 if [ "${GHST_VEX_SERVE:-0}" = "1" ]; then
   # Use Python's built-in HTTP server (available in python3 package)
   cd /var/www && python3 -m http.server "${GHST_VEX_PORT}" &
-  echo "VEX Hub served at http://127.0.0.1:${GHST_VEX_PORT}/.well-known/vex-repository.json"
+  echo "VEX Hub served at http://127.0.0.1:${GHST_VEX_PORT}/.well-known/vex-repository.json" >&2
 fi
 
 exec "$@"

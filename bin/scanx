@@ -1,0 +1,190 @@
+#!/bin/sh
+# scanx -- local security scans from gh-security-toolkit, as a command.
+#
+# A thin wrapper around Makefile.scanners: the scans, the database cache, the
+# provenance banner and the freshness checks all stay in that file, which has
+# been run and hardened as a Makefile include. This only turns a subcommand
+# into the matching sec/ target and runs it in the caller's directory, so a
+# repository needs no include, no fetch rule and no copy of the toolkit.
+#
+# stdout carries scan results only. Everything this wrapper says goes to
+# stderr, so `SCANX_FORMAT=json scanx scan trivy img app:local > out.json`
+# writes a file jq can read.
+
+set -eu
+
+usage() {
+	cat <<'EOF'
+Usage: scanx <command> [NAME=value ...]
+
+Scans (run in the current directory):
+  scanx scan                         Full scan: trivy fs + trivy config + semgrep
+  scanx scan trivy fs                Dependencies and secrets in the working tree
+  scanx scan trivy config            IaC misconfigurations (Terraform, Dockerfile, K8s, ...)
+  scanx scan trivy img <image>       A local Docker image (name:tag)
+  scanx scan trivy artifact <path>   A built artifact (jar, war, ear, directory)
+  scanx scan semgrep                 Code (SAST); needs network for semgrep.dev rulesets
+
+Vulnerability database:
+  scanx db update | status | clean
+
+Toolkit:
+  scanx provenance                   What a scan here would run: image, databases, versions
+  scanx update                       Update scanx itself (git pull --ff-only)
+  scanx clean                        Remove the cached scanner image
+  scanx version                      Print the installed version
+  scanx help                         This text
+
+Environment:
+  SCANX_FORMAT=json|table            Trivy output format (default: table)
+  SCANX_OFFLINE=1                    No network: skip update checks, image pulls and Semgrep
+  SCANX_MAKE=gmake                   GNU make to use (macOS ships make 3.81)
+
+Trailing NAME=value arguments are passed to make, e.g.
+  scanx scan trivy fs __GHST_TRIVY_TIMEOUT=10m
+
+Project configuration is read from the repository root: trivy.yaml,
+.trivyignore / .trivyignore.yaml, .semgrep.yaml, .semgrepignore.
+EOF
+}
+
+die() {
+	echo "scanx: $*" >&2
+	exit 2
+}
+
+# Where this script really lives, following the install symlink. readlink
+# without -f exists on both GNU and BSD/macOS; -f does not.
+resolve_home() {
+	self=$0
+	case $self in
+		*/*) ;;
+		*) self=$(command -v -- "$self") || die "cannot locate myself" ;;
+	esac
+	while [ -L "$self" ]; do
+		link=$(readlink -- "$self")
+		case $link in
+			/*) self=$link ;;
+			*) self=$(dirname -- "$self")/$link ;;
+		esac
+	done
+	cd -P -- "$(dirname -- "$self")/.." && pwd
+}
+
+SCANX_HOME=$(resolve_home)
+export SCANX_HOME
+MAKEFILE="$SCANX_HOME/Makefile.scanners"
+[ -f "$MAKEFILE" ] || die "$MAKEFILE not found; reinstall scanx"
+
+version() {
+	if command -v git >/dev/null 2>&1 && git -C "$SCANX_HOME" rev-parse --git-dir >/dev/null 2>&1; then
+		desc=$(git -C "$SCANX_HOME" describe --tags --always --dirty 2>/dev/null || echo unknown)
+		branch=$(git -C "$SCANX_HOME" branch --show-current 2>/dev/null || true)
+		echo "scanx $desc${branch:+ ($branch)} at $SCANX_HOME"
+	else
+		echo "scanx (not a git clone) at $SCANX_HOME"
+	fi
+}
+
+# The sec/ target, and any NAME=value make needs for it, from the subcommand.
+target=""
+set_target_args=""
+[ $# -gt 0 ] || { usage >&2; exit 2; }
+cmd=$1
+shift
+case $cmd in
+	scan)
+		if [ $# -eq 0 ] || case $1 in *=*) true ;; *) false ;; esac; then
+			target=sec/scan
+		else
+			sub=$1
+			shift
+			case $sub in
+				semgrep) target=sec/scan/semgrep ;;
+				trivy)
+					[ $# -gt 0 ] || die "usage: scanx scan trivy fs|config|img <image>|artifact <path>"
+					kind=$1
+					shift
+					case $kind in
+						fs) target=sec/scan/trivy/fs ;;
+						config) target=sec/scan/trivy/config ;;
+						img | image)
+							[ $# -gt 0 ] || die "usage: scanx scan trivy img <image>"
+							target=sec/scan/trivy/img
+							set_target_args="IMAGE=$1"
+							shift
+							;;
+						artifact)
+							[ $# -gt 0 ] || die "usage: scanx scan trivy artifact <path>"
+							target=sec/scan/trivy/artifact
+							set_target_args="ARTIFACT=$1"
+							shift
+							;;
+						*) die "unknown trivy scan '$kind' (fs, config, img, artifact)" ;;
+					esac
+					;;
+				*) die "unknown scan '$sub' (trivy, semgrep)" ;;
+			esac
+		fi
+		;;
+	db)
+		[ $# -gt 0 ] || die "usage: scanx db update|status|clean"
+		case $1 in
+			update | status | clean) target=sec/db/$1 ;;
+			*) die "unknown db command '$1' (update, status, clean)" ;;
+		esac
+		shift
+		;;
+	provenance) target=sec/provenance ;;
+	clean) target=sec/scan/clean ;;
+	update)
+		command -v git >/dev/null 2>&1 || die "git is required for 'scanx update'"
+		git -C "$SCANX_HOME" rev-parse --git-dir >/dev/null 2>&1 \
+			|| die "$SCANX_HOME is not a git clone; reinstall to update"
+		echo "Updating scanx in $SCANX_HOME ..." >&2
+		git -C "$SCANX_HOME" pull --ff-only >&2
+		version >&2
+		exit 0
+		;;
+	version | --version | -V)
+		version
+		exit 0
+		;;
+	help | --help | -h)
+		usage
+		exit 0
+		;;
+	*) die "unknown command '$cmd' (see: scanx help)" ;;
+esac
+
+# Only NAME=value may follow; anything else is a typo that would otherwise
+# reach make as a target.
+for arg in "$@"; do
+	case $arg in
+		*=*) ;;
+		*) die "unexpected argument '$arg' (only NAME=value may follow the command)" ;;
+	esac
+done
+
+if [ -n "${SCANX_FORMAT:-}" ]; then
+	__GHST_TRIVY_FORMAT=$SCANX_FORMAT
+	export __GHST_TRIVY_FORMAT
+fi
+if [ "${SCANX_OFFLINE:-0}" = "1" ]; then
+	GHST_OFFLINE=1
+	export GHST_OFFLINE
+fi
+
+make_cmd=${SCANX_MAKE:-make}
+command -v "$make_cmd" >/dev/null 2>&1 || die "'$make_cmd' not found (set SCANX_MAKE to GNU make)"
+
+# -s: make must not echo recipe lines onto stdout, where results go.
+# PWD is passed explicitly because the Makefile mounts $(PWD) and an inherited
+# PWD can be stale when scanx is started from a script that changed directory
+# without updating it.
+if [ -n "$set_target_args" ]; then
+	exec "$make_cmd" --no-print-directory -s -f "$MAKEFILE" \
+		SCANX_HOME="$SCANX_HOME" PWD="$(pwd)" "$set_target_args" "$@" "$target"
+fi
+exec "$make_cmd" --no-print-directory -s -f "$MAKEFILE" \
+	SCANX_HOME="$SCANX_HOME" PWD="$(pwd)" "$@" "$target"

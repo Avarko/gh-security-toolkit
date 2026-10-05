@@ -9,6 +9,7 @@ Provides reusable GitHub Actions composite actions and Makefile integration for 
 ## Table of contents
 
 - [Overview](#overview)
+- [scanx](#scanx)
 - [Quick start](#quick-start)
 - [Use cases](#use-cases)
 - [Architecture](#architecture)
@@ -31,13 +32,102 @@ Provides reusable GitHub Actions composite actions and Makefile integration for 
 - **Dual publishing for CI/CD scans**: GitHub Releases (with automatic cleanup) or GitHub Pages (with scan history) with automatic cleanup/retention
 - **Channel-based organization**: Separate CI/CD scan histories per environment (nightly, PR, manual, etc.)
 - **Composite actions**: Run scans in the same job as your build - no artifact upload/download overhead
-- **Local scans during development** via easy Makefile integration
+- **Local scans during development** with the `scanx` command (see [scanx](#scanx)); the Makefile include is legacy
 
 ---
 
+## scanx
+
+`scanx` runs the toolkit's local scans from any directory. Nothing is added to
+the repository being scanned: no include, no fetched Makefile, no toolkit copy.
+It is a thin wrapper around [`Makefile.scanners`](Makefile.scanners), so the
+scans, the shared database cache, the provenance banner and the freshness
+checks described below are the same ones.
+
+### Install
+
+Requires Docker, git and GNU make 4+ (macOS: `brew install make`, then
+`export SCANX_MAKE=gmake`).
+
+```bash
+gh repo clone Avarko/gh-security-toolkit ~/.local/share/scanx
+~/.local/share/scanx/install.sh        # links ~/.local/bin/scanx
+```
+
+`SCANX_BIN_DIR` changes the link directory. `install.sh` is safe to re-run and
+warns when the directory is not on `PATH`; `uninstall.sh` removes the link.
+
+### Commands
+
+```bash
+scanx scan                          # trivy fs + trivy config + semgrep
+scanx scan trivy fs                 # dependencies and secrets in the working tree
+scanx scan trivy config             # IaC misconfigurations
+scanx scan trivy img my-app:local   # a local Docker image
+scanx scan trivy artifact build/libs/app.jar
+scanx scan semgrep                  # SAST; needs network for semgrep.dev rulesets
+
+scanx db update | status | clean    # shared vulnerability database cache
+scanx provenance                    # what a scan here would run
+scanx update                        # update scanx (git pull --ff-only)
+scanx clean                         # drop the cached scanner image
+scanx version | help
+```
+
+Trailing `NAME=value` arguments are passed to make, e.g.
+`scanx scan trivy fs __GHST_TRIVY_TIMEOUT=10m`.
+
+### Environment
+
+| Variable | Effect |
+|---|---|
+| `SCANX_FORMAT=json\|table` | Trivy output format (default `table`) |
+| `SCANX_OFFLINE=1` | No network: no update checks or image pulls, Semgrep skipped (same as `GHST_OFFLINE=1`) |
+| `SCANX_MAKE` | GNU make binary to use (default `make`) |
+| `SCANX_BIN_DIR` | Link directory for `install.sh` / `uninstall.sh` |
+
+Scan results are the only thing on stdout; progress, provenance and warnings go
+to stderr. A report can be redirected straight into a file:
+
+```bash
+SCANX_FORMAT=json scanx scan trivy img my-app:local > trivy-image.json
+jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-image.json
+```
+
+### Project configuration
+
+Read from the repository root:
+
+- `trivy.yaml` (preferred) or `.trivy.yaml`: `scanx` passes whichever exists
+  to Trivy as `--config`. Trivy itself would only find `trivy.yaml`.
+- `.semgrep.yaml` or `.semgrep.yml`: when present, `scanx` runs Semgrep with
+  it instead of the registry rulesets. Semgrep does not pick it up by itself.
+- `.trivyignore` / `.trivyignore.yaml` and `.semgrepignore`: read by Trivy
+  and Semgrep directly.
+
+See [Ignore CVEs](#ignore-cves).
+
+### Staying current
+
+Once a day `scanx` fetches its own clone and compares `Makefile.scanners` with
+the upstream of the checked-out branch. When they differ every scan says so and
+asks you to run `scanx update`; after 14 days without a confirmed-current
+check, scans refuse, as described in [What keeps itself current](#what-keeps-itself-current).
+`SCANX_OFFLINE=1` is the way out on an air-gapped machine. The scanner image
+and the databases refresh themselves as before.
+
+`scanx` is run directly from the command line. Project Makefiles should not
+wrap it: repositories are shared with developers who do not have scanx.
+
 ## Quick start
 
-### Manual scans during local development
+### Manual scans during local development (legacy Makefile include, deprecated)
+
+> **Deprecated.** Prefer [scanx](#scanx). The include below makes every
+> repository depend on fetching this file at make time, and a repository whose
+> include uses `include $(shell … curl …)` cannot run *any* make target when
+> the fetch fails. It keeps working for existing repositories while they move
+> to scanx.
 
 1. Add the following include code in your project's Makefile:
 
