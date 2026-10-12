@@ -783,9 +783,11 @@ __GHST_TRIVY_CONFIG_NOTE = $(if $(__GHST_TRIVY_CONFIG),echo "ℹ️  Using $(__G
 # Each target therefore names its subcommand's default scanners, and when the
 # project's Trivy config chooses scanners itself, convert reads them from that
 # same config instead. Filters (severity, .trivyignore, ignore-unfixed) need no
-# such care: they were applied before the JSON was written. The config scan
-# adds --include-non-failures, because its table counts passed checks
-# ("Tests: 27 (SUCCESSES: 25, ...)") and the JSON leaves them out otherwise.
+# such care: they were applied before the JSON was written. Every scan adds
+# --include-non-failures, because a misconfiguration table counts passed
+# checks ("Tests: 27 (SUCCESSES: 25, ...)") and the JSON leaves them out
+# otherwise. Not only the config scan: a trivy.yaml can turn misconfiguration
+# scanning on for fs, artifact and image scans too.
 #
 # The report goes through stdout to the host rather than being written by the
 # container, so the file belongs to the developer on Linux too and a read-only
@@ -797,6 +799,8 @@ __GHST_TRIVY_CONFIG_SETS_SCANNERS := $(if $(__GHST_TRIVY_CONFIG),$(shell awk '\
 	top == "scan" && /^[[:space:]]+scanners[[:space:]]*:/ { found = 1 }; \
 	/^scan[[:space:]]*:.*scanners[[:space:]]*:/ { found = 1 }; \
 	END { if (found) print "yes" }' $(__GHST_TRIVY_CONFIG)),)
+
+__GHST_REPORT_SCAN_OPTS := --include-non-failures
 
 # Target-specific: the report's name and the scanners its subcommand runs by
 # default.
@@ -836,7 +840,7 @@ sec/scan/trivy/fs: __ghst-provenance # Scan filesystem (uses trivy.yaml or .triv
 	@$(__GHST_TRIVY_CONFIG_NOTE)
 	@$(__GHST_REPORT_PREPARE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
-	$(__GHST_IMAGE) trivy fs . $(__GHST_TRIVY_CONFIG_OPT) --format json --timeout $(__GHST_TRIVY_TIMEOUT) \
+	$(__GHST_IMAGE) trivy fs . $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
 	> $(__GHST_REPORT); $(__GHST_REPORT_RENDER)
 
 .PHONY: sec/scan/trivy/artifact
@@ -847,7 +851,7 @@ sec/scan/trivy/artifact: __ghst-provenance # Scan built artifact - Gradle WAR/JA
 	@$(__GHST_TRIVY_CONFIG_NOTE)
 	@$(__GHST_REPORT_PREPARE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
-	$(__GHST_IMAGE) trivy fs $(ARTIFACT) $(__GHST_TRIVY_CONFIG_OPT) --format json --timeout $(__GHST_TRIVY_TIMEOUT) \
+	$(__GHST_IMAGE) trivy fs $(ARTIFACT) $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
 	> $(__GHST_REPORT); $(__GHST_REPORT_RENDER)
 
 .PHONY: sec/scan/trivy/config
@@ -856,7 +860,7 @@ sec/scan/trivy/config: __ghst-provenance # Scan IaC configs for misconfiguration
 	@$(__GHST_TRIVY_CONFIG_NOTE)
 	@$(__GHST_REPORT_PREPARE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
-	$(__GHST_IMAGE) trivy config . $(__GHST_TRIVY_CONFIG_OPT) --format json --include-non-failures --timeout $(__GHST_TRIVY_TIMEOUT) \
+	$(__GHST_IMAGE) trivy config . $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
 	> $(__GHST_REPORT); $(__GHST_REPORT_RENDER)
 
 .PHONY: sec/scan/trivy/img
@@ -874,7 +878,7 @@ sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	-v /var/run/docker.sock:/var/run/docker.sock \
 	-v $(PWD):/workspace:ro $(__GHST_DB_MOUNT) -w /workspace \
-	$(__GHST_IMAGE) trivy image $(IMAGE) $(__GHST_TRIVY_CONFIG_OPT) --format json \
+	$(__GHST_IMAGE) trivy image $(IMAGE) $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) \
 	> $(__GHST_REPORT); $(__GHST_REPORT_RENDER)
 
 # ============================================================================
