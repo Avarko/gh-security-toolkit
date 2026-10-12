@@ -108,17 +108,23 @@ __GHST_DB_MOUNT := -v $(__GHST_DB_CACHE)/db:/opt/trivy-cache/db:ro \
 	-v $(__GHST_DB_CACHE)/java-db:/opt/trivy-cache/java-db:ro \
 	--tmpfs /opt/trivy-cache/fanal:rw,size=512m
 
-# Mount Maven and Gradle caches if they exist
+# Mount Maven and Gradle caches if they exist. Trivy looks for them under
+# $HOME, which for a scan is /tmp (see __GHST_USER_OPTS), not the image
+# account's /home/ghst. Mounted there they went unread from the day scans
+# started running as the invoking user: a pom whose parent or BOM sets the
+# versions resolved to a handful of direct dependencies without one, and so
+# to no vulnerabilities at all.
+__GHST_SCAN_HOME   := /tmp
 __M2_EXISTS        := $(shell [ -d "$$HOME/.m2/repository" ] && echo yes || echo no)
 __GRADLE_EXISTS    := $(shell [ -d "$$HOME/.gradle/caches/modules-2" ] && echo yes || echo no)
-__M2_MOUNT       := $(if $(filter yes,$(__M2_EXISTS)),-v $$HOME/.m2/repository:/home/ghst/.m2/repository:ro,)
-__GRADLE_MOUNT   := $(if $(filter yes,$(__GRADLE_EXISTS)),-v $$HOME/.gradle/caches/modules-2:/home/ghst/.gradle/caches/modules-2:ro,)
+__M2_MOUNT       := $(if $(filter yes,$(__M2_EXISTS)),-v $$HOME/.m2/repository:$(__GHST_SCAN_HOME)/.m2/repository:ro,)
+__GRADLE_MOUNT   := $(if $(filter yes,$(__GRADLE_EXISTS)),-v $$HOME/.gradle/caches/modules-2:$(__GHST_SCAN_HOME)/.gradle/caches/modules-2:ro,)
 
 # Scans run as the invoking user for the same reason the update does: the
 # database cache is the developer's, and the image's own account cannot read
 # it. Trivy also wants a writable HOME for its scratch state, which /tmp
 # provides without touching the workspace.
-__GHST_USER_OPTS := --user $(__GHST_HOST_UID):$(__GHST_HOST_GID) -e HOME=/tmp
+__GHST_USER_OPTS := --user $(__GHST_HOST_UID):$(__GHST_HOST_GID) -e HOME=$(__GHST_SCAN_HOME)
 
 # The image's entrypoint starts a VEX Hub HTTP server by default and announces
 # it on stdout, ahead of the scan result. No scan here passes --vex, so the
