@@ -34,7 +34,7 @@ was newest on build day without anyone looking.
 | Trivy checks bundle | `int-manual-build-scanner-cli.yml`, "Download Trivy misconfiguration checks" | manifest digest (unsigned upstream); build fails if not installed |
 | BuildKit (build only) | `int-manual-build-scanner-cli.yml`, "Set up Buildx" | image digest |
 | Sigstore TUF bootstrap (build only) | `int-manual-build-scanner-cli.yml`, cosign step | tuf-client version (go.sum DB), root.json by commit + sha256 |
-| trivy-db-helper | newest `helper-v*` in ghcr.io/avarko/trivy-incremental-dbs | our own release; checksums in the artifact |
+| trivy-db-helper | newest `helper-vX.Y.Z` in ghcr.io/avarko/trivy-incremental-dbs | cosign keyless signature from its release-helper.yml at that tag; checksums in the artifact |
 | Base image | `cli/Dockerfile` `wolfi-base:latest` | not pinned; packages are current at build time |
 
 Before proposing a bump, check the candidate rather than its changelog:

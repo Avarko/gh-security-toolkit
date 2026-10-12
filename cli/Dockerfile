@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 # CI provides build-args for tool versions to yield reproducible, non-flaky builds
 ARG TRIVY_VER
 ARG TRUFFLEHOG_VER
@@ -15,7 +13,13 @@ ARG TARGETOS
 
 # No python3: it was here only to serve VEX Hub (see below), and it was the
 # largest source of known vulnerabilities in the base packages.
-RUN apk update && apk add --no-cache \
+#
+# APK_REFRESH changes on every CI run. Without it the registry build cache
+# replays this layer for as long as the wolfi-base digest stands still, and
+# curl, git and jq are not in wolfi-base: their fixes would never reach a
+# rebuilt image. What follows is cheap COPYs.
+ARG APK_REFRESH
+RUN echo "packages as of ${APK_REFRESH:-local build}" && apk update && apk add --no-cache \
     bash ca-certificates curl jq git \
     && update-ca-certificates
 
@@ -25,11 +29,12 @@ RUN adduser -D -u 10001 ghst \
 
 RUN echo "TARGETPLATFORM=${TARGETPLATFORM}, TARGETARCH=${TARGETARCH}, TARGETOS=${TARGETOS}"
 
-# Pre-verified binaries copied from CI
-COPY --chown=ghst:ghst verified-binaries/linux-${TARGETARCH}/trivy      /usr/local/bin/trivy
-COPY --chown=ghst:ghst verified-binaries/linux-${TARGETARCH}/trufflehog /usr/local/bin/trufflehog
-COPY --chown=ghst:ghst verified-binaries/linux-${TARGETARCH}/cosign     /usr/local/bin/cosign
-COPY --chown=ghst:ghst verified-binaries/linux-${TARGETARCH}/crane      /usr/local/bin/crane
+# Pre-verified binaries copied from CI, owned by root: the image runs as ghst,
+# which has no business replacing them.
+COPY verified-binaries/linux-${TARGETARCH}/trivy      /usr/local/bin/trivy
+COPY verified-binaries/linux-${TARGETARCH}/trufflehog /usr/local/bin/trufflehog
+COPY verified-binaries/linux-${TARGETARCH}/cosign     /usr/local/bin/cosign
+COPY verified-binaries/linux-${TARGETARCH}/crane      /usr/local/bin/crane
 
 # Cosign TUF cache (for offline use)
 # CI provides verified-binaries/tuf-cache.tgz containing .sigstore/ + cosign-init.log
@@ -76,7 +81,7 @@ COPY --chown=ghst:ghst verified-binaries/trivy-db/policy /opt/trivy-cache/policy
 
 # Helper that applies incremental database updates, copied from CI alongside
 # the other verified binaries.
-COPY --chown=ghst:ghst verified-binaries/linux-${TARGETARCH}/trivy-db-helper /usr/local/bin/trivy-db-helper
+COPY verified-binaries/linux-${TARGETARCH}/trivy-db-helper /usr/local/bin/trivy-db-helper
 
 # What this image is made of, as labels.
 #

@@ -13,6 +13,13 @@ env:
   IMAGE_NAME: avarko/gh-security-toolkit
   CONTEXT: ./cli
 
+# One build at a time. The merge job reads the index digest back through a
+# tag, and two overlapping runs with the same tag would attest each other's
+# image.
+concurrency:
+  group: build-scanner-cli
+  cancel-in-progress: false
+
 jobs:
   # Three jobs where there was one, so that no emulator takes part in
   # building the image. The single job built both architectures on an amd64
@@ -34,6 +41,7 @@ jobs:
       ver_cosign: ${{ steps.cosign.outputs.ver_cosign }}
       ver_crane: ${{ steps.crane.outputs.ver_crane }}
       helper_version: ${{ steps.db-helper.outputs.helper_version }}
+      binaries_sha256: ${{ steps.handoff.outputs.sha256 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -71,12 +79,13 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version: '1.25.x'
+          # Only tuf-client is built, and there is no go.mod here to key a cache.
+          cache: false
 
       # https://docs.sigstore.dev/cosign/system_config/installation/
       - name: Resolve & verify Cosign (bundle)
         id: cosign
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CONTEXT: ${{ env.CONTEXT }}
         run: |
           set -euo pipefail
@@ -113,10 +122,10 @@ jobs:
             SIG_JSON="${COSIGN_FILE}-kms.sigstore.json"
 
             echo "Downloading cosign for $arch: ${COSIGN_FILE}"
-            curl -L -o "${SIG_JSON}" "https://github.com/sigstore/cosign/releases/download/${ver_cosign}/${SIG_JSON}"
+            curl -fsSL -o "${SIG_JSON}" "https://github.com/sigstore/cosign/releases/download/${ver_cosign}/${SIG_JSON}"
             jq -r '.messageSignature.signature' "${SIG_JSON}" | base64 -d > "cosign-${arch}.sig.decoded"
 
-            curl -L -o "${COSIGN_FILE}" "https://github.com/sigstore/cosign/releases/download/${ver_cosign}/${COSIGN_FILE}"
+            curl -fsSL -o "${COSIGN_FILE}" "https://github.com/sigstore/cosign/releases/download/${ver_cosign}/${COSIGN_FILE}"
 
             expected_var="sha_cosign_${arch}"
             echo "${!expected_var}  ${COSIGN_FILE}" | sha256sum -c -
@@ -175,7 +184,7 @@ jobs:
           sha_crane_arm64=898c0cff975f898a33e8c4580bdafb0e7c02c7faa33374e946762f97c4ab7110
           echo "ver_crane=$ver_crane" >> "$GITHUB_OUTPUT"
 
-          curl -sL "https://github.com/google/go-containerregistry/releases/download/${ver_crane}/multiple.intoto.jsonl" -o crane-provenance.intoto.jsonl
+          curl -fsSL "https://github.com/google/go-containerregistry/releases/download/${ver_crane}/multiple.intoto.jsonl" -o crane-provenance.intoto.jsonl
 
           for arch in amd64 arm64; do
             case "$arch" in
@@ -184,7 +193,7 @@ jobs:
             esac
 
             echo "Downloading crane for $arch: $TARBALL"
-            curl -sL "https://github.com/google/go-containerregistry/releases/download/${ver_crane}/${TARBALL}" -o "crane-${arch}.tgz"
+            curl -fsSL "https://github.com/google/go-containerregistry/releases/download/${ver_crane}/${TARBALL}" -o "crane-${arch}.tgz"
 
             expected_var="sha_crane_${arch}"
             echo "${!expected_var}  crane-${arch}.tgz" | sha256sum -c -
@@ -202,7 +211,6 @@ jobs:
       - name: Resolve Trivy
         id: trivy
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CONTEXT: ${{ env.CONTEXT }}
         run: |
           set -euo pipefail
@@ -240,23 +248,15 @@ jobs:
             expected_var="sha_trivy_${arch}"
             echo "${!expected_var}  ${TARBALL}" | sha256sum -c -
 
-            # Try old format (.sig + .pem) first, fallback to new format (.sigstore.json)
-            if curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/${TARBALL}.sig" -o "${TARBALL}.sig" 2>/dev/null && \
-               curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/${TARBALL}.pem" -o "${TARBALL}.pem" 2>/dev/null; then
-              echo "Using legacy signature format (.sig + .pem)"
-              "$COSIGN_BIN" verify-blob "${TARBALL}" \
-                --certificate "${TARBALL}.pem" \
-                --signature "${TARBALL}.sig" \
-                --certificate-identity-regexp 'https://github\.com/aquasecurity/trivy/\.github/workflows/.+' \
-                --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
-            else
-              echo "Legacy format not found, using Sigstore bundle format (.sigstore.json)"
-              curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/${TARBALL}.sigstore.json" -o "${TARBALL}.sigstore.json"
-              "$COSIGN_BIN" verify-blob "${TARBALL}" \
-                --bundle "${TARBALL}.sigstore.json" \
-                --certificate-identity-regexp 'https://github\.com/aquasecurity/trivy/\.github/workflows/.+' \
-                --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
-            fi
+            # Signed by Trivy's release workflow at the pinned tag; any
+            # workflow in the repository at any ref used to pass. v0.75.0
+            # publishes Sigstore bundles only, so the .sig/.pem pair that was
+            # tried first is gone.
+            curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/${TARBALL}.sigstore.json" -o "${TARBALL}.sigstore.json"
+            "$COSIGN_BIN" verify-blob "${TARBALL}" \
+              --bundle "${TARBALL}.sigstore.json" \
+              --certificate-identity-regexp "^https://github\.com/aquasecurity/trivy/\.github/workflows/reusable-release\.yaml@refs/tags/${ver_trivy//./\\.}\$" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
 
             tar -xzf "${TARBALL}" trivy
             install -m 0755 trivy "${CONTEXT}/verified-binaries/linux-${arch}/trivy"
@@ -286,7 +286,7 @@ jobs:
           # "Falling back to embedded checks" and exits 0, so the image could
           # ship without the bundle and nothing would say so.
           #
-          # trivy-checks 2.2.0 (2026-10), the major version Trivy v0.75 asks
+          # trivy-checks 2.2.0 (published 2026-03-17), the major version Trivy v0.75 asks
           # for. Its releases are not signed, so the digest is the check.
           # Bump with: crane digest ghcr.io/aquasecurity/trivy-checks:<version>
           checks_ref=ghcr.io/aquasecurity/trivy-checks@sha256:b63166ca02aa09e30a5127320384d7bd0d2760dc19bab3ab7041a6070114ba45
@@ -332,7 +332,7 @@ jobs:
           # passed to the build as HELPER_VER and ends up as an image label:
           # the build log expires and cannot be read from a developer's
           # terminal, so the version has to travel with the image.
-          version=$("$CRANE" ls "$HELPER_PKG" | grep '^helper-v' | sort -V | tail -1)
+          version=$("$CRANE" ls "$HELPER_PKG" | grep -E '^helper-v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
           echo "helper_version=$version" >> "$GITHUB_OUTPUT"
           echo "Using database helper $version"
 
@@ -346,7 +346,7 @@ jobs:
           # Helpers before helper-v1.2.4 were published unsigned.
           digest=$("$CRANE" digest "${HELPER_PKG}:${version}")
           "$COSIGN_BIN" verify \
-            --certificate-identity-regexp '^https://github\.com/Avarko/trivy-incremental-dbs/\.github/workflows/release-helper\.yml@refs/(tags/helper-v[0-9.]+|heads/main)$' \
+            --certificate-identity-regexp "^https://github\.com/Avarko/trivy-incremental-dbs/\.github/workflows/release-helper\.yml@refs/(tags/${version//./\\.}|heads/main)\$" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             "${HELPER_PKG}@${digest}" > /dev/null
           echo "Helper signature verified: ${digest}"
@@ -380,7 +380,6 @@ jobs:
       - name: Resolve TruffleHog
         id: trufflehog
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CONTEXT: ${{ env.CONTEXT }}
         run: |
           set -euo pipefail
@@ -444,9 +443,13 @@ jobs:
       # A tarball rather than the directory: artifacts drop file modes, and
       # these are executables.
       - name: Hand the verified binaries to the build jobs
+        id: handoff
         env:
           CONTEXT: ${{ env.CONTEXT }}
-        run: tar -C "${CONTEXT}" -czf verified-binaries.tgz verified-binaries
+        run: |
+          set -euo pipefail
+          tar -C "${CONTEXT}" -czf verified-binaries.tgz verified-binaries
+          echo "sha256=$(sha256sum verified-binaries.tgz | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -481,10 +484,16 @@ jobs:
         with:
           name: verified-binaries
 
+      # Checked against the hash prepare recorded, so the build uses exactly
+      # what was verified there.
       - name: Unpack the verified binaries
         env:
           CONTEXT: ${{ env.CONTEXT }}
-        run: tar -C "${CONTEXT}" -xzf verified-binaries.tgz && rm verified-binaries.tgz
+          SHA256: ${{ needs.prepare.outputs.binaries_sha256 }}
+        run: |
+          set -euo pipefail
+          echo "${SHA256}  verified-binaries.tgz" | sha256sum -c -
+          tar -C "${CONTEXT}" -xzf verified-binaries.tgz && rm verified-binaries.tgz
 
       - name: Login to GHCR
         uses: docker/login-action@v4
@@ -526,6 +535,7 @@ jobs:
           provenance: false
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
+            APK_REFRESH=${{ github.run_id }}
             TRIVY_VER=${{ needs.prepare.outputs.ver_trivy }}
             TRUFFLEHOG_VER=${{ needs.prepare.outputs.ver_trufflehog }}
             COSIGN_VER=${{ needs.prepare.outputs.ver_cosign }}
@@ -614,6 +624,15 @@ jobs:
           first_tag=$(head -n1 <<< "$TAGS")
           digest=$(docker buildx imagetools inspect "$first_tag" --format '{{json .Manifest}}' | jq -r .digest)
           case "$digest" in sha256:*) ;; *) echo "::error::no index digest for $first_tag"; exit 1 ;; esac
+
+          # The index read back must be the one just made: exactly the two
+          # platform images this run built. Everything downstream attests it.
+          got=$(docker buildx imagetools inspect --raw "${IMAGE}@${digest}" | jq -r '.manifests[].digest' | sort)
+          want=$(sort digests/amd64 digests/arm64)
+          if [ "$got" != "$want" ]; then
+            echo "::error::${first_tag} does not point at this run's images"
+            exit 1
+          fi
           docker buildx imagetools inspect "${IMAGE}@${digest}"
 
           echo "image_ref=${IMAGE}" >> "$GITHUB_OUTPUT"
@@ -740,8 +759,15 @@ jobs:
 
           echo "Verifying attestations for: $SUBJECT"
 
-          # Verify attestation (checks both provenance and SBOM)
-          gh attestation verify "$SUBJECT" \
-            --owner ${GITHUB_REPOSITORY_OWNER} \
-            && echo "✅ Attestations verified successfully!" \
-            || (echo "❌ No valid attestation found" && exit 1)
+          set -euo pipefail
+          # Both attestations, each signed by this workflow in this
+          # repository. Without --predicate-type only SLSA provenance is
+          # checked, and --owner alone accepts any workflow in the org.
+          signer="${GITHUB_REPOSITORY}/.github/workflows/int-manual-build-scanner-cli.yml"
+          for predicate in https://slsa.dev/provenance/v1 https://spdx.dev/Document/v2.3; do
+            gh attestation verify "$SUBJECT" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --signer-workflow "$signer" \
+              --predicate-type "$predicate" > /dev/null
+            echo "verified: $predicate"
+          done
