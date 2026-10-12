@@ -329,25 +329,41 @@ jobs:
           set -euo pipefail
           CONTEXT="${CONTEXT}"
           CRANE="${CONTEXT}/verified-binaries/linux-amd64/crane"
+          COSIGN_BIN="${CONTEXT}/verified-binaries/linux-amd64/cosign"
 
-          # helper-latest is moved by the publishing pipeline, so the image
-          # always picks up the current client. Resolve it to a concrete
-          # version, which is passed to the build as HELPER_VER and ends up as
-          # an image label: the build log expires and cannot be read from a
-          # developer's terminal, so the version has to travel with the image.
+          # The newest helper-v* tag, resolved to a concrete version, which is
+          # passed to the build as HELPER_VER and ends up as an image label:
+          # the build log expires and cannot be read from a developer's
+          # terminal, so the version has to travel with the image.
           version=$("$CRANE" ls "$HELPER_PKG" | grep '^helper-v' | sort -V | tail -1)
           echo "helper_version=$version" >> "$GITHUB_OUTPUT"
-          echo "Using database helper $version (via helper-latest)"
+          echo "Using database helper $version"
+
+          # Verified by signature, like every other binary in the image, and
+          # everything after is read by the digest that was verified. The
+          # checksums.txt below used to be the only check, but it ships in the
+          # same archive as the binaries, so it proved the archive unpacked
+          # intact and nothing about who made it. This binary decides which
+          # database every scan runs against, and checks the databases'
+          # signatures itself, so it is the last one to take on trust.
+          # Helpers before helper-v1.2.4 were published unsigned.
+          digest=$("$CRANE" digest "${HELPER_PKG}:${version}")
+          "$COSIGN_BIN" verify \
+            --certificate-identity-regexp '^https://github\.com/Avarko/trivy-incremental-dbs/\.github/workflows/release-helper\.yml@refs/(tags/helper-v[0-9.]+|heads/main)$' \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${HELPER_PKG}@${digest}" > /dev/null
+          echo "Helper signature verified: ${digest}"
 
           # These are OCI artifacts rather than container images, so pull the
           # layer blob directly instead of exporting a filesystem.
           workdir=$(mktemp -d)
-          digest=$("$CRANE" manifest "${HELPER_PKG}:${version}" \
+          layer=$("$CRANE" manifest "${HELPER_PKG}@${digest}" \
             | jq -r '.layers[] | select(.mediaType | startswith("application/vnd.evolver.trivy.helper")) | .digest')
-          "$CRANE" blob "${HELPER_PKG}@${digest}" | tar -xz -C "$workdir"
+          "$CRANE" blob "${HELPER_PKG}@${layer}" | tar -xz -C "$workdir"
 
-          # Verify against the checksums published alongside the binaries, so
-          # a tampered artifact cannot reach the image unnoticed.
+          # The signature covers the manifest, which names the layer by its
+          # digest, so the archive is already bound to it; the checksums are
+          # what tie each binary to the archive.
           for arch in amd64 arm64; do
             dest="${CONTEXT}/verified-binaries/linux-${arch}"
             mkdir -p "$dest"
@@ -355,7 +371,7 @@ jobs:
 
             expected=$(grep "trivy-db-helper-linux-${arch}\$" "${workdir}/checksums.txt" | awk '{print $1}')
             actual=$(sha256sum "${dest}/trivy-db-helper" | awk '{print $1}')
-            if [ "$expected" != "$actual" ]; then
+            if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
               echo "::error::Checksum mismatch for linux-${arch} database helper"
               exit 1
             fi
