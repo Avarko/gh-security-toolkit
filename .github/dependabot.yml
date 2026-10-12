@@ -30,6 +30,11 @@ updates:
       - "/actions/*/*"
     schedule:
       interval: weekly
+    # A release has to have been out a week before it is proposed: long
+    # enough for a broken or compromised one to be noticed and pulled, and
+    # these run on consumer runners. Security updates are not delayed by it.
+    cooldown:
+      default-days: 7
     # One pull request for all of them. Ten separate bumps of an action nobody
     # has heard of is how these start getting merged without being read.
     groups:
