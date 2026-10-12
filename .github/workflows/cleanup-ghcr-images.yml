@@ -1,0 +1,68 @@
+name: "[Internal] Clean up old scanner images in GHCR"
+
+# GHCR keeps every package version forever: nothing expires on its own. Each
+# image build adds an index, two platform manifests and their attestations,
+# so without this the package only grows.
+#
+# What goes:
+# - images whose only tags are sha-<commit> (the build tags every image that
+#   way), older than 30 days, beyond the 5 newest of those;
+# - untagged images older than 30 days that nothing tagged refers to:
+#   leftovers of failed builds and of images whose tags have all moved on;
+# - attestations and signatures whose image is gone, and multi-arch indexes
+#   whose platform images are partly or wholly missing.
+#
+# What stays, whatever its age:
+# - every tag a consumer can pull by name: main and latest, manual-latest,
+#   release tags (v*), and any other non-sha tag a build was given;
+# - buildcache-<arch>, which the build reads its layer cache from;
+# - platform manifests and attestations of anything kept. The action walks
+#   multi-arch indexes and referrers, which is why it is used instead of
+#   deleting "untagged" versions through the API: in GHCR's list the platform
+#   images of a tagged index show as untagged, and deleting them breaks it.
+#
+# The 30 days also keep this away from a build in progress, whose platform
+# images sit untagged until its merge job creates the index; the shared
+# concurrency group keeps the two from running at once regardless.
+#
+# Deleted versions can be restored for 30 days: the log prints each id, see
+# https://docs.github.com/en/rest/packages/packages#restore-package-version-for-an-organization
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"  # Mondays 04:17 UTC
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Only list what would be deleted"
+        type: boolean
+        default: true
+
+concurrency:
+  group: build-scanner-cli
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Delete old image versions
+        # Pinned by commit: it runs with permission to delete the image.
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f  # v1.2.2
+        with:
+          package: gh-security-toolkit
+          delete-tags: sha-*
+          keep-n-tagged: 5
+          exclude-tags: main,latest,manual-latest,v*,buildcache-*
+          delete-untagged: true
+          delete-orphaned-images: true
+          delete-ghost-images: true
+          delete-partial-images: true
+          older-than: 30 days
+          # Scheduled runs only list, until a dry run's log has been read and
+          # this is changed to delete on schedule as well.
+          dry-run: ${{ github.event_name != 'workflow_dispatch' || inputs.dry-run }}
