@@ -97,7 +97,17 @@ jobs:
           set -euo pipefail
           CONTEXT="${CONTEXT}"
 
-          ver_cosign=$(gh api repos/sigstore/cosign/releases/latest --jq .tag_name)
+          # Pinned by version and by the sha256 of each binary, like every
+          # tool in the image: resolving releases/latest put whatever was newest
+          # on the day of the build into the image, unreviewed. See "Pinned
+          # components" in AGENTS.md before bumping.
+          #
+          # v3.1.3 is the newest release (2026-10-12) and ships 20 known highs:
+          # go1.26.4, x/crypto v0.53.0, x/mod v0.37.0, x/net v0.56.0, x/text
+          # v0.38.0 and grpc v1.82.0. No release fixes them yet.
+          ver_cosign=v3.1.3
+          sha_cosign_amd64=4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
+          sha_cosign_arm64=c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a
           echo "ver_cosign=$ver_cosign" >> "$GITHUB_OUTPUT"
 
           # Sigstore TUF bootstrap
@@ -115,6 +125,9 @@ jobs:
             jq -r '.messageSignature.signature' "${SIG_JSON}" | base64 -d > "cosign-${arch}.sig.decoded"
 
             curl -L -o "${COSIGN_FILE}" "https://github.com/sigstore/cosign/releases/download/${ver_cosign}/${COSIGN_FILE}"
+
+            expected_var="sha_cosign_${arch}"
+            echo "${!expected_var}  ${COSIGN_FILE}" | sha256sum -c -
 
             echo "Verifying cosign (${arch}) with artifact.pub"
             openssl dgst -sha256 -verify artifact.pub -signature "cosign-${arch}.sig.decoded" "${COSIGN_FILE}"
@@ -161,7 +174,13 @@ jobs:
           # name a toolchain covering the current stdlib advisories. go.mod
           # alone does not settle it; the v0.22.0 build disagreed with what its
           # own go.mod asked for, and that is the whole reason for this pin.
+          #
+          # The sha256 of each tarball is pinned too. Provenance proves a
+          # tarball was built from the tag; the hash proves it is the one that
+          # was checked by hand.
           ver_crane=v0.22.1
+          sha_crane_amd64=0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0
+          sha_crane_arm64=898c0cff975f898a33e8c4580bdafb0e7c02c7faa33374e946762f97c4ab7110
           echo "ver_crane=$ver_crane" >> "$GITHUB_OUTPUT"
 
           curl -sL "https://github.com/google/go-containerregistry/releases/download/${ver_crane}/multiple.intoto.jsonl" -o crane-provenance.intoto.jsonl
@@ -174,6 +193,9 @@ jobs:
 
             echo "Downloading crane for $arch: $TARBALL"
             curl -sL "https://github.com/google/go-containerregistry/releases/download/${ver_crane}/${TARBALL}" -o "crane-${arch}.tgz"
+
+            expected_var="sha_crane_${arch}"
+            echo "${!expected_var}  crane-${arch}.tgz" | sha256sum -c -
 
             echo "Verifying crane (${arch}) with SLSA provenance"
             slsa-verifier verify-artifact "crane-${arch}.tgz" \
@@ -195,7 +217,19 @@ jobs:
           CONTEXT="${CONTEXT}"
           COSIGN_BIN="${CONTEXT}/verified-binaries/linux-amd64/cosign"
 
-          ver_trivy=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/aquasecurity/trivy/releases/latest | grep -oP 'tag/\K.+')
+          # Pinned by version and by the sha256 of each tarball; it used to
+          # resolve releases/latest, so the image got whatever was newest on
+          # the day of the build. See "Pinned components" in AGENTS.md before
+          # bumping, and bump the self-check's scanner (self-checks.yml) with
+          # it: that one must be no older than this.
+          #
+          # v0.75.0 (2026-10-01) replaced v0.74.0, which carried 6 highs. It
+          # still ships 4, built with go1.27.1 and x/net v0.59.0: stdlib
+          # CVE-2026-78667, -78669 and -97031 (fixed in go1.27.2) and x/net
+          # CVE-2026-78669 (fixed in v0.60.0).
+          ver_trivy=v0.75.0
+          sha_trivy_amd64=c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f
+          sha_trivy_arm64=a1ee9f6ffb7d112b64ff726a2a0717c21175c1114361391f4a132956751a13b3
           echo "ver_trivy=$ver_trivy" >> "$GITHUB_OUTPUT"
 
           for arch in amd64 arm64; do
@@ -210,6 +244,9 @@ jobs:
 
             echo "Downloading Trivy for $arch: $TARBALL"
             curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/${TARBALL}" -o "${TARBALL}"
+
+            expected_var="sha_trivy_${arch}"
+            echo "${!expected_var}  ${TARBALL}" | sha256sum -c -
 
             # Try old format (.sig + .pem) first, fallback to new format (.sigstore.json)
             if curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${ver_trivy}/${TARBALL}.sig" -o "${TARBALL}.sig" 2>/dev/null && \
@@ -323,7 +360,16 @@ jobs:
           CONTEXT="${CONTEXT}"
           COSIGN_BIN="${CONTEXT}/verified-binaries/linux-amd64/cosign"
 
-          ver_trufflehog=$(gh api repos/trufflesecurity/trufflehog/releases/latest --jq .tag_name)
+          # Pinned by version and by the sha256 of each tarball, like the other
+          # tools; see "Pinned components" in AGENTS.md before bumping.
+          #
+          # The release binaries are UPX-packed, which hides Go's build info:
+          # `go version -m` cannot read them and Trivy reports nothing for
+          # them, so the self-check's scan of the image is blind to this one.
+          # A bump has to be judged from upstream's go.mod and release notes.
+          ver_trufflehog=v3.99.2
+          sha_trufflehog_amd64=3c7b0d1dc4278294269bfdd7594bca8bb28c78da0a4a06ad202ded37b48deca4
+          sha_trufflehog_arm64=929b81efffca752eafd58bf6f17bf725d354f338636a7bbbee65c086d2f9ddf3
           echo "ver_trufflehog=$ver_trufflehog" >> "$GITHUB_OUTPUT"
 
           CHECKSUMS="trufflehog_${ver_trufflehog#v}_checksums.txt"
@@ -347,6 +393,8 @@ jobs:
             curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/${TARBALL}" -o "${TARBALL}"
 
             sha256sum --ignore-missing -c "${CHECKSUMS}"
+            expected_var="sha_trufflehog_${arch}"
+            echo "${!expected_var}  ${TARBALL}" | sha256sum -c -
 
             tar -xzf "${TARBALL}" trufflehog
             install -m 0755 trufflehog "${CONTEXT}/verified-binaries/linux-${arch}/trufflehog"

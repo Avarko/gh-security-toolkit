@@ -50,6 +50,11 @@ jobs:
       - name: Semgrep is configured the same way everywhere
         run: python3 scripts/check-semgrep-config.py
 
+      # Fails only when the self-check's Trivy and the image's disagree; pins
+      # that are merely behind upstream are listed in the log, for a person.
+      - name: Tool pins agree, and which are behind upstream
+        run: python3 scripts/check-tool-pins.py
+
       # scanx is POSIX sh so it runs unchanged on macOS; shellcheck is what
       # notices a bashism before a Mac does.
       - name: scanx scripts pass shellcheck
@@ -118,9 +123,9 @@ jobs:
           # failure is skipped, so that binary was reported as 0 findings
           # having had none of them evaluated -- a clean result that meant
           # nothing. A scanner auditing this image must therefore be no older
-          # than the one inside it; check that before bumping the image's
-          # Trivy, since that one resolves to releases/latest at build time.
-          version: v0.74.0
+          # than the one inside it, so this moves together with ver_trivy in
+          # int-manual-build-scanner-cli.yml.
+          version: v0.75.0
           format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true

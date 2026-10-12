@@ -11,6 +11,45 @@
 - Provides a React dashboard for visualizing scan history with Apache ECharts
 - Uses GitHub Actions Artifacts and GitHub Pages as persistence layer (no traditional database)
 
+## Pinned components: check them whenever you work here
+
+**Agents: whenever you work in this repository, whatever the task, run
+`python3 scripts/check-tool-pins.py` early (a few seconds, no token) and
+mention in one line any pin it reports as behind upstream.** Do not bump on
+your own: a bump is the user's decision, made with the checks below. The
+reason for asking every time is that pins go stale silently. Nothing about
+the image changes when a CVE is published against a binary inside it, and
+when these tools resolved `releases/latest` instead, the image got whatever
+was newest on build day without anyone looking.
+
+| Component | Pinned in | How |
+|---|---|---|
+| Trivy (image) | `int-manual-build-scanner-cli.yml` `ver_trivy` | version + sha256 per arch, cosign signature |
+| Trivy (self-check scanner) | `self-checks.yml` `version:` | must equal the image's; the script fails otherwise |
+| cosign | `int-manual-build-scanner-cli.yml` `ver_cosign` | version + sha256 per arch, Sigstore key |
+| crane | `int-manual-build-scanner-cli.yml` `ver_crane` | version + sha256 per arch, SLSA provenance |
+| TruffleHog | `int-manual-build-scanner-cli.yml` `ver_trufflehog` | version + sha256 per arch, signed checksums |
+| Semgrep | `Makefile.scanners` `SEMGREP_VERSION` + digest; `actions/scanner/semgrep` | version + image digest |
+| trivy-db-helper | newest `helper-v*` in ghcr.io/avarko/trivy-incremental-dbs | our own release; checksums in the artifact |
+| Base image | `cli/Dockerfile` `wolfi-base:latest` | not pinned; packages are current at build time |
+
+Before proposing a bump, check the candidate rather than its changelog:
+
+1. **Toolchain and dependencies of the actual binaries**, both architectures:
+   download them and run `go version -m`. go.mod is not enough: crane
+   v0.22.0 was built with an older Go than its go.mod asked for.
+2. **Known vulnerabilities**: `trivy rootfs --scanners vuln --severity
+   HIGH,CRITICAL --ignore-unfixed` on the extracted binary, compared with the
+   current pin. Newer is not automatically safer.
+3. **What cannot be checked that way**: TruffleHog ships UPX-packed, so
+   neither `go version -m` nor Trivy can see inside it; judge it from
+   upstream's go.mod and release notes.
+4. **Record why**: the comment next to each pin says what it was chosen over
+   and which known highs it still carries. Update it with the hashes.
+
+Moving the image's Trivy means moving the self-check's scanner in the same
+commit.
+
 ## Core Concept: Channels
 
 **Channels** are isolated scan streams identified by a string name (e.g., `manual`, `nightly`, `pr-123`). Each channel:
@@ -107,6 +146,7 @@ gh-security-toolkit/
 │   │   └── lib/dataPath.ts     # Tenant path resolution
 │   └── vite.config.ts
 ├── scripts/
+│   ├── check-tool-pins.py      # Pinned tools vs newest upstream release (see "Pinned components")
 │   └── github_pages_builder.java  # JBang script: processes scan data
 └── src/main/java/fi/evolver/secops/githubPages/
     ├── GitHubPagesBuilder.java     # Main entry point (passes org metadata to TenantResolver)
