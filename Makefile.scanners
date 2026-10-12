@@ -843,6 +843,14 @@ sec/scan/trivy/fs: __ghst-provenance # Scan filesystem (uses trivy.yaml or .triv
 	$(__GHST_IMAGE) trivy fs . $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
 	> $(__GHST_REPORT); $(__GHST_REPORT_RENDER)
 
+# rootfs, not fs. The two differ in what they read, not just where: fs reads
+# lockfiles and manifests (pom.xml, package-lock.json) and skips jars, while
+# rootfs reads what a build produces -- jars, wars, Go and Rust binaries. This
+# target ran `trivy fs` on built jars and reported every one of them clean
+# without having looked inside: on a Spring Boot jar fs found nothing at all
+# and rootfs found jackson-databind CVE-2026-68497. A clean result from a scan
+# that read nothing is the failure this toolkit most needs to avoid, because it
+# is indistinguishable from a real one.
 .PHONY: sec/scan/trivy/artifact
 sec/scan/trivy/artifact: __ghst-provenance # Scan built artifact - Gradle WAR/JAR/EAR (ARTIFACT=path/to/app.war)
 	@[ -n "$(ARTIFACT)" ] || (echo "❌ Usage: make sec/scan/trivy/artifact ARTIFACT=build/libs/app.war" >&2 && exit 1)
@@ -851,7 +859,7 @@ sec/scan/trivy/artifact: __ghst-provenance # Scan built artifact - Gradle WAR/JA
 	@$(__GHST_TRIVY_CONFIG_NOTE)
 	@$(__GHST_REPORT_PREPARE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
-	$(__GHST_IMAGE) trivy fs $(ARTIFACT) $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
+	$(__GHST_IMAGE) trivy rootfs $(ARTIFACT) $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
 	> $(__GHST_REPORT); $(__GHST_REPORT_RENDER)
 
 .PHONY: sec/scan/trivy/config
