@@ -13,8 +13,10 @@ ARG TARGETPLATFORM
 ARG TARGETARCH
 ARG TARGETOS
 
+# No python3: it was here only to serve VEX Hub (see below), and it was the
+# largest source of known vulnerabilities in the base packages.
 RUN apk update && apk add --no-cache \
-    bash ca-certificates curl jq git python3 py3-pip \
+    bash ca-certificates curl jq git \
     && update-ca-certificates
 
 RUN adduser -D -u 10001 ghst \
@@ -37,23 +39,14 @@ RUN tar -xzf /tmp/tuf-cache.tgz -C /home/ghst \
     && rm /tmp/tuf-cache.tgz \
     && chown -R ghst:ghst /home/ghst/.sigstore
 
-# VEX Hub (internal)
-ARG VEXHUB_MANIFEST_URL="https://raw.githubusercontent.com/aquasecurity/vexhub/main/vex-repository.json"
-ARG VEXHUB_ARCHIVE_URL="https://github.com/aquasecurity/vexhub/archive/refs/heads/main.zip"
-
-RUN mkdir -p /var/www/.well-known /var/www/vex /opt/trivy-cache /workspace \
-    && chown -R ghst:ghst /var/www /opt/trivy-cache /workspace
-
-# Download and extract VEX Hub data
-RUN apk add --no-cache unzip \
-    && curl -fsSL -o /tmp/vexhub.zip "${VEXHUB_ARCHIVE_URL}" \
-    && unzip -q /tmp/vexhub.zip -d /tmp \
-    && mv /tmp/vexhub-main /var/www/vex/vexhub \
-    && rm /tmp/vexhub.zip \
-    && curl -fsSL -o /var/www/.well-known/vex-repository.json "${VEXHUB_MANIFEST_URL}" \
-    && sed -i 's#"url": *".*"#"url": "http://127.0.0.1:8080/vex/vexhub"#' /var/www/.well-known/vex-repository.json \
-    && chown -R ghst:ghst /var/www \
-    && apk del unzip
+# The image used to carry a copy of VEX Hub, downloaded from its main branch
+# at build time, and serve it from 127.0.0.1:8080 in every container. Nothing
+# pointed Trivy at it or passed --vex, so it was never read, and VEX data
+# exists to suppress findings: an unverified copy of it is the last thing a
+# scanner should keep switched on. If VEX is wanted, it belongs in scanx as a
+# pinned `trivy vex repo` and an explicit --vex, not in the image.
+RUN mkdir -p /opt/trivy-cache /workspace \
+    && chown -R ghst:ghst /opt/trivy-cache /workspace
 
 # Trivy databases are NOT baked into the image. They used to be, which cost
 # ~2.8 GB of image size and forced a full re-pull whenever they went stale.
@@ -108,27 +101,6 @@ LABEL fi.evolver.ghst.trivy.version="${TRIVY_VER}" \
 # Non-root user
 USER ghst
 
-# Lightweight HTTP server (BusyBox httpd) for VEX Hub serving
-ENV GHST_VEX_SERVE=1 \
-    GHST_VEX_PORT=8080
-
-# Entrypoint script
-COPY --chown=ghst:ghst <<'EOF' /usr/local/bin/entrypoint.sh
-#!/usr/bin/env bash
-set -euo pipefail
-
-if [ "${GHST_VEX_SERVE:-0}" = "1" ]; then
-  # Use Python's built-in HTTP server (available in python3 package)
-  cd /var/www && python3 -m http.server "${GHST_VEX_PORT}" &
-  echo "VEX Hub served at http://127.0.0.1:${GHST_VEX_PORT}/.well-known/vex-repository.json" >&2
-fi
-
-exec "$@"
-EOF
-RUN chmod +x /usr/local/bin/entrypoint.sh
-
 WORKDIR /workspace
-EXPOSE 8080
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["sh", "-lc", "echo 'Trivy:'; trivy --version; echo 'TruffleHog:'; trufflehog --version; echo 'Crane:'; crane version; echo 'Cosign:'; cosign version"]

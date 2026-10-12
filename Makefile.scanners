@@ -126,10 +126,10 @@ __GRADLE_MOUNT   := $(if $(filter yes,$(__GRADLE_EXISTS)),-v $$HOME/.gradle/cach
 # provides without touching the workspace.
 __GHST_USER_OPTS := --user $(__GHST_HOST_UID):$(__GHST_HOST_GID) -e HOME=$(__GHST_SCAN_HOME)
 
-# The image's entrypoint starts a VEX Hub HTTP server by default and announces
-# it on stdout, ahead of the scan result. No scan here passes --vex, so the
-# server has no reader; switching it off keeps stdout to the result alone, the
-# same way the database runs already do.
+# Images built before VEX Hub was removed start an HTTP server for it by
+# default, and the server announces itself on stdout ahead of the scan result.
+# Nothing read it. Newer images have no server and ignore this; it stays for
+# as long as an older image can still be in a developer's cache.
 __GHST_SCAN_ENV := -e GHST_VEX_SERVE=0
 
 # Network isolation: --network=none ensures air-gapped execution (no data leaves your machine)

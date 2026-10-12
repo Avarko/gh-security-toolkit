@@ -811,7 +811,7 @@ severity:
 **Your data stays with you - no external communication during scans:**
 
 **Local development (Makefile):**
-- **Offline vulnerability databases**: The toolkit Docker image includes pre-downloaded Trivy DB, VEX Hub, and Cosign TUF cache
+- **Offline scans**: Trivy runs with `--network=none` against the vulnerability databases in the shared host cache (`scanx db update`); the image carries the misconfiguration checks and Cosign's TUF cache
 - **Read-only workspace mounts**: Your source code is mounted read-only (`:ro`) by default
 
 **GitHub Actions CI/CD:**

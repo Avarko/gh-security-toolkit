@@ -280,8 +280,27 @@ jobs:
           TRIVY_BIN="${CONTEXT}/verified-binaries/linux-amd64/trivy"
           TRIVY_DB_DIR="${CONTEXT}/verified-binaries/trivy-db"
 
+          # Pinned by manifest digest, like the binaries. This used to fetch
+          # whatever the major-version tag pointed at, with every error thrown
+          # away -- and Trivy does not fail when the download does: it logs
+          # "Falling back to embedded checks" and exits 0, so the image could
+          # ship without the bundle and nothing would say so.
+          #
+          # trivy-checks 2.2.0 (2026-10), the major version Trivy v0.75 asks
+          # for. Its releases are not signed, so the digest is the check.
+          # Bump with: crane digest ghcr.io/aquasecurity/trivy-checks:<version>
+          checks_ref=ghcr.io/aquasecurity/trivy-checks@sha256:b63166ca02aa09e30a5127320384d7bd0d2760dc19bab3ab7041a6070114ba45
+
           mkdir -p "$TRIVY_DB_DIR"
-          "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" fs /dev/null --scanners misconfig 2>/dev/null || true
+          "$TRIVY_BIN" --cache-dir "$TRIVY_DB_DIR" fs /dev/null --scanners misconfig \
+            --checks-bundle-repository "$checks_ref" > /dev/null 2> checks.log || true
+          if grep -q "Falling back to embedded checks" checks.log \
+             || [ ! -d "$TRIVY_DB_DIR/policy/content/policies" ] \
+             || [ "$(jq -r .Digest "$TRIVY_DB_DIR/policy/metadata.json")" != "${checks_ref#*@}" ]; then
+            cat checks.log
+            echo "::error::The pinned Trivy checks bundle was not installed"
+            exit 1
+          fi
 
           # Fail loudly rather than shipping an image whose vulnerability
           # databases were pulled in by accident.
@@ -381,20 +400,34 @@ jobs:
           echo "ver_trufflehog=$ver_trufflehog" >> "$GITHUB_OUTPUT"
 
           CHECKSUMS="trufflehog_${ver_trufflehog#v}_checksums.txt"
-          CHECKSUMS_SIG="${CHECKSUMS}.sig"
-          CHECKSUMS_PEM="${CHECKSUMS}.pem"
+          base="https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}"
+          curl -fsSL "${base}/${CHECKSUMS}" -o "${CHECKSUMS}"
 
-          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/${CHECKSUMS}" -o "${CHECKSUMS}"
-          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/${CHECKSUMS_SIG}" -o "${CHECKSUMS_SIG}"
-          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/${ver_trufflehog}/${CHECKSUMS_PEM}" -o "${CHECKSUMS_PEM}"
+          # Signed by upstream's release workflow at this very tag, not by any
+          # workflow in the repository, which is all the old pattern required.
+          identity="^https://github\.com/trufflesecurity/trufflehog/\.github/workflows/release\.yml@refs/tags/${ver_trufflehog//./\\.}\$"
 
-          "$COSIGN_BIN" verify-blob "${CHECKSUMS}" \
-            --certificate "${CHECKSUMS_PEM}" \
-            --signature "${CHECKSUMS_SIG}" \
-            --certificate-identity-regexp 'https://github\.com/trufflesecurity/trufflehog/\.github/workflows/.+' \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+          # A Sigstore bundle when the release has one; cosign has deprecated
+          # the separate --certificate/--signature pair and will drop it.
+          # v3.99.2 still ships only .sig and .pem, so the pair stays as the
+          # fallback until upstream publishes bundles.
+          if curl -fsSL "${base}/${CHECKSUMS}.sigstore.json" -o "${CHECKSUMS}.sigstore.json" 2>/dev/null; then
+            "$COSIGN_BIN" verify-blob "${CHECKSUMS}" \
+              --bundle "${CHECKSUMS}.sigstore.json" \
+              --certificate-identity-regexp "$identity" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+          else
+            curl -fsSL "${base}/${CHECKSUMS}.sig" -o "${CHECKSUMS}.sig"
+            curl -fsSL "${base}/${CHECKSUMS}.pem" -o "${CHECKSUMS}.pem"
+            "$COSIGN_BIN" verify-blob "${CHECKSUMS}" \
+              --certificate "${CHECKSUMS}.pem" \
+              --signature "${CHECKSUMS}.sig" \
+              --certificate-identity-regexp "$identity" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+          fi
 
-          # Ladataan molemmat arkkitehtuurit ja varmistetaan sha256sum
+          # Both architectures, each checked against the signed checksums and
+          # against the pinned hash.
           for arch in amd64 arm64; do
             TARBALL="trufflehog_${ver_trufflehog#v}_linux_${arch}.tar.gz"
             echo "Downloading TruffleHog for $arch: $TARBALL"
