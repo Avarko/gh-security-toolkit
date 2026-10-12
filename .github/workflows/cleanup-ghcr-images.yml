@@ -74,6 +74,5 @@ jobs:
           delete-ghost-images: true
           delete-partial-images: true
           older-than: 30 days
-          # Scheduled runs only list, until a dry run's log has been read and
-          # this is changed to delete on schedule as well.
-          dry-run: ${{ github.event_name != 'workflow_dispatch' || inputs.dry-run }}
+          # Scheduled runs delete; a manual run lists only, unless told not to.
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
