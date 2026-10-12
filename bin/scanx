@@ -15,7 +15,11 @@ set -eu
 
 usage() {
 	cat <<'EOF'
-Usage: scanx <command> [NAME=value ...]
+Usage: scanx [--no-progress] <command> [NAME=value ...]
+
+  --no-progress                      Never redraw a progress line on stderr. Without
+                                     it one is drawn only when stderr is a terminal,
+                                     so pipes, captures and CI are unaffected anyway.
 
 Scans (run in the current directory):
   scanx scan                         Full scan: trivy fs + trivy config + semgrep
@@ -39,6 +43,7 @@ Environment:
   SCANX_FORMAT=table|json            Trivy output format on stdout (default: table);
                                      the full JSON report is always in .scanx/
   SCANX_OFFLINE=1                    No network: skip update checks, image pulls and Semgrep
+  SCANX_NO_PROGRESS=1                Same as --no-progress
   SCANX_MAKE=gmake                   GNU make to use (macOS ships make 3.81)
 
 Trailing NAME=value arguments are passed to make, e.g.
@@ -90,6 +95,12 @@ version() {
 # The sec/ target, and any NAME=value make needs for it, from the subcommand.
 target=""
 set_target_args=""
+while [ $# -gt 0 ]; do
+	case $1 in
+		--no-progress) SCANX_NO_PROGRESS=1; shift ;;
+		*) break ;;
+	esac
+done
 [ $# -gt 0 ] || { usage >&2; exit 2; }
 cmd=$1
 shift
@@ -170,6 +181,10 @@ done
 if [ -n "${SCANX_FORMAT:-}" ]; then
 	__GHST_TRIVY_FORMAT=$SCANX_FORMAT
 	export __GHST_TRIVY_FORMAT
+fi
+if [ "${SCANX_NO_PROGRESS:-0}" = "1" ]; then
+	GHST_PROGRESS=0
+	export GHST_PROGRESS
 fi
 if [ "${SCANX_OFFLINE:-0}" = "1" ]; then
 	GHST_OFFLINE=1

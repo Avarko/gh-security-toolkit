@@ -173,8 +173,18 @@ __GHST_DB_RUN = $(__GHST_DOCKER_CMD) run --rm \
 	-e GHST_DB_REQUIRE_SIGNATURE=$(GHST_DB_REQUIRE_SIGNATURE) \
 	-e GHST_OFFLINE=$(GHST_OFFLINE) \
 	-e GHST_DB_DEBUG=$(GHST_DB_DEBUG) \
+	-e GHST_PROGRESS=$(__GHST_PROGRESS) \
 	-e GHST_VEX_SERVE=0 \
 	$(__GHST_IMAGE) trivy-db-helper
+
+# Whether the helper may redraw a progress line on stderr. It runs without a
+# terminal inside the container and cannot tell for itself, so the answer is
+# taken here, from the stderr the developer actually sees: 1 only when that
+# is a terminal. A pipe, a file, a captured $(...) or CI gets 0 and exactly
+# the output it got before progress existed. GHST_PROGRESS=0 (scanx
+# --no-progress) turns it off on a terminal too. Helpers older than
+# helper-v1.2.3 ignore the variable.
+__GHST_PROGRESS = $$(if [ "$(GHST_PROGRESS)" != 0 ] && [ -t 2 ]; then echo 1; else echo 0; fi)
 
 # The cache directory must exist before Docker mounts it, or Docker creates it
 # owned by root.
