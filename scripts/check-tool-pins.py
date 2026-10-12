@@ -43,10 +43,13 @@ STABLE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 
 
 def newest_release(repo: str) -> str | None:
-    out = subprocess.run(
-        ["git", "ls-remote", "--tags", "--refs", f"https://github.com/{repo}.git"],
-        capture_output=True, text=True, timeout=60,
-    )
+    try:
+        out = subprocess.run(
+            ["git", "ls-remote", "--tags", "--refs", f"https://github.com/{repo}.git"],
+            capture_output=True, text=True, timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
     if out.returncode != 0:
         return None
     best = None
@@ -56,6 +59,10 @@ def newest_release(repo: str) -> str | None:
         if m and (best is None or tuple(map(int, m.groups())) > best[0]):
             best = (tuple(map(int, m.groups())), tag)
     return best[1] if best else None
+
+
+def version(tag: str) -> tuple[int, ...]:
+    return tuple(int(p) for p in re.findall(r"\d+", tag)[:3])
 
 
 def pinned(text: str, pattern: str, what: str) -> str:
@@ -88,9 +95,11 @@ def main() -> int:
         newest = newest_release(repo)
         if newest is None:
             print(f"?    {name:<11} {have:<10} could not ask {repo}")
-        elif newest.lstrip("v") != have.lstrip("v"):
+        elif version(newest) > version(have):
             behind += 1
             print(f"NEW  {name:<11} {have:<10} -> {newest:<10} ({where})")
+        elif version(newest) < version(have):
+            print(f"?    {name:<11} {have:<10} is ahead of {repo}'s newest stable {newest}")
         else:
             print(f"ok   {name:<11} {have}")
 

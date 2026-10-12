@@ -88,7 +88,9 @@ Trailing `NAME=value` arguments are passed to make, e.g.
 | `SCANX_BIN_DIR` | Link directory for `install.sh` / `uninstall.sh` |
 
 Scan results are the only thing on stdout; progress, provenance and warnings go
-to stderr.
+to stderr. A scan that fails, or finds what `exit-code` in `trivy.yaml` tells it
+to fail on, makes `scanx` exit with status 2; `scanx scan` still runs the
+remaining scans first.
 
 Each scan also leaves its full JSON report in `.scanx/` in the scanned
 directory (`trivy-fs.json`, `trivy-config.json`, `trivy-artifact.json`,
@@ -180,15 +182,15 @@ make sec/scan/help  # Show all commands
 make sec/scan       # Perform full scan
 ```
 
-3. To scan a Docker image and hand the result to an LLM agent for triage, write the scan to a file instead of letting it print to the terminal:
+3. To scan a Docker image and hand the result to an LLM agent for triage, use the full JSON report every scan leaves in `.scanx/`:
 
 ```bash
-make sec/scan/trivy/img IMAGE=my-app:local > scan-results.json
+make -s sec/scan/trivy/img IMAGE=my-app:local   # writes .scanx/trivy-image.json
 ```
 
 Then ask the agent to work through it, e.g.:
 
-> Go through `scan-results.json` and list every CRITICAL and HIGH CVE. For each one, find the fixed version — check the actual current release of the affected library (its releases page, changelog, or package registry) rather than relying on your own memory of version numbers, since that can be outdated. Then tell me which upgrades are safe to apply now and which have dependency conflicts.
+> Go through `.scanx/trivy-image.json` and list every CRITICAL and HIGH CVE. For each one, find the fixed version — check the actual current release of the affected library (its releases page, changelog, or package registry) rather than relying on your own memory of version numbers, since that can be outdated. Then tell me which upgrades are safe to apply now and which have dependency conflicts.
 
 Nothing is bundled: `trivy.yaml` and `.trivyignore` are files you write in your own repository root, and Trivy picks them up on its own when they are there. With them in place, a re-run after upgrading only shows what is genuinely still open.
 

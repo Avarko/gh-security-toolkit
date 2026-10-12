@@ -95,10 +95,14 @@ version() {
 # The sec/ target, and any NAME=value make needs for it, from the subcommand.
 target=""
 set_target_args=""
-while [ $# -gt 0 ]; do
-	case $1 in
-		--no-progress) SCANX_NO_PROGRESS=1; shift ;;
-		*) break ;;
+# --no-progress is taken wherever it appears, before any other argument is
+# read: after `scan` or `db` it would otherwise be taken for a subcommand, and
+# after `img` for the image.
+for arg in "$@"; do
+	shift
+	case $arg in
+		--no-progress) SCANX_NO_PROGRESS=1 ;;
+		*) set -- "$@" "$arg" ;;
 	esac
 done
 [ $# -gt 0 ] || { usage >&2; exit 2; }
@@ -122,12 +126,14 @@ case $cmd in
 						config) target=sec/scan/trivy/config ;;
 						img | image)
 							[ $# -gt 0 ] || die "usage: scanx scan trivy img <image>"
+							case $1 in -*) die "usage: scanx scan trivy img <image> ('$1' is not an image)" ;; esac
 							target=sec/scan/trivy/img
 							set_target_args="IMAGE=$1"
 							shift
 							;;
 						artifact)
 							[ $# -gt 0 ] || die "usage: scanx scan trivy artifact <path>"
+							case $1 in -*) die "usage: scanx scan trivy artifact <path> ('$1' is not a path)" ;; esac
 							target=sec/scan/trivy/artifact
 							set_target_args="ARTIFACT=$1"
 							shift
@@ -169,14 +175,11 @@ case $cmd in
 	*) die "unknown command '$cmd' (see: scanx help)" ;;
 esac
 
-# Only NAME=value may follow, and --no-progress, which reads as naturally
-# after the command as before it; anything else is a typo that would
-# otherwise reach make as a target.
+# Only NAME=value may follow; anything else is a typo that would otherwise
+# reach make as a target.
 for arg in "$@"; do
-	shift
 	case $arg in
-		--no-progress) SCANX_NO_PROGRESS=1 ;;
-		*=*) set -- "$@" "$arg" ;;
+		*=*) ;;
 		*) die "unexpected argument '$arg' (only NAME=value may follow the command)" ;;
 	esac
 done
@@ -198,12 +201,15 @@ make_cmd=${SCANX_MAKE:-make}
 command -v "$make_cmd" >/dev/null 2>&1 || die "'$make_cmd' not found (set SCANX_MAKE to GNU make)"
 
 # -s: make must not echo recipe lines onto stdout, where results go.
+# -k: `scanx scan` runs fs, config and Semgrep as separate targets, and a scan
+# that fails on its findings must not stop the ones after it from running.
+# Make reports any failure as exit status 2.
 # PWD is passed explicitly because the Makefile mounts $(PWD) and an inherited
 # PWD can be stale when scanx is started from a script that changed directory
 # without updating it.
 if [ -n "$set_target_args" ]; then
-	exec "$make_cmd" --no-print-directory -s -f "$MAKEFILE" \
+	exec "$make_cmd" --no-print-directory -s -k -f "$MAKEFILE" \
 		SCANX_HOME="$SCANX_HOME" PWD="$(pwd)" "$set_target_args" "$@" "$target"
 fi
-exec "$make_cmd" --no-print-directory -s -f "$MAKEFILE" \
+exec "$make_cmd" --no-print-directory -s -k -f "$MAKEFILE" \
 	SCANX_HOME="$SCANX_HOME" PWD="$(pwd)" "$@" "$target"

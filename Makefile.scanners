@@ -126,9 +126,8 @@ __GRADLE_MOUNT   := $(if $(filter yes,$(__GRADLE_EXISTS)),-v $$HOME/.gradle/cach
 # provides without touching the workspace.
 __GHST_USER_OPTS := --user $(__GHST_HOST_UID):$(__GHST_HOST_GID) -e HOME=$(__GHST_SCAN_HOME)
 
-# Images built before VEX Hub was removed start an HTTP server for it by
-# default, and the server announces itself on stdout ahead of the scan result.
-# Nothing read it. Newer images have no server and ignore this; it stays for
+# Images built before VEX Hub was removed start an HTTP server for it in every
+# container unless told not to, and say so on stderr. Nothing read it. Newer images have no server and ignore this; it stays for
 # as long as an older image can still be in a developer's cache.
 __GHST_SCAN_ENV := -e GHST_VEX_SERVE=0
 
@@ -192,7 +191,7 @@ __GHST_DB_RUN = $(__GHST_DOCKER_CMD) run --rm \
 # stderr that way, which is fine because status draws nothing. GHST_PROGRESS=0 (scanx
 # --no-progress) turns it off on a terminal too. Helpers older than
 # helper-v1.2.3 ignore the variable.
-__GHST_PROGRESS = $$(if [ "$(GHST_PROGRESS)" != 0 ] && [ -t 2 ]; then echo 1; else echo 0; fi)
+__GHST_PROGRESS = $$(case "$(GHST_PROGRESS)" in 0|false|no|off) echo 0 ;; *) if [ -t 2 ]; then echo 1; else echo 0; fi ;; esac)
 
 # The cache directory must exist before Docker mounts it, or Docker creates it
 # owned by root.
@@ -213,9 +212,9 @@ sec/db/status: __ghst-image-ensure # Show Trivy database cache location, age and
 
 .PHONY: sec/db/clean
 sec/db/clean: # Remove the cached Trivy databases
-	@echo "🧹 Removing Trivy database cache..."
+	@echo "🧹 Removing Trivy database cache..." >&2
 	@rm -rf $(__GHST_DB_CACHE)
-	@echo "✅ Cache removed. The next scan downloads a fresh database."
+	@echo "✅ Cache removed. The next scan downloads a fresh database." >&2
 
 # Scan targets depend on this: it updates a stale cache and is a no-op when the
 # cache is current. GHST_OFFLINE=1 turns it into a freshness warning instead.
@@ -809,30 +808,37 @@ __GHST_TRIVY_CONFIG_NOTE = $(if $(__GHST_TRIVY_CONFIG),echo "ℹ️  Using $(__G
 #
 # The report goes through stdout to the host rather than being written by the
 # container, so the file belongs to the developer on Linux too and a read-only
-# workspace mount stays read-only. The scan's exit code is the target's, so an
-# exit-code from trivy.yaml still fails a pipeline.
+# workspace mount stays read-only. A failing scan fails its target, so an
+# exit-code from trivy.yaml still fails a pipeline; make reports any failure
+# as 2, whatever code Trivy exited with.
 __GHST_REPORT_DIR ?= .scanx
 
 # Where reports actually go: $(__GHST_REPORT_DIR) when it can be written,
-# otherwise a fresh temporary directory, and a note saying so. The report is
-# a by-product, and a scan that cannot leave one must still run: a read-only
-# checkout or someone else's directory used to scan fine, and with the report
-# made mandatory it failed before scanning. Worse, Semgrep's report mount made
-# Docker create a missing directory as root, which broke every later scan
-# there. Decided once, on first use, so a target that writes no report never
-# creates one; the directory itself is made by __GHST_REPORT_PREPARE.
+# otherwise a directory of this project's own under the toolkit's cache, and
+# a note saying so. The report is a by-product, and a scan that cannot leave
+# one must still run: a read-only checkout or someone else's directory used
+# to scan fine, and with the report made mandatory it failed before
+# scanning. Worse, Semgrep's report mount made Docker create a missing
+# directory as root, which broke every later scan there.
+#
+# The fallback is per project and stable, not a temporary directory: make
+# expands a whole recipe before running it, so a target that ends up writing
+# nothing -- a usage error, an offline Semgrep -- would still have made one,
+# and a new one every run. It is under $HOME because that is what every
+# Docker runtime shares with its VM; /var/folders, where macOS puts TMPDIR,
+# is Docker Desktop's default but not Colima's. Decided once per make run.
 __GHST_REPORT_OUT = $(eval __GHST_REPORT_OUT := $(shell \
 	d='$(__GHST_REPORT_DIR)'; \
 	if { [ -d "$$d" ] && [ -w "$$d" ]; } || { [ ! -e "$$d" ] && [ -w . ]; }; then \
 		echo "$$d"; \
 	else \
-		t=$$(mktemp -d "$${TMPDIR:-/tmp}/scanx-reports.XXXXXX") && \
+		t="$(HOME)/.cache/gh-security-toolkit/reports/$$(printf %s "$(PWD)" | cksum | cut -d' ' -f1)"; \
 		echo "ℹ️  $$d is not writable here; reports go to $$t" >&2 && echo "$$t"; \
 	fi))$(__GHST_REPORT_OUT)
 __GHST_TRIVY_CONFIG_SETS_SCANNERS := $(if $(__GHST_TRIVY_CONFIG),$(shell awk '\
-	/^[^[:space:]#]/ { top = $$0; sub(/[[:space:]]*:.*/, "", top) }; \
-	top == "scan" && /^[[:space:]]+scanners[[:space:]]*:/ { found = 1 }; \
-	/^scan[[:space:]]*:.*scanners[[:space:]]*:/ { found = 1 }; \
+	/^[^[:space:]#]/ { top = $$0; sub(/[[:space:]]*:.*/, "", top); gsub(/"/, "", top) }; \
+	top == "scan" && /^[[:space:]]+"?scanners"?[[:space:]]*:/ { found = 1 }; \
+	/^"?scan"?[[:space:]]*:.*scanners"?[[:space:]]*:/ { found = 1 }; \
 	END { if (found) print "yes" }' $(__GHST_TRIVY_CONFIG)),)
 
 __GHST_REPORT_SCAN_OPTS := --include-non-failures
@@ -845,17 +851,30 @@ __GHST_REPORT = $(__GHST_REPORT_OUT)/trivy-$(__GHST_REPORT_NAME).json
 __GHST_REPORT_PREPARE = mkdir -p $(__GHST_REPORT_OUT) && \
 	{ [ -e $(__GHST_REPORT_OUT)/.gitignore ] || echo '*' > $(__GHST_REPORT_OUT)/.gitignore; }
 
-# Runs after the scan, in the same shell line, with the scan's status in $?.
-# An empty report means the scan failed before writing one; its error is
-# already on stderr, so there is nothing to render.
-__GHST_REPORT_RENDER = rc=$$?; \
+# Each Trivy target also removes its previous report first. A report the scan
+# could not overwrite -- left read-only by an earlier sudo run -- was otherwise
+# rendered as this run's result while the scan itself never started.
+__GHST_TRIVY_REPORT_PREPARE = $(__GHST_REPORT_PREPARE) && rm -f $(__GHST_REPORT)
+
+# The scan line ends `> $(__GHST_REPORT) && rc=0 || rc=$$?;` and this follows
+# it in the same shell. Taking the status that way, rather than from $$? on
+# the next line, keeps the render running under a project's
+# `.SHELLFLAGS := -ec`, where a failing scan would otherwise end the shell
+# before the table was drawn. An empty report means the scan failed before
+# writing one; its error is already on stderr, so there is nothing to render.
+# A report convert cannot read is no JSON report, and is not announced as one.
+__GHST_REPORT_RENDER = \
 	if [ -s $(__GHST_REPORT) ]; then \
-		$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
-		-v $(abspath $(__GHST_REPORT_OUT)):/scanx-out:ro $(__GHST_IMAGE) \
-		trivy convert /scanx-out/$(notdir $(__GHST_REPORT)) $(__GHST_TRIVY_CONFIG_OPT) \
-		$(__GHST_REPORT_CONVERT_SCANNERS) \
-		--format $(__GHST_TRIVY_FORMAT) || rc=$$?; \
-		echo "📄 Full JSON report: $(__GHST_REPORT)" >&2; \
+		if $(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
+			-v $(abspath $(__GHST_REPORT_OUT)):/scanx-out:ro $(__GHST_IMAGE) \
+			trivy convert /scanx-out/$(notdir $(__GHST_REPORT)) $(__GHST_TRIVY_CONFIG_OPT) \
+			$(__GHST_REPORT_CONVERT_SCANNERS) \
+			--format $(__GHST_TRIVY_FORMAT); then \
+			echo "📄 Full JSON report: $(__GHST_REPORT)" >&2; \
+		else \
+			[ $$rc -ne 0 ] || rc=1; \
+			echo "⚠️  No readable report; Trivy's output is in $(__GHST_REPORT)" >&2; \
+		fi; \
 	else \
 		rm -f $(__GHST_REPORT); \
 	fi; \
@@ -880,10 +899,10 @@ sec/scan/trivy/img: __GHST_REPORT_SCANNERS := vuln,secret
 sec/scan/trivy/fs: __ghst-provenance # Scan filesystem (uses trivy.yaml or .trivy.yaml)
 	@echo "🔍 Scanning filesystem with Trivy (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
-	@$(__GHST_REPORT_PREPARE)
+	@$(__GHST_TRIVY_REPORT_PREPARE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	$(__GHST_IMAGE) trivy fs . $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
-	> $(__GHST_REPORT); $(__GHST_REPORT_RENDER)
+	> $(__GHST_REPORT) && rc=0 || rc=$$?; $(__GHST_REPORT_RENDER)
 
 # rootfs, not fs. The two differ in what they read, not just where: fs reads
 # lockfiles and manifests (pom.xml, package-lock.json) and skips jars, while
@@ -897,21 +916,27 @@ sec/scan/trivy/fs: __ghst-provenance # Scan filesystem (uses trivy.yaml or .triv
 sec/scan/trivy/artifact: __ghst-provenance # Scan built artifact - Gradle WAR/JAR/EAR (ARTIFACT=path/to/app.war)
 	@[ -n "$(ARTIFACT)" ] || (echo "❌ Usage: make sec/scan/trivy/artifact ARTIFACT=build/libs/app.war" >&2 && exit 1)
 	@[ -e "$(ARTIFACT)" ] || (echo "❌ Artifact not found: $(ARTIFACT)" >&2 && exit 1)
+	@# Only the current directory is mounted into the scanner, so a path that
+	@# leaves it passes the check above and is then not there for Trivy.
+	@case "$$(cd "$$(dirname -- "$(ARTIFACT)")" && pwd -P)/" in \
+		"$$(pwd -P)/"*) ;; \
+		*) echo "❌ $(ARTIFACT) is outside this directory; run the scan from a directory that contains it" >&2; exit 1 ;; \
+	esac
 	@echo "🔍 Scanning artifact $(ARTIFACT) with Trivy (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
-	@$(__GHST_REPORT_PREPARE)
+	@$(__GHST_TRIVY_REPORT_PREPARE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	$(__GHST_IMAGE) trivy rootfs $(ARTIFACT) $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
-	> $(__GHST_REPORT); $(__GHST_REPORT_RENDER)
+	> $(__GHST_REPORT) && rc=0 || rc=$$?; $(__GHST_REPORT_RENDER)
 
 .PHONY: sec/scan/trivy/config
 sec/scan/trivy/config: __ghst-provenance # Scan IaC configs for misconfigurations - Terraform, Dockerfile, K8s, etc. (uses trivy.yaml or .trivy.yaml)
 	@echo "🔍 Scanning IaC configs with Trivy (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
-	@$(__GHST_REPORT_PREPARE)
+	@$(__GHST_TRIVY_REPORT_PREPARE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 	$(__GHST_IMAGE) trivy config . $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
-	> $(__GHST_REPORT); $(__GHST_REPORT_RENDER)
+	> $(__GHST_REPORT) && rc=0 || rc=$$?; $(__GHST_REPORT_RENDER)
 
 .PHONY: sec/scan/trivy/img
 sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
@@ -922,14 +947,14 @@ sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 	@echo "   image. That is root-equivalent access to this host, and this is the" >&2
 	@echo "   only target that needs it. The scan itself still runs with" >&2
 	@echo "   --network=none, like every other scan." >&2
-	@$(__GHST_REPORT_PREPARE)
+	@$(__GHST_TRIVY_REPORT_PREPARE)
 	$(__GHST_DOCKER_CMD) run --rm --network=none $(__GHST_SCAN_ENV) \
 	$(if $(__DOCKER_SOCK_GID),--group-add $(__DOCKER_SOCK_GID),) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	-v /var/run/docker.sock:/var/run/docker.sock \
 	-v $(PWD):/workspace:ro $(__GHST_DB_MOUNT) -w /workspace \
 	$(__GHST_IMAGE) trivy image $(IMAGE) $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) \
-	> $(__GHST_REPORT); $(__GHST_REPORT_RENDER)
+	> $(__GHST_REPORT) && rc=0 || rc=$$?; $(__GHST_REPORT_RENDER)
 
 # ============================================================================
 # Semgrep - uses .semgrep.yaml or .semgrep.yml if present
@@ -1032,12 +1057,12 @@ sec/scan: sec/scan/trivy/fs sec/scan/trivy/config sec/scan/semgrep ## Full scan.
 
 .PHONY: sec/scan/clean
 sec/scan/clean: # Remove gh-security-toolkit image
-	@echo "🧹 Cleaning gh-security-toolkit Docker image..."
+	@echo "🧹 Cleaning gh-security-toolkit Docker image..." >&2
 	@$(__GHST_DOCKER_CMD) ps -a -q --filter "ancestor=$(__GHST_IMAGE)" | xargs -r $(__GHST_DOCKER_CMD) stop 2>/dev/null || true
 	@$(__GHST_DOCKER_CMD) ps -a -q --filter "ancestor=$(__GHST_IMAGE)" | xargs -r $(__GHST_DOCKER_CMD) rm 2>/dev/null || true
-	@$(__GHST_DOCKER_CMD) rmi -f $(__GHST_IMAGE) 2>/dev/null || echo "ℹ️  Image $(__GHST_IMAGE) not found (already clean)"
+	@$(__GHST_DOCKER_CMD) rmi -f $(__GHST_IMAGE) 2>/dev/null || echo "ℹ️  Image $(__GHST_IMAGE) not found (already clean)" >&2
 	@rm -f "$(__GHST_IMAGE_STAMP)"
-	@echo "✅ Docker cleanup complete. Next run will pull fresh image."
+	@echo "✅ Docker cleanup complete. Next run will pull fresh image." >&2
 
 # ============================================================================
 # Help
