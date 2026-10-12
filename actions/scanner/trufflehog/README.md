@@ -30,7 +30,7 @@ jobs:
   secrets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # Full history for base comparison
       
@@ -53,7 +53,7 @@ jobs:
   secrets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       
@@ -69,7 +69,7 @@ jobs:
 Scan entire Git history:
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: actions/checkout@v7
   with:
     fetch-depth: 0  # Required for full history
 
@@ -82,7 +82,7 @@ Scan entire Git history:
 Scan current files without Git history:
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: actions/checkout@v7
   # No fetch-depth needed
 
 - uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@main
@@ -200,7 +200,7 @@ Now TruffleHog runs on every commit!
 ### Scan Last N Commits
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: actions/checkout@v7
   with:
     fetch-depth: 10
 
@@ -250,7 +250,7 @@ Now TruffleHog runs on every commit!
 Try full history scan:
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: actions/checkout@v7
   with:
     fetch-depth: 0  # Important!
 

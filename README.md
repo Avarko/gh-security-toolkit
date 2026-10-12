@@ -409,7 +409,7 @@ jobs:
       actions: read         # Required for artifact management
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build application
         run: |
