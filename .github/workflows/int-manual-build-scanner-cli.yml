@@ -543,8 +543,10 @@ jobs:
             COSIGN_VER=${{ needs.prepare.outputs.ver_cosign }}
             CRANE_VER=${{ needs.prepare.outputs.ver_crane }}
             HELPER_VER=${{ needs.prepare.outputs.helper_version }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ matrix.arch }}
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ matrix.arch }},mode=max
+          # No layer cache. APK_REFRESH changes the second layer on every
+          # run, and everything after it depends on it, so a cache could
+          # only ever supply the base image: the first build with one reused
+          # nothing and spent 8 s per architecture exporting it.
 
       # A matrix job's outputs overwrite each other, so each digest travels
       # as a file of its own.

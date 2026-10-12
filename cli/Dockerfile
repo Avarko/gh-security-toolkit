@@ -14,10 +14,11 @@ ARG TARGETOS
 # No python3: it was here only to serve VEX Hub (see below), and it was the
 # largest source of known vulnerabilities in the base packages.
 #
-# APK_REFRESH changes on every CI run. Without it the registry build cache
-# replays this layer for as long as the wolfi-base digest stands still, and
-# curl, git and jq are not in wolfi-base: their fixes would never reach a
-# rebuilt image. What follows is cheap COPYs.
+# APK_REFRESH changes on every CI run. Without it any build cache, local or
+# in a registry, replays this layer for as long as the wolfi-base digest
+# stands still, and curl, git and jq are not in wolfi-base: their fixes would
+# never reach a rebuilt image. What follows is cheap COPYs, which is why CI
+# keeps no layer cache at all.
 ARG APK_REFRESH
 RUN echo "packages as of ${APK_REFRESH:-local build}" && apk update && apk add --no-cache \
     bash ca-certificates curl jq git \

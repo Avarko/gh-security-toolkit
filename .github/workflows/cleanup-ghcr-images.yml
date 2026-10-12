@@ -14,8 +14,7 @@ name: "[Internal] Clean up old scanner images in GHCR"
 #
 # What stays, whatever its age:
 # - every image with a tag other than sha-<commit>: main and latest,
-#   manual-latest, release tags, old branch tags, and buildcache-<arch>,
-#   which the build reads its layer cache from;
+#   manual-latest, release tags and old branch tags;
 # - platform manifests and attestations of anything kept. The action walks
 #   multi-arch indexes and referrers, which is why it is used instead of
 #   deleting "untagged" versions through the API: in GHCR's list the platform
