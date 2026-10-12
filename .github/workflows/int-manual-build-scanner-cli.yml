@@ -78,7 +78,9 @@ jobs:
       - name: Setup go
         uses: actions/setup-go@v7
         with:
-          go-version: '1.25.x'
+          # A supported release: tuf-client is what fetches the key every
+          # cosign binary here is verified with.
+          go-version: '1.27.x'
           # Only tuf-client is built, and there is no go.mod here to key a cache.
           cache: false
 
@@ -663,13 +665,18 @@ jobs:
           format: spdx-json
           output-file: sbom.spdx.json
 
+      # attest-sbom is deprecated; attest takes the SBOM itself.
       - name: Generate SBOM attestation
-        uses: actions/attest-sbom@v4
+        uses: actions/attest@v4
         with:
           subject-name: ${{ needs.merge.outputs.image_ref }}
           subject-digest: ${{ needs.merge.outputs.image_digest }}
           sbom-path: sbom.spdx.json
           push-to-registry: true
+          # The storage record only feeds the organization's linked-artifacts
+          # view, and needs a permission (artifact-metadata) this workflow
+          # does not ask for; trying anyway just logs a warning.
+          create-storage-record: false
 
   provenance_oci:
     name: Generate SLSA v3 OCI provenance
