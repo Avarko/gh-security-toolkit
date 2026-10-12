@@ -8,8 +8,8 @@
 # repository needs no include, no fetch rule and no copy of the toolkit.
 #
 # stdout carries scan results only. Everything this wrapper says goes to
-# stderr, so `SCANX_FORMAT=json scanx scan trivy img app:local > out.json`
-# writes a file jq can read.
+# stderr. Trivy scans also leave their full JSON report in .scanx/ in the
+# scanned directory, so a script never has to parse the table.
 
 set -eu
 
@@ -36,7 +36,8 @@ Toolkit:
   scanx help                         This text
 
 Environment:
-  SCANX_FORMAT=json|table            Trivy output format (default: table)
+  SCANX_FORMAT=table|json            Trivy output format on stdout (default: table);
+                                     the full JSON report is always in .scanx/
   SCANX_OFFLINE=1                    No network: skip update checks, image pulls and Semgrep
   SCANX_MAKE=gmake                   GNU make to use (macOS ships make 3.81)
 

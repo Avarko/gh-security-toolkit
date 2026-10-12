@@ -769,12 +769,75 @@ __GHST_TRIVY_CONFIG_NOTE = $(if $(__GHST_TRIVY_CONFIG),echo "ℹ️  Using $(__G
 # below is make's own; scanx runs make -s, and a legacy include silences it
 # the same way with `make -s`.
 
+# Every Trivy scan runs once, writing JSON to $(__GHST_REPORT_DIR), and the
+# stdout report is rendered from that file with `trivy convert`. A reader gets
+# the table they always got and a script gets the whole report, without a
+# second scan. Convert reads only the file: no database, no network, about a
+# tenth of a second.
+#
+# Rendered this way the table is byte for byte what a direct scan prints, with
+# one condition. The summary table at the top lists the scanners that ran,
+# marking the others "-" (not scanned), and a JSON report does not record
+# them, so convert has to be told. Without --scanners it drops that table;
+# with the wrong ones it would show "0" (clean) for a scanner that never ran.
+# Each target therefore names its subcommand's default scanners, and when the
+# project's Trivy config chooses scanners itself, convert reads them from that
+# same config instead. Filters (severity, .trivyignore, ignore-unfixed) need no
+# such care: they were applied before the JSON was written. The config scan
+# adds --include-non-failures, because its table counts passed checks
+# ("Tests: 27 (SUCCESSES: 25, ...)") and the JSON leaves them out otherwise.
+#
+# The report goes through stdout to the host rather than being written by the
+# container, so the file belongs to the developer on Linux too and a read-only
+# workspace mount stays read-only. The scan's exit code is the target's, so an
+# exit-code from trivy.yaml still fails a pipeline.
+__GHST_REPORT_DIR ?= .scanx
+__GHST_TRIVY_CONFIG_SETS_SCANNERS := $(if $(__GHST_TRIVY_CONFIG),$(shell awk '\
+	/^[^[:space:]#]/ { top = $$0; sub(/[[:space:]]*:.*/, "", top) }; \
+	top == "scan" && /^[[:space:]]+scanners[[:space:]]*:/ { found = 1 }; \
+	/^scan[[:space:]]*:.*scanners[[:space:]]*:/ { found = 1 }; \
+	END { if (found) print "yes" }' $(__GHST_TRIVY_CONFIG)),)
+
+# Target-specific: the report's name and the scanners its subcommand runs by
+# default.
+__GHST_REPORT = $(__GHST_REPORT_DIR)/trivy-$(__GHST_REPORT_NAME).json
+
+# The directory ignores itself, so a scan never shows up in `git status`.
+__GHST_REPORT_PREPARE = mkdir -p $(__GHST_REPORT_DIR) && \
+	{ [ -e $(__GHST_REPORT_DIR)/.gitignore ] || echo '*' > $(__GHST_REPORT_DIR)/.gitignore; }
+
+# Runs after the scan, in the same shell line, with the scan's status in $?.
+# An empty report means the scan failed before writing one; its error is
+# already on stderr, so there is nothing to render.
+__GHST_REPORT_RENDER = rc=$$?; \
+	if [ -s $(__GHST_REPORT) ]; then \
+		$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) $(__GHST_IMAGE) \
+		trivy convert $(__GHST_REPORT) $(__GHST_TRIVY_CONFIG_OPT) \
+		$(if $(__GHST_TRIVY_CONFIG_SETS_SCANNERS),,--scanners $(__GHST_REPORT_SCANNERS)) \
+		--format $(__GHST_TRIVY_FORMAT) || rc=$$?; \
+		echo "📄 Full JSON report: $(__GHST_REPORT)" >&2; \
+	else \
+		rm -f $(__GHST_REPORT); \
+	fi; \
+	exit $$rc
+
+sec/scan/trivy/fs: __GHST_REPORT_NAME := fs
+sec/scan/trivy/fs: __GHST_REPORT_SCANNERS := vuln,secret
+sec/scan/trivy/artifact: __GHST_REPORT_NAME := artifact
+sec/scan/trivy/artifact: __GHST_REPORT_SCANNERS := vuln,secret
+sec/scan/trivy/config: __GHST_REPORT_NAME := config
+sec/scan/trivy/config: __GHST_REPORT_SCANNERS := misconfig
+sec/scan/trivy/img: __GHST_REPORT_NAME := image
+sec/scan/trivy/img: __GHST_REPORT_SCANNERS := vuln,secret
+
 .PHONY: sec/scan/trivy/fs
 sec/scan/trivy/fs: __ghst-provenance # Scan filesystem (uses trivy.yaml or .trivy.yaml)
 	@echo "🔍 Scanning filesystem with Trivy (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
+	@$(__GHST_REPORT_PREPARE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
-	$(__GHST_IMAGE) trivy fs . $(__GHST_TRIVY_CONFIG_OPT) --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
+	$(__GHST_IMAGE) trivy fs . $(__GHST_TRIVY_CONFIG_OPT) --format json --timeout $(__GHST_TRIVY_TIMEOUT) \
+	> $(__GHST_REPORT); $(__GHST_REPORT_RENDER)
 
 .PHONY: sec/scan/trivy/artifact
 sec/scan/trivy/artifact: __ghst-provenance # Scan built artifact - Gradle WAR/JAR/EAR (ARTIFACT=path/to/app.war)
@@ -782,15 +845,19 @@ sec/scan/trivy/artifact: __ghst-provenance # Scan built artifact - Gradle WAR/JA
 	@[ -e "$(ARTIFACT)" ] || (echo "❌ Artifact not found: $(ARTIFACT)" >&2 && exit 1)
 	@echo "🔍 Scanning artifact $(ARTIFACT) with Trivy (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
+	@$(__GHST_REPORT_PREPARE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
-	$(__GHST_IMAGE) trivy fs $(ARTIFACT) $(__GHST_TRIVY_CONFIG_OPT) --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
+	$(__GHST_IMAGE) trivy fs $(ARTIFACT) $(__GHST_TRIVY_CONFIG_OPT) --format json --timeout $(__GHST_TRIVY_TIMEOUT) \
+	> $(__GHST_REPORT); $(__GHST_REPORT_RENDER)
 
 .PHONY: sec/scan/trivy/config
 sec/scan/trivy/config: __ghst-provenance # Scan IaC configs for misconfigurations - Terraform, Dockerfile, K8s, etc. (uses trivy.yaml or .trivy.yaml)
 	@echo "🔍 Scanning IaC configs with Trivy (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
+	@$(__GHST_REPORT_PREPARE)
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
-	$(__GHST_IMAGE) trivy config . $(__GHST_TRIVY_CONFIG_OPT) --format $(__GHST_TRIVY_FORMAT) --timeout $(__GHST_TRIVY_TIMEOUT)
+	$(__GHST_IMAGE) trivy config . $(__GHST_TRIVY_CONFIG_OPT) --format json --include-non-failures --timeout $(__GHST_TRIVY_TIMEOUT) \
+	> $(__GHST_REPORT); $(__GHST_REPORT_RENDER)
 
 .PHONY: sec/scan/trivy/img
 sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
@@ -801,12 +868,14 @@ sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 	@echo "   image. That is root-equivalent access to this host, and this is the" >&2
 	@echo "   only target that needs it. The scan itself still runs with" >&2
 	@echo "   --network=none, like every other scan." >&2
+	@$(__GHST_REPORT_PREPARE)
 	$(__GHST_DOCKER_CMD) run --rm --network=none $(__GHST_SCAN_ENV) \
 	$(if $(__DOCKER_SOCK_GID),--group-add $(__DOCKER_SOCK_GID),) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	-v /var/run/docker.sock:/var/run/docker.sock \
 	-v $(PWD):/workspace:ro $(__GHST_DB_MOUNT) -w /workspace \
-	$(__GHST_IMAGE) trivy image $(IMAGE) $(__GHST_TRIVY_CONFIG_OPT) --format $(__GHST_TRIVY_FORMAT)
+	$(__GHST_IMAGE) trivy image $(IMAGE) $(__GHST_TRIVY_CONFIG_OPT) --format json \
+	> $(__GHST_REPORT); $(__GHST_REPORT_RENDER)
 
 # ============================================================================
 # Semgrep - uses .semgrep.yaml or .semgrep.yml if present

@@ -81,17 +81,24 @@ Trailing `NAME=value` arguments are passed to make, e.g.
 
 | Variable | Effect |
 |---|---|
-| `SCANX_FORMAT=json\|table` | Trivy output format (default `table`) |
+| `SCANX_FORMAT=table\|json` | Trivy output format on stdout (default `table`) |
 | `SCANX_OFFLINE=1` | No network: no update checks or image pulls, Semgrep skipped (same as `GHST_OFFLINE=1`) |
 | `SCANX_MAKE` | GNU make binary to use (default `make`) |
 | `SCANX_BIN_DIR` | Link directory for `install.sh` / `uninstall.sh` |
 
 Scan results are the only thing on stdout; progress, provenance and warnings go
-to stderr. A report can be redirected straight into a file:
+to stderr.
+
+Each Trivy scan also leaves its full JSON report in `.scanx/` in the scanned
+directory (`trivy-fs.json`, `trivy-config.json`, `trivy-artifact.json`,
+`trivy-image.json`), overwritten by the next scan of the same kind. Trivy runs
+once: the table on stdout is rendered from that file, so the two always agree.
+The directory carries its own `.gitignore`, so it never shows up in
+`git status`.
 
 ```bash
-SCANX_FORMAT=json scanx scan trivy img my-app:local > trivy-image.json
-jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-image.json
+scanx scan trivy img my-app:local
+jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' .scanx/trivy-image.json
 ```
 
 ### Project configuration
