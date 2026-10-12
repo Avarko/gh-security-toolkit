@@ -678,70 +678,49 @@ jobs:
           # does not ask for; trying anyway just logs a warning.
           create-storage-record: false
 
-  provenance_oci:
-    name: Generate SLSA v3 OCI provenance
-    if: github.repository == 'Avarko/gh-security-toolkit'
-    needs: [merge]
-    # Writes an OCI attestation alongside the image in GHCR
-    permissions:
-      contents: read
-      actions: read
-      id-token: write    # OIDC for signing
-      packages: write    # push attestation to GHCR
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
-    with:
-      image: ${{ needs.merge.outputs.image_ref }}
-      digest: ${{ needs.merge.outputs.image_digest }}
-      registry-username: ${{ github.actor }}
-    secrets:
-      registry-password: ${{ secrets.GITHUB_TOKEN }}
-
-  provenance_github_store:
-    name: GitHub Attestations store (duplicate provenance)
+  # Build provenance (SLSA v1), signed by this workflow, kept in GitHub's
+  # attestation store and pushed next to the image in GHCR.
+  #
+  # This used to be done twice. slsa-github-generator wrote a second, SLSA
+  # v0.2 provenance as a cosign .att, which nothing outside this workflow
+  # read, and it was the build's largest set of moving parts: a builder
+  # binary fetched at run time, a bootstrap cosign v2.2.3 checked without its
+  # transparency log, Node 20 actions. What it added was the "Build L3"
+  # label, for signing in a reusable workflow the caller cannot reach. Here
+  # that buys little: the build jobs hold no id-token, so they cannot sign
+  # anything, and whoever can change this file could change the call too.
+  provenance:
+    name: Generate build provenance
     if: github.repository == 'Avarko/gh-security-toolkit'
     needs: [merge]
     runs-on: ubuntu-latest
-    # Persists provenance in GitHub's Attestations store, useful for GH UI/API & org policies
     permissions:
       contents: read
-      id-token: write
-      attestations: write
+      packages: write      # push the attestation to GHCR
+      id-token: write      # OIDC for signing
+      attestations: write  # GitHub Attestations store
     steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # With no SBOM or predicate given, attest generates SLSA provenance.
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest@v4
         with:
           subject-name: ${{ needs.merge.outputs.image_ref }}
           subject-digest: ${{ needs.merge.outputs.image_digest }}
-
-  verify:
-    name: Verify OCI provenance
-    if: github.repository == 'Avarko/gh-security-toolkit'
-    needs: [merge, provenance_oci]
-    runs-on: ubuntu-latest
-    permissions: read-all
-    steps:
-      - name: Install SLSA verifier
-        uses: slsa-framework/slsa-verifier/actions/installer@v2.7.1
-
-      - name: Verify OCI provenance
-        env:
-          NEEDS_BUILD_IMAGE_DIGEST: ${{ needs.merge.outputs.image_digest }}
-          NEEDS_BUILD_IMAGE_REF: ${{ needs.merge.outputs.image_ref }}
-        run: |
-          set -euo pipefail
-          IMG="${NEEDS_BUILD_IMAGE_REF}@${NEEDS_BUILD_IMAGE_DIGEST}"
-          echo "Verifying SLSA provenance for $IMG"
-
-          # SLSA verifier requires either a git tag or uses commit SHA
-          # Since manual-latest is not a git tag, verify against commit SHA
-          slsa-verifier verify-image "$IMG" \
-            --source-uri "github.com/${GITHUB_REPOSITORY}" \
-            --print-provenance
+          push-to-registry: true
+          # See the SBOM attestation.
+          create-storage-record: false
 
   verify_github_store:
-    name: Verify GitHub Attestations presence
+    name: Verify attestations
     if: github.repository == 'Avarko/gh-security-toolkit'
-    needs: [merge, provenance_github_store, sbom]
+    needs: [merge, provenance, sbom]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -770,11 +749,17 @@ jobs:
           # Both attestations, each signed by this workflow in this
           # repository. Without --predicate-type only SLSA provenance is
           # checked, and --owner alone accepts any workflow in the org.
+          # Both copies too: the one in GitHub's store, and the one in GHCR
+          # next to the image, which is what a consumer without access to
+          # the store finds.
           signer="${GITHUB_REPOSITORY}/.github/workflows/int-manual-build-scanner-cli.yml"
           for predicate in https://slsa.dev/provenance/v1 https://spdx.dev/Document/v2.3; do
-            gh attestation verify "$SUBJECT" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --signer-workflow "$signer" \
-              --predicate-type "$predicate" > /dev/null
-            echo "verified: $predicate"
+            for from in "" --bundle-from-oci; do
+              gh attestation verify "$SUBJECT" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --signer-workflow "$signer" \
+                --predicate-type "$predicate" \
+                ${from:+"$from"} > /dev/null
+              echo "verified: $predicate ${from:-(GitHub store)}"
+            done
           done
