@@ -936,6 +936,20 @@ SEMGREP_DOCKER_OPTS := --rm $(__GHST_USER_OPTS) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	-v $(PWD):/src:ro -w /src
 
+# The full report goes next to Trivy's in $(__GHST_REPORT_DIR), written by
+# Semgrep itself in the same run: --json-output adds a JSON file without
+# changing the text report on stdout. Unlike the Trivy targets this needs a
+# writable mount, because Semgrep's stdout is the text report; it is only the
+# report directory, and the workspace stays read-only. The container runs as
+# the invoking user, so the file is the developer's.
+#
+# --exclude keeps Semgrep from scanning the reports themselves. Inside a git
+# repository the directory's own .gitignore already does that, but outside one
+# Semgrep would read every report the last scan left there.
+__GHST_SEMGREP_REPORT := $(__GHST_REPORT_DIR)/semgrep.json
+SEMGREP_REPORT_OPTS = -v $(PWD)/$(__GHST_REPORT_DIR):/scanx-out
+SEMGREP_REPORT_ARGS = --json-output=/scanx-out/semgrep.json --exclude=$(__GHST_REPORT_DIR)
+
 .PHONY: sec/scan/semgrep
 sec/scan/semgrep: __ghst-floor-makefile # Scan code with Semgrep (uses .semgrep.yaml config)
 	@if [ "$(GHST_OFFLINE)" = "1" ]; then \
@@ -944,19 +958,23 @@ sec/scan/semgrep: __ghst-floor-makefile # Scan code with Semgrep (uses .semgrep.
 		exit 0; \
 	fi; \
 	echo "🔍 Scanning code with Semgrep $(SEMGREP_VERSION)..." >&2; \
+	$(__GHST_REPORT_PREPARE) && rm -f $(__GHST_SEMGREP_REPORT); \
 	config=""; \
 	for candidate in .semgrep.yaml .semgrep.yml; do \
 		if [ -f "$$candidate" ]; then config="$$candidate"; break; fi; \
 	done; \
 	if [ -n "$$config" ]; then \
 		echo "ℹ️  Using $$config" >&2; \
-		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) $(SEMGREP_IMAGE) \
-			semgrep scan --config="$$config" --metrics=off .; \
+		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) $(SEMGREP_REPORT_OPTS) $(SEMGREP_IMAGE) \
+			semgrep scan --config="$$config" --metrics=off $(SEMGREP_REPORT_ARGS) .; \
 	else \
 		echo "ℹ️  Using pre-defined rulesets" >&2; \
-		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) $(SEMGREP_IMAGE) \
-			semgrep scan $(addprefix --config ,$(SEMGREP_CONFIGS)) --metrics=off .; \
-	fi
+		$(__GHST_DOCKER_CMD) run $(SEMGREP_DOCKER_OPTS) $(SEMGREP_REPORT_OPTS) $(SEMGREP_IMAGE) \
+			semgrep scan $(addprefix --config ,$(SEMGREP_CONFIGS)) --metrics=off $(SEMGREP_REPORT_ARGS) .; \
+	fi; \
+	rc=$$?; \
+	if [ -s $(__GHST_SEMGREP_REPORT) ]; then echo "📄 Full JSON report: $(__GHST_SEMGREP_REPORT)" >&2; fi; \
+	exit $$rc
 
 # ============================================================================
 # Combined Scans
