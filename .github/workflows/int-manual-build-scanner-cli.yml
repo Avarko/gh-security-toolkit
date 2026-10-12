@@ -64,10 +64,17 @@ jobs:
 
       # ---------- Resolve, verify, and download tool binaries ----------
 
+      # The verifier crane's provenance is checked with, so pinned like what
+      # it checks: it was releases/latest with no hash and no -f, which let
+      # whatever that URL served -- or an error page -- decide whether crane
+      # was trusted. v2.7.1 is the same release the verify job installs.
       - name: Install SLSA verifier
         run: |
-          curl -sL https://github.com/slsa-framework/slsa-verifier/releases/latest/download/slsa-verifier-linux-amd64 \
-            -o /usr/local/bin/slsa-verifier && chmod +x /usr/local/bin/slsa-verifier
+          set -euo pipefail
+          curl -fsSL https://github.com/slsa-framework/slsa-verifier/releases/download/v2.7.1/slsa-verifier-linux-amd64 \
+            -o slsa-verifier
+          echo "946dbec729094195e88ef78e1734324a27869f03e2c6bd2f61cbc06bd5350339  slsa-verifier" | sha256sum -c -
+          install -m 0755 slsa-verifier /usr/local/bin/slsa-verifier
 
       - name: Prepare binaries directory
         env:
