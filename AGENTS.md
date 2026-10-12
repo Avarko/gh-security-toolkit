@@ -31,6 +31,7 @@ was newest on build day without anyone looking.
 | TruffleHog | `int-manual-build-scanner-cli.yml` `ver_trufflehog` | version + sha256 per arch, signed checksums |
 | Semgrep | `Makefile.scanners` `SEMGREP_VERSION` + digest; `actions/scanner/semgrep` | version + image digest |
 | slsa-verifier (build only) | `int-manual-build-scanner-cli.yml`, "Install SLSA verifier" | version + sha256 |
+| BuildKit (build only) | `int-manual-build-scanner-cli.yml`, "Set up Buildx" | image digest |
 | Sigstore TUF bootstrap (build only) | `int-manual-build-scanner-cli.yml`, cosign step | tuf-client version (go.sum DB), root.json by commit + sha256 |
 | trivy-db-helper | newest `helper-v*` in ghcr.io/avarko/trivy-incremental-dbs | our own release; checksums in the artifact |
 | Base image | `cli/Dockerfile` `wolfi-base:latest` | not pinned; packages are current at build time |

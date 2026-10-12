@@ -14,62 +14,31 @@ env:
   CONTEXT: ./cli
 
 jobs:
-  build:
-    name: Build & push image
+  # Three jobs where there was one, so that no emulator takes part in
+  # building the image. The single job built both architectures on an amd64
+  # runner, which needed QEMU to run every arm64 RUN step: an image pulled at
+  # build time, running privileged, executing the build after every checksum
+  # and signature check here had passed. Now each architecture builds on a
+  # native runner (ubuntu-24.04-arm is free for public repositories), the
+  # binaries are verified once and handed to both, and the two images are
+  # joined into one multi-arch tag at the end.
+  prepare:
+    name: Verify tool binaries
     if: github.repository == 'Avarko/gh-security-toolkit'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write       # push to GHCR
     outputs:
-      image_ref: ${{ steps.expose.outputs.image_ref }}
-      image_digest: ${{ steps.build.outputs.digest }}
-      tags: ${{ steps.meta.outputs.tags }}
-      labels: ${{ steps.meta.outputs.labels }}
+      ver_trivy: ${{ steps.trivy.outputs.ver_trivy }}
+      ver_trufflehog: ${{ steps.trufflehog.outputs.ver_trufflehog }}
+      ver_cosign: ${{ steps.cosign.outputs.ver_cosign }}
+      ver_crane: ${{ steps.crane.outputs.ver_crane }}
+      helper_version: ${{ steps.db-helper.outputs.helper_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Login to GHCR
-        uses: docker/login-action@v4
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # QEMU runs the arm64 image's RUN steps on this amd64 runner. That makes
-      # it part of what builds the image, after every check above: it
-      # executes each arm64 build step and could change what they produce. So
-      # its image is pinned by digest (binfmt/e29e7d7, qemu v10.2.3, the one
-      # :latest resolved to on 2026-10-12) rather than whatever :latest is
-      # today, and it registers arm64 alone instead of every architecture.
-      # It runs privileged because registering an emulator writes to the
-      # runner's kernel (binfmt_misc); the runner is a throwaway VM.
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-        with:
-          image: docker.io/tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
-          platforms: arm64
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Extract metadata (tags/labels)
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # latest only moves for builds from the default branch. A build from
-          # a feature branch would otherwise repoint the tag every other
-          # project pulls, which is not what testing a branch should do.
-          tags: |
-            type=raw,value=${{ github.event.inputs.docker-image-tag }}
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha
-
-      - name: Expose image ref for downstream jobs
-        id: expose
-        run: echo "image_ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" >> "$GITHUB_OUTPUT"
+          persist-credentials: false
 
       # ---------- Resolve, verify, and download tool binaries ----------
 
@@ -439,30 +408,188 @@ jobs:
             install -m 0755 trufflehog "${CONTEXT}/verified-binaries/linux-${arch}/trufflehog"
           done
 
-      # ---------- Build & push with verified binaries ----------
-      - name: Build & push (provenance disabled here)
+      # A tarball rather than the directory: artifacts drop file modes, and
+      # these are executables.
+      - name: Hand the verified binaries to the build jobs
+        env:
+          CONTEXT: ${{ env.CONTEXT }}
+        run: tar -C "${CONTEXT}" -czf verified-binaries.tgz verified-binaries
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: verified-binaries
+          path: verified-binaries.tgz
+          retention-days: 1
+          if-no-files-found: error
+
+  build:
+    name: Build ${{ matrix.arch }}
+    if: github.repository == 'Avarko/gh-security-toolkit'
+    needs: [prepare]
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write       # push to GHCR
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: verified-binaries
+
+      - name: Unpack the verified binaries
+        env:
+          CONTEXT: ${{ env.CONTEXT }}
+        run: tar -C "${CONTEXT}" -xzf verified-binaries.tgz && rm verified-binaries.tgz
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # BuildKit runs every build step, so its image is pinned by digest like
+      # anything else that does: buildx-stable-1 is a moving tag. This is the
+      # digest it resolved to on 2026-10-12 (BuildKit v0.33.1).
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: image=moby/buildkit@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
+
+      # The same tag list as the merge job, though no tag is pushed here:
+      # metadata-action derives org.opencontainers.image.version from it, and
+      # the label has to name the release the image is tagged as.
+      - name: Extract labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ github.event.inputs.docker-image-tag }}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+
+      # Pushed by digest, untagged: the tags go on the multi-arch index in
+      # the merge job, so no tag ever points at one architecture alone.
+      - name: Build & push by digest
         id: build
         uses: docker/build-push-action@v7
         with:
           context: ${{ env.CONTEXT }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: linux/${{ matrix.arch }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: false
-          platforms: linux/amd64,linux/arm64
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
-            TRIVY_VER=${{ steps.trivy.outputs.ver_trivy }}
-            TRUFFLEHOG_VER=${{ steps.trufflehog.outputs.ver_trufflehog }}
-            COSIGN_VER=${{ steps.cosign.outputs.ver_cosign }}
-            CRANE_VER=${{ steps.crane.outputs.ver_crane }}
-            HELPER_VER=${{ steps.db-helper.outputs.helper_version }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+            TRIVY_VER=${{ needs.prepare.outputs.ver_trivy }}
+            TRUFFLEHOG_VER=${{ needs.prepare.outputs.ver_trufflehog }}
+            COSIGN_VER=${{ needs.prepare.outputs.ver_cosign }}
+            CRANE_VER=${{ needs.prepare.outputs.ver_crane }}
+            HELPER_VER=${{ needs.prepare.outputs.helper_version }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ matrix.arch }},mode=max
+
+      # A matrix job's outputs overwrite each other, so each digest travels
+      # as a file of its own.
+      - name: Record digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p digests
+          echo "${DIGEST}" > "digests/${{ matrix.arch }}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digest-${{ matrix.arch }}
+          path: digests/${{ matrix.arch }}
+          retention-days: 1
+          if-no-files-found: error
+
+  merge:
+    name: Tag multi-arch image
+    if: github.repository == 'Avarko/gh-security-toolkit'
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write       # push to GHCR
+    outputs:
+      image_ref: ${{ steps.index.outputs.image_ref }}
+      image_digest: ${{ steps.index.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
+      labels: ${{ steps.meta.outputs.labels }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags/labels)
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # latest only moves for builds from the default branch. A build from
+          # a feature branch would otherwise repoint the tag every other
+          # project pulls, which is not what testing a branch should do.
+          tags: |
+            type=raw,value=${{ github.event.inputs.docker-image-tag }}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+
+      - name: Create and push the multi-arch index
+        id: index
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          if [ ! -s digests/amd64 ] || [ ! -s digests/arm64 ]; then
+            echo "::error::a platform digest is missing"
+            exit 1
+          fi
+
+          tag_args=()
+          while IFS= read -r tag; do
+            [ -n "$tag" ] && tag_args+=(-t "$tag")
+          done <<< "$TAGS"
+
+          docker buildx imagetools create "${tag_args[@]}" \
+            "${IMAGE}@$(cat digests/amd64)" \
+            "${IMAGE}@$(cat digests/arm64)"
+
+          first_tag=$(head -n1 <<< "$TAGS")
+          digest=$(docker buildx imagetools inspect "$first_tag" --format '{{json .Manifest}}' | jq -r .digest)
+          case "$digest" in sha256:*) ;; *) echo "::error::no index digest for $first_tag"; exit 1 ;; esac
+          docker buildx imagetools inspect "${IMAGE}@${digest}"
+
+          echo "image_ref=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
 
   sbom:
     name: Generate SBOM and attestation
     if: github.repository == 'Avarko/gh-security-toolkit'
-    needs: [build]
+    needs: [merge]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -480,22 +607,22 @@ jobs:
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
-          image: ${{ needs.build.outputs.image_ref }}@${{ needs.build.outputs.image_digest }}
+          image: ${{ needs.merge.outputs.image_ref }}@${{ needs.merge.outputs.image_digest }}
           format: spdx-json
           output-file: sbom.spdx.json
 
       - name: Generate SBOM attestation
         uses: actions/attest-sbom@v4
         with:
-          subject-name: ${{ needs.build.outputs.image_ref }}
-          subject-digest: ${{ needs.build.outputs.image_digest }}
+          subject-name: ${{ needs.merge.outputs.image_ref }}
+          subject-digest: ${{ needs.merge.outputs.image_digest }}
           sbom-path: sbom.spdx.json
           push-to-registry: true
 
   provenance_oci:
     name: Generate SLSA v3 OCI provenance
     if: github.repository == 'Avarko/gh-security-toolkit'
-    needs: [build]
+    needs: [merge]
     # Writes an OCI attestation alongside the image in GHCR
     permissions:
       contents: read
@@ -504,8 +631,8 @@ jobs:
       packages: write    # push attestation to GHCR
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
     with:
-      image: ${{ needs.build.outputs.image_ref }}
-      digest: ${{ needs.build.outputs.image_digest }}
+      image: ${{ needs.merge.outputs.image_ref }}
+      digest: ${{ needs.merge.outputs.image_digest }}
       registry-username: ${{ github.actor }}
     secrets:
       registry-password: ${{ secrets.GITHUB_TOKEN }}
@@ -513,7 +640,7 @@ jobs:
   provenance_github_store:
     name: GitHub Attestations store (duplicate provenance)
     if: github.repository == 'Avarko/gh-security-toolkit'
-    needs: [build]
+    needs: [merge]
     runs-on: ubuntu-latest
     # Persists provenance in GitHub's Attestations store, useful for GH UI/API & org policies
     permissions:
@@ -524,13 +651,13 @@ jobs:
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v4
         with:
-          subject-name: ${{ needs.build.outputs.image_ref }}
-          subject-digest: ${{ needs.build.outputs.image_digest }}
+          subject-name: ${{ needs.merge.outputs.image_ref }}
+          subject-digest: ${{ needs.merge.outputs.image_digest }}
 
   verify:
     name: Verify OCI provenance
     if: github.repository == 'Avarko/gh-security-toolkit'
-    needs: [build, provenance_oci]
+    needs: [merge, provenance_oci]
     runs-on: ubuntu-latest
     permissions: read-all
     steps:
@@ -539,8 +666,8 @@ jobs:
 
       - name: Verify OCI provenance
         env:
-          NEEDS_BUILD_IMAGE_DIGEST: ${{ needs.build.outputs.image_digest }}
-          NEEDS_BUILD_IMAGE_REF: ${{ needs.build.outputs.image_ref }}
+          NEEDS_BUILD_IMAGE_DIGEST: ${{ needs.merge.outputs.image_digest }}
+          NEEDS_BUILD_IMAGE_REF: ${{ needs.merge.outputs.image_ref }}
         run: |
           set -euo pipefail
           IMG="${NEEDS_BUILD_IMAGE_REF}@${NEEDS_BUILD_IMAGE_DIGEST}"
@@ -555,7 +682,7 @@ jobs:
   verify_github_store:
     name: Verify GitHub Attestations presence
     if: github.repository == 'Avarko/gh-security-toolkit'
-    needs: [build, provenance_github_store, sbom]
+    needs: [merge, provenance_github_store, sbom]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -572,8 +699,8 @@ jobs:
       - name: Verify attestations via GH CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NEEDS_BUILD_IMAGE_DIGEST: ${{ needs.build.outputs.image_digest }}
-          NEEDS_BUILD_IMAGE_REF: ${{ needs.build.outputs.image_ref }}
+          NEEDS_BUILD_IMAGE_DIGEST: ${{ needs.merge.outputs.image_digest }}
+          NEEDS_BUILD_IMAGE_REF: ${{ needs.merge.outputs.image_ref }}
         run: |
           # Use oci:// prefix for container images
           SUBJECT="oci://${NEEDS_BUILD_IMAGE_REF}@${NEEDS_BUILD_IMAGE_DIGEST}"
