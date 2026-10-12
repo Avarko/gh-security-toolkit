@@ -110,9 +110,16 @@ jobs:
           sha_cosign_arm64=c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a
           echo "ver_cosign=$ver_cosign" >> "$GITHUB_OUTPUT"
 
-          # Sigstore TUF bootstrap
-          go install github.com/theupdateframework/go-tuf/cmd/tuf-client@latest
-          curl -o sigstore-root.json https://raw.githubusercontent.com/sigstore/root-signing/refs/heads/main/metadata/root_history/10.root.json
+          # Sigstore TUF bootstrap: the key every cosign binary below is
+          # verified with comes from here, so both inputs are pinned like the
+          # binaries. tuf-client v0.7.0 is what @latest resolved to; go-tuf's
+          # v1 module has been frozen there since 2023 (development moved to
+          # /v2), and go install checks it against sum.golang.org. The trusted
+          # root is read at the commit that last changed it rather than from
+          # main, and checked by hash: it is where all of this trust starts.
+          go install github.com/theupdateframework/go-tuf/cmd/tuf-client@v0.7.0
+          curl -fsSL -o sigstore-root.json https://raw.githubusercontent.com/sigstore/root-signing/03f9c7e0023c917b60eb7431e87f47e6a636f37a/metadata/root_history/10.root.json
+          echo "836bff947925edfc23eb9ce17af66fb1e43bb5e2bdd240520985ae52b585eae9  sigstore-root.json" | sha256sum -c -
           tuf-client init https://tuf-repo-cdn.sigstore.dev sigstore-root.json
           tuf-client get https://tuf-repo-cdn.sigstore.dev artifact.pub > artifact.pub
 
