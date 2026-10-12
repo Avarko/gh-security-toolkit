@@ -19,6 +19,8 @@ Asked over git, like check-action-pins.py, so it needs no token and has no
 quota.
 """
 
+from __future__ import annotations  # str | None on the python3 macOS ships (3.9)
+
 import re
 import subprocess
 import sys

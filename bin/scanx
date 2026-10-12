@@ -15,7 +15,7 @@ set -eu
 
 usage() {
 	cat <<'EOF'
-Usage: scanx [--no-progress] <command> [NAME=value ...]
+Usage: scanx <command> [--no-progress] [NAME=value ...]
 
   --no-progress                      Never redraw a progress line on stderr. Without
                                      it one is drawn only when stderr is a terminal,
@@ -169,11 +169,14 @@ case $cmd in
 	*) die "unknown command '$cmd' (see: scanx help)" ;;
 esac
 
-# Only NAME=value may follow; anything else is a typo that would otherwise
-# reach make as a target.
+# Only NAME=value may follow, and --no-progress, which reads as naturally
+# after the command as before it; anything else is a typo that would
+# otherwise reach make as a target.
 for arg in "$@"; do
+	shift
 	case $arg in
-		*=*) ;;
+		--no-progress) SCANX_NO_PROGRESS=1 ;;
+		*=*) set -- "$@" "$arg" ;;
 		*) die "unexpected argument '$arg' (only NAME=value may follow the command)" ;;
 	esac
 done

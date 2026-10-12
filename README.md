@@ -83,18 +83,27 @@ Trailing `NAME=value` arguments are passed to make, e.g.
 |---|---|
 | `SCANX_FORMAT=table\|json` | Trivy output format on stdout (default `table`) |
 | `SCANX_OFFLINE=1` | No network: no update checks or image pulls, Semgrep skipped (same as `GHST_OFFLINE=1`) |
+| `SCANX_NO_PROGRESS=1` | Never redraw a progress line on stderr (same as `--no-progress`); without it one appears only when stderr is a terminal |
 | `SCANX_MAKE` | GNU make binary to use (default `make`) |
 | `SCANX_BIN_DIR` | Link directory for `install.sh` / `uninstall.sh` |
 
 Scan results are the only thing on stdout; progress, provenance and warnings go
 to stderr.
 
-Each Trivy scan also leaves its full JSON report in `.scanx/` in the scanned
+Each scan also leaves its full JSON report in `.scanx/` in the scanned
 directory (`trivy-fs.json`, `trivy-config.json`, `trivy-artifact.json`,
-`trivy-image.json`), overwritten by the next scan of the same kind. Trivy runs
-once: the table on stdout is rendered from that file, so the two always agree.
-The directory carries its own `.gitignore`, so it never shows up in
-`git status`.
+`trivy-image.json`, `semgrep.json`), overwritten by the next scan of the same
+kind. Trivy runs once: the table on stdout is rendered from that file, so the
+two always agree. Where `.scanx/` cannot be written, the reports go to a
+temporary directory instead and stderr says which.
+
+- The Trivy reports include passed misconfiguration checks (`"Status":
+  "PASS"`), which the table needs for its "Tests: N (SUCCESSES: …)" line.
+  Count failures with `select(.Status == "FAIL")`, not the array length.
+- The directory carries its own `.gitignore`, so it never shows up in
+  `git status`. Docker does not read `.gitignore`: if your Dockerfile copies
+  the build context wholesale (`COPY . .`), add `.scanx` to `.dockerignore`,
+  or the reports end up in the image.
 
 ```bash
 scanx scan trivy img my-app:local
