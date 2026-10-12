@@ -13,9 +13,9 @@ name: "[Internal] Clean up old scanner images in GHCR"
 #   whose platform images are partly or wholly missing.
 #
 # What stays, whatever its age:
-# - every tag a consumer can pull by name: main and latest, manual-latest,
-#   release tags (v*), and any other non-sha tag a build was given;
-# - buildcache-<arch>, which the build reads its layer cache from;
+# - every image with a tag other than sha-<commit>: main and latest,
+#   manual-latest, release tags, old branch tags, and buildcache-<arch>,
+#   which the build reads its layer cache from;
 # - platform manifests and attestations of anything kept. The action walks
 #   multi-arch indexes and referrers, which is why it is used instead of
 #   deleting "untagged" versions through the API: in GHCR's list the platform
@@ -55,9 +55,18 @@ jobs:
         uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f  # v1.2.2
         with:
           package: gh-security-toolkit
-          delete-tags: sha-*
+          # Regular expressions, so that "every tag but sha-<commit>" can be
+          # said once instead of listing the names in use: wildcards cannot
+          # negate, and an image carrying an old branch's tag next to its sha
+          # tag (incremental-db, reactui) would otherwise lose its platform
+          # images under that tag. sha256-… are signatures and attestations;
+          # those of kept images are kept anyway, and the orphaned ones are
+          # what delete-orphaned-images is for. No commas: the inputs are
+          # comma-separated lists.
+          use-regex: true
+          delete-tags: ^sha-[0-9a-f]+$
           keep-n-tagged: 5
-          exclude-tags: main,latest,manual-latest,v*,buildcache-*
+          exclude-tags: ^(?!sha-[0-9a-f]+$|sha256-)
           delete-untagged: true
           delete-orphaned-images: true
           delete-ghost-images: true
