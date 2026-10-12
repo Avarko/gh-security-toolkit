@@ -61,12 +61,14 @@ jobs:
           # tag (incremental-db, reactui) would otherwise lose its platform
           # images under that tag. sha256-… are signatures and attestations;
           # those of kept images are kept anyway, and the orphaned ones are
-          # what delete-orphaned-images is for. No commas: the inputs are
-          # comma-separated lists.
+          # what delete-orphaned-images is for. sha256:… is how the action
+          # names an untagged version, and it matches this pattern against
+          # those too: leave it out and nothing untagged is ever deleted. No
+          # commas: the inputs are comma-separated lists.
           use-regex: true
           delete-tags: ^sha-[0-9a-f]+$
           keep-n-tagged: 5
-          exclude-tags: ^(?!sha-[0-9a-f]+$|sha256-)
+          exclude-tags: ^(?!sha-[0-9a-f]+$|sha256[-:])
           delete-untagged: true
           delete-orphaned-images: true
           delete-ghost-images: true
