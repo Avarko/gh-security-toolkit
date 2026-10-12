@@ -901,8 +901,13 @@ sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 # and a CI scan run the same Semgrep. scripts/check-semgrep-config.py fails the
 # build if the two drift apart. Bumping means moving both, plus the digest:
 #   docker buildx imagetools inspect semgrep/semgrep:<version> --format '{{.Manifest.Digest}}'
-SEMGREP_VERSION ?= 1.176.1
-SEMGREP_DIGEST ?= sha256:34ab619bf1391a24bfda3f05debd0d8a6ce3093c2d5f9d39cfc00f83c1397823
+#
+# 1.180.0 replaced 1.176.1, whose image carried 22 fixable highs and a
+# critical (PyJWT 2.13.0, urllib3 2.7.0, Alpine's python3, expat, pcre2); its
+# image has none. Same findings and errors on this repository with
+# SEMGREP_CONFIGS below. 1.180.0 drops QL rules and targets, unused here.
+SEMGREP_VERSION ?= 1.180.0
+SEMGREP_DIGEST ?= sha256:529ee8a277ec8adc5b534d7c74eea0a47e9de21d62852b6ba7ac6ba9566845c3
 SEMGREP_IMAGE ?= semgrep/semgrep:$(SEMGREP_VERSION)@$(SEMGREP_DIGEST)
 
 # The same rulesets CI runs. They were different lists in three files, so a

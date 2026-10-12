@@ -31,7 +31,7 @@ runs:
     # runner's global pip to no purpose here.
     - name: Setup Semgrep
       shell: bash
-      run: pip3 install --disable-pip-version-check semgrep==1.176.1
+      run: pip3 install --disable-pip-version-check semgrep==1.180.0
 
     # --no-git-ignore is gone, and so is the .semgrepignore this step used to
     # write into the consumer's checkout. That file was a hand-maintained list
