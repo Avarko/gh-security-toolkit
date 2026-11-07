@@ -553,9 +553,10 @@ jobs:
       - name: Record digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
+          ARCH: ${{ matrix.arch }}
         run: |
           mkdir -p digests
-          echo "${DIGEST}" > "digests/${{ matrix.arch }}"
+          echo "${DIGEST}" > "digests/${ARCH}"
 
       - uses: actions/upload-artifact@v7
         with:
