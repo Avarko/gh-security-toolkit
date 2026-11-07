@@ -5,7 +5,14 @@ ARG COSIGN_VER
 ARG CRANE_VER
 ARG HELPER_VER
 
-FROM cgr.dev/chainguard/wolfi-base:latest
+# Pinned by digest: a tag can be repointed, and a base that moves under us is
+# a change we ship without shipping anything. Chainguard's free tier publishes
+# only :latest, so the tag stays and the digest decides; Dependabot (docker,
+# /cli, a week's cooldown) proposes the next one, and the build verifies
+# Chainguard's signature on whatever digest this names before building on it.
+# Bump by hand with:
+#   docker buildx imagetools inspect cgr.dev/chainguard/wolfi-base:latest --format '{{.Manifest.Digest}}'
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:8509ee4351a2e501b7f98201f2e2642396e82020c61a589cacdcfe74b9de46c1
 
 ARG TARGETPLATFORM
 ARG TARGETARCH

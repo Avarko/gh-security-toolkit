@@ -63,3 +63,17 @@ updates:
       # action upstream has stopped releasing is not one to keep.
     commit-message:
       prefix: "ci"
+
+  # The scanner image's base, cli/Dockerfile. It is pinned by digest on
+  # Chainguard's only free tag, :latest, and Dependabot moves the digest under
+  # that tag. Same week's cooldown as the actions: Chainguard rebuilds the base
+  # daily, so a week-old digest is never far behind, and the build verifies
+  # Chainguard's signature on whatever digest the bump names.
+  - package-ecosystem: docker
+    directory: "/cli"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "build"
