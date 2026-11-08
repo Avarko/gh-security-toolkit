@@ -76,6 +76,8 @@ localstack-dev: ##  Full dev workflow (start + setup + dev server)
 image/lock: ##  Re-resolve cli/apko.lock.json to the newest Wolfi packages
 	cd cli && mise exec -- apko lock apko.yaml --output apko.lock.json
 
+# apko appends the architecture to the tag of a single-arch tarball, so
+# `ghst-base:local` below loads as ghst-base:local-amd64 (or -arm64).
 image/base: ##  Build the OS layer from the lockfile and load it as ghst-base:local-<arch>
 	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && cd cli \
 	&& mise exec -- apko build apko.yaml ghst-base:local "$$tmp/base.tar" \

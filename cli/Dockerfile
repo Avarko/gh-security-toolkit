@@ -25,8 +25,8 @@ COPY verified-binaries/linux-${TARGETARCH}/trivy-db-helper /usr/local/bin/trivy-
 
 # Cosign's TUF cache, for verifying database signatures without a network.
 # CI creates verified-binaries/tuf-cache.tgz (.sigstore/ and cosign-init.log);
-# ADD unpacks a local archive itself, which is what lets this image do without
-# a shell.
+# ADD unpacks a local archive itself, so the build needs no RUN step for it.
+# (The base does have a bare /bin/sh, for git; the build just never uses it.)
 ADD --chown=10001:10001 verified-binaries/tuf-cache.tgz /home/ghst/
 
 # Trivy databases are NOT baked into the image. They used to be, which cost
