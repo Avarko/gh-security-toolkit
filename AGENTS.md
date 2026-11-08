@@ -35,7 +35,8 @@ was newest on build day without anyone looking.
 | BuildKit (build only) | `int-manual-build-scanner-cli.yml`, "Set up Buildx" | image digest |
 | Sigstore TUF bootstrap (build only) | `int-manual-build-scanner-cli.yml`, cosign step | tuf-client version (go.sum DB), root.json by commit + sha256 |
 | trivy-db-helper | newest `helper-vX.Y.Z` in ghcr.io/avarko/trivy-incremental-dbs | cosign keyless signature from its release-helper.yml at that tag; checksums in the artifact |
-| Base image | `cli/Dockerfile` `wolfi-base:latest@sha256:…` | digest; Dependabot (docker, `/cli`, 7-day cooldown) proposes bumps; the build verifies Chainguard's cosign signature on it. The apk packages added on top (bash, curl, git, jq) are not pinned: current at build time, signed by Wolfi's key |
+| OS layer (Wolfi packages) | `cli/apko.yaml` + `cli/apko.lock.json` | every package by version and checksum, verified against the committed Wolfi key (`cli/wolfi-signing.rsa.pub`); the build refuses a lock that does not match the config. `make image/lock` re-resolves to the newest packages |
+| apko (build only) | `int-manual-build-scanner-cli.yml` `ver_apko`; `.mise.toml` locally | version + sha256, Chainguard-signed checksums |
 
 Before proposing a bump, check the candidate rather than its changelog:
 

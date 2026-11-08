@@ -69,3 +69,15 @@ localstack-setup: ##  Initialize S3 buckets with test data
 
 localstack-dev: ##  Full dev workflow (start + setup + dev server)
 	@$(MAKE) -C dashboard localstack-dev
+
+# Scanner image OS layer (cli/apko.yaml). apko comes from .mise.toml.
+.PHONY: image/lock image/base
+
+image/lock: ##  Re-resolve cli/apko.lock.json to the newest Wolfi packages
+	cd cli && mise exec -- apko lock apko.yaml --output apko.lock.json
+
+image/base: ##  Build the OS layer from the lockfile and load it as ghst-base:local-<arch>
+	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && cd cli \
+	&& mise exec -- apko build apko.yaml ghst-base:local "$$tmp/base.tar" \
+		--lockfile apko.lock.json --arch host --sbom=false \
+	&& docker load -i "$$tmp/base.tar"

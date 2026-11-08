@@ -460,10 +460,102 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # The operating system layer: Wolfi packages at the versions cli/apko.lock.json
+  # fixes, assembled by apko and published for the build jobs to start FROM.
+  # apko unpacks packages rather than running them, so one amd64 job builds
+  # both architectures without an emulator. The same config and lockfile give
+  # the same bytes, so the tag is a hash of exactly those inputs, and a run
+  # that changed none of them republishes the image that is already there.
+  base:
+    name: Build the OS layer
+    if: github.repository == 'Avarko/gh-security-toolkit'
+    needs: [prepare]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write       # push the base to GHCR
+    outputs:
+      ref: ${{ steps.publish.outputs.ref }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: verified-binaries
+
+      # cosign checks apko's signature below and crane reads the published
+      # digest back, so both come from what prepare verified.
+      - name: Unpack the verified binaries
+        env:
+          CONTEXT: ${{ env.CONTEXT }}
+          SHA256: ${{ needs.prepare.outputs.binaries_sha256 }}
+        run: |
+          set -euo pipefail
+          echo "${SHA256}  verified-binaries.tgz" | sha256sum -c -
+          tar -C "${CONTEXT}" -xzf verified-binaries.tgz && rm verified-binaries.tgz
+
+      # Pinned by version and sha256 like every other tool here, and the
+      # pinned hash is also checked against checksums.txt as Chainguard's
+      # release workflow signed it. v1.4.11 (2026-10-12) is the newest release
+      # at least three weeks old when it was pinned.
+      - name: Install apko
+        env:
+          CONTEXT: ${{ env.CONTEXT }}
+        run: |
+          set -euo pipefail
+          ver_apko=v1.4.11
+          sha_apko_amd64=5445ea2467a4ab0db3e31d9f795133128d0564c7afdaa46fcdaa1ee3cf92c757
+          tarball="apko_${ver_apko#v}_linux_amd64.tar.gz"
+          url="https://github.com/chainguard-dev/apko/releases/download/${ver_apko}"
+          for f in checksums.txt checksums.txt.crt checksums.txt.sig "${tarball}"; do
+            curl -fsSL -o "${f}" "${url}/${f}"
+          done
+          echo "${sha_apko_amd64}  ${tarball}" | sha256sum -c -
+          "${CONTEXT}/verified-binaries/linux-amd64/cosign" verify-blob checksums.txt \
+            --certificate checksums.txt.crt --signature checksums.txt.sig \
+            --certificate-identity=https://github.com/chainguard-dev/apko/.github/workflows/release.yaml@refs/heads/main \
+            --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+          grep -qxF "${sha_apko_amd64}  ${tarball}" checksums.txt
+          tar -xzf "${tarball}" "apko_${ver_apko#v}_linux_amd64/apko"
+          install -m 0755 "apko_${ver_apko#v}_linux_amd64/apko" /usr/local/bin/apko
+          apko version
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # apko refuses a lockfile whose recorded config checksum does not match
+      # apko.yaml, so a package added without regenerating the lock fails
+      # here rather than being resolved to whatever is newest.
+      - name: Publish the base
+        id: publish
+        env:
+          CONTEXT: ${{ env.CONTEXT }}
+          REPO: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-base
+        run: |
+          set -euo pipefail
+          cd "${CONTEXT}"
+          inputs=$(cat apko.yaml apko.lock.json wolfi-signing.rsa.pub | sha256sum | cut -c1-16)
+          apko publish apko.yaml "${REPO}:lock-${inputs}" \
+            --lockfile apko.lock.json --arch x86_64,aarch64 --sbom=false
+          digest=$(verified-binaries/linux-amd64/crane digest "${REPO}:lock-${inputs}")
+          case "${digest}" in
+            sha256:*) ;;
+            *) echo "::error::crane returned no digest for ${REPO}:lock-${inputs}" >&2; exit 1 ;;
+          esac
+          echo "ref=${REPO}@${digest}" >> "$GITHUB_OUTPUT"
+          echo "Base: ${REPO}@${digest}"
+
   build:
     name: Build ${{ matrix.arch }}
     if: github.repository == 'Avarko/gh-security-toolkit'
-    needs: [prepare]
+    needs: [prepare, base]
     strategy:
       fail-fast: true
       matrix:
@@ -496,27 +588,6 @@ jobs:
           set -euo pipefail
           echo "${SHA256}  verified-binaries.tgz" | sha256sum -c -
           tar -C "${CONTEXT}" -xzf verified-binaries.tgz && rm verified-binaries.tgz
-
-      # The Dockerfile pins the base by digest; this checks that the digest is
-      # one Chainguard's release workflow signed, before anything is built on
-      # it. Read from the FROM line itself, so a Dependabot bump is verified
-      # too. The cosign is the one prepare just verified.
-      - name: Verify the base image signature
-        env:
-          CONTEXT: ${{ env.CONTEXT }}
-          ARCH: ${{ matrix.arch }}
-        run: |
-          set -euo pipefail
-          base=$(sed -n 's/^FROM \(cgr\.dev\/chainguard\/wolfi-base:latest@sha256:[0-9a-f]\{64\}\)$/\1/p' "${CONTEXT}/Dockerfile")
-          if [ -z "$base" ]; then
-            echo "::error::cli/Dockerfile must build FROM cgr.dev/chainguard/wolfi-base:latest@sha256:<digest>" >&2
-            exit 1
-          fi
-          "${CONTEXT}/verified-binaries/linux-${ARCH}/cosign" verify "${base%%:latest@*}@${base#*@}" \
-            --certificate-identity=https://github.com/chainguard-images/images/.github/workflows/release.yaml@refs/heads/main \
-            --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-            > /dev/null
-          echo "Verified ${base}"
 
       - name: Login to GHCR
         uses: docker/login-action@v4
@@ -558,16 +629,14 @@ jobs:
           provenance: false
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
-            APK_REFRESH=${{ github.run_id }}
+            BASE=${{ needs.base.outputs.ref }}
             TRIVY_VER=${{ needs.prepare.outputs.ver_trivy }}
             TRUFFLEHOG_VER=${{ needs.prepare.outputs.ver_trufflehog }}
             COSIGN_VER=${{ needs.prepare.outputs.ver_cosign }}
             CRANE_VER=${{ needs.prepare.outputs.ver_crane }}
             HELPER_VER=${{ needs.prepare.outputs.helper_version }}
-          # No layer cache. APK_REFRESH changes the second layer on every
-          # run, and everything after it depends on it, so a cache could
-          # only ever supply the base image: the first build with one reused
-          # nothing and spent 8 s per architecture exporting it.
+          # No layer cache: what is built here is a handful of COPYs onto
+          # a base that arrives by digest, so there is nothing worth caching.
 
       # A matrix job's outputs overwrite each other, so each digest travels
       # as a file of its own.
