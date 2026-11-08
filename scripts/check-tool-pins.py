@@ -90,7 +90,12 @@ def main() -> int:
         print(f"FAIL self-check scans with Trivy {scanner} but the image ships {image_trivy}; "
               f"move {SELF_CHECKS.relative_to(ROOT)} with the image")
         failed = True
-    action_pins = re.findall(r"^\s*version: '(v[\d.]+)'", TRIVY_ACTION.read_text(), re.MULTILINE)
+    # Every version: line in the action is a Trivy pin, and each is compared
+    # as written, minus quotes. Matching only one spelling would let a line
+    # written another way -- double quotes, none, an expression -- drop out of
+    # the check instead of failing it.
+    action_pins = [v.strip("'\"") for v in re.findall(
+        r"^\s*version:\s*(.+?)\s*$", TRIVY_ACTION.read_text(), re.MULTILINE)]
     if not action_pins:
         sys.exit(f"cannot find the Trivy version pin in {TRIVY_ACTION.relative_to(ROOT)}")
     for action_trivy in action_pins:
