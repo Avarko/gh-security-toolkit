@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / ".github/workflows/int-manual-build-scanner-cli.yml"
 SELF_CHECKS = ROOT / ".github/workflows/self-checks.yml"
 MAKEFILE = ROOT / "Makefile.scanners"
+TRIVY_ACTION = ROOT / "actions/scanner/trivy/action.yml"
 
 # Pin variable in the build workflow -> upstream repository.
 BUILD_PINS = {
@@ -89,6 +90,14 @@ def main() -> int:
         print(f"FAIL self-check scans with Trivy {scanner} but the image ships {image_trivy}; "
               f"move {SELF_CHECKS.relative_to(ROOT)} with the image")
         failed = True
+    action_pins = re.findall(r"^\s*version: '(v[\d.]+)'", TRIVY_ACTION.read_text(), re.MULTILINE)
+    if not action_pins:
+        sys.exit(f"cannot find the Trivy version pin in {TRIVY_ACTION.relative_to(ROOT)}")
+    for action_trivy in action_pins:
+        if action_trivy != image_trivy:
+            print(f"FAIL the Trivy action runs Trivy {action_trivy} but the image ships {image_trivy}; "
+                  f"move {TRIVY_ACTION.relative_to(ROOT)} with the image")
+            failed = True
 
     behind = 0
     for name, repo, have, where in pins:

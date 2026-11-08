@@ -29,17 +29,23 @@ runs:
 
     - name: Trivy cache
       continue-on-error: true
+      # No gh-token: v1.0.0 reads the database digest from ghcr.io anonymously
+      # and ignores the input, so passing it only handed a third-party action
+      # our token for nothing.
       uses: yogeshlonkar/trivy-cache-action@71c8f1342475a6582c09fc69f1baa9190bd23682  # v1.0.0
-      with:
-        gh-token: ${{ github.token }}
 
     - name: Trivy - Filesystem scan
       id: fs_scan
       if: ${{ inputs.filesystem_path != '' }}
       continue-on-error: true
+      # The Trivy version is the image's (ver_trivy in
+      # int-manual-build-scanner-cli.yml), so CI and scanx run the same
+      # scanner; scripts/check-tool-pins.py fails when they differ. It sat at
+      # v0.69.3 from March 2026, older than the Trivy that learned to read Go
+      # version strings carrying a GOEXPERIMENT (see self-checks.yml).
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
       with:
-        version: 'v0.69.3'
+        version: 'v0.75.0'
         scan-type: 'fs'
         scan-ref: ${{ inputs.filesystem_path }}
         format: json
@@ -57,7 +63,7 @@ runs:
       continue-on-error: true
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
       with:
-        version: 'v0.69.3'
+        version: 'v0.75.0'
         image-ref: ${{ inputs.docker_image_ref }}
         format: json
         output: ${{ inputs.trivy_output_dir }}/trivy-image-results.json
