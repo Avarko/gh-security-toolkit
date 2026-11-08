@@ -125,7 +125,7 @@ jobs:
           # nothing. A scanner auditing this image must therefore be no older
           # than the one inside it, so this moves together with ver_trivy in
           # int-manual-build-scanner-cli.yml.
-          version: v0.75.0
+          version: v0.76.2
           format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true
