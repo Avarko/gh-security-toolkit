@@ -37,6 +37,7 @@ BUILD_PINS = {
     "cosign": "sigstore/cosign",
     "crane": "google/go-containerregistry",
     "trufflehog": "trufflesecurity/trufflehog",
+    "apko": "chainguard-dev/apko",
 }
 
 STABLE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")

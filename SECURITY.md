@@ -86,7 +86,11 @@ cosign itself and Trivy, `slsa-verifier verify-artifact` for crane. The image
 is published with SLSA3 provenance and an attested SBOM. Tool versions come
 from build args so a build is reproducible rather than "whatever was latest".
 
-**The container is not root.** `USER ghst` (uid 10001), Wolfi base, and the
+**The container is not root, and carries little besides the scanners.**
+`USER ghst` (uid 10001). The OS layer is built by apko from Wolfi packages
+pinned in `cli/apko.lock.json`: glibc, git, tar, gzip, CA certificates and a
+bare `/bin/sh` (dash, which git needs), with no package manager, busybox or
+coreutils. The
 databases are mounted read-only with a tmpfs for Trivy's scratch state, so a
 scan cannot corrupt the cache it reads.
 
@@ -337,8 +341,13 @@ Scanned with itself on 2026-08-29 (`make sec/scan/trivy/img`, Trivy 0.74.0):
 
 Every one has a fixed version available. The Go stdlib CVEs dominate and share
 one remedy: rebuild with Go 1.26.6 or 1.25.13. The base packages are fixed by
-moving the pinned wolfi-base digest (Dependabot proposes it weekly) and
-rebuilding, which also refreshes the apk packages added on top.
+regenerating `cli/apko.lock.json` (`make image/lock`) and rebuilding.
+
+Update 2026-11-08: with the OS layer moved to apko the base finding count is
+zero. Scanned with Trivy v0.75.0, the image published 2026-10-12 had 5 critical
+and 6 high in its Wolfi packages; the same binaries on the apko layer have none,
+with Trivy recognising the OS as Wolfi and evaluating its package list. The Go
+binaries' findings are unchanged and move only with their pins.
 
 None is remotely reachable in the way the toolkit uses these tools -- scans run
 with `--network=none` -- but a security image carrying 31 unpatched highs is

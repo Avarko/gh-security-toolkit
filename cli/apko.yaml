@@ -1,0 +1,66 @@
+# The scanner image's operating system layer, built by apko from Wolfi
+# packages: only what the tools inside need at run time, with no package
+# manager, no busybox and no coreutils. The exact versions are fixed by
+# apko.lock.json next to this file; `make image/lock` regenerates it, and the
+# build refuses a lockfile that no longer matches this config.
+#
+# What each package is here for:
+#   ca-certificates-bundle  TLS for trivy-db-helper, crane and cosign
+#   git                     TruffleHog's git-history scan runs the git binary
+#   gnutar, gzip            trivy-db-helper unpacks database deltas with `tar -xz`
+#   dash-binsh              /bin/sh, and only that: git runs its local transport
+#                           through `sh -c`, so without it TruffleHog cannot clone
+#                           the repository it scans ("cannot exec 'git-upload-pack'")
+#
+# The signing key is committed rather than fetched at build time, so a
+# compromised packages.wolfi.dev cannot hand the build a key of its choosing.
+# It is byte-identical to /etc/apk/keys/wolfi-signing.rsa.pub in the
+# Chainguard-signed wolfi-base image.
+contents:
+  repositories:
+    - https://packages.wolfi.dev/os
+  keyring:
+    - ./wolfi-signing.rsa.pub
+  packages:
+    - wolfi-baselayout
+    - ca-certificates-bundle
+    - git
+    - gnutar
+    - gzip
+    - dash-binsh
+
+accounts:
+  groups:
+    - groupname: ghst
+      gid: 10001
+  users:
+    - username: ghst
+      uid: 10001
+      gid: 10001
+      homedir: /home/ghst
+  run-as: "10001"
+
+# Directories the image's own user writes to. Everything else, including the
+# binaries added on top by the Dockerfile, stays root-owned.
+paths:
+  - path: /home/ghst
+    type: directory
+    uid: 10001
+    gid: 10001
+    permissions: 0o755
+  - path: /workspace
+    type: directory
+    uid: 10001
+    gid: 10001
+    permissions: 0o755
+  - path: /opt/trivy-cache
+    type: directory
+    uid: 10001
+    gid: 10001
+    permissions: 0o755
+
+work-dir: /workspace
+
+archs:
+  - x86_64
+  - aarch64

@@ -12,3 +12,4 @@ node = "24"
 jbang = "latest"
 # AWS CLI for LocalStack S3 operations
 awscli = "latest"
+apko = "1.4.11"

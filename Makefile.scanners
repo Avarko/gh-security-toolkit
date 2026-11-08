@@ -151,7 +151,7 @@ __GHST_TRIVY_TIMEOUT ?= 5m
 # ============================================================================
 
 # Database updates run inside the toolkit image, exactly like the scans do.
-# Everything they need — the helper binary, crane, jq — ships in that image,
+# Everything they need — the helper binary, crane, cosign, tar — ships in that image,
 # so a developer installs nothing beyond Docker.
 #
 # Unlike the scan targets this one gets a network and a writable cache mount,
