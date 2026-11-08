@@ -12,7 +12,7 @@ ARG HELPER_VER
 # Chainguard's signature on whatever digest this names before building on it.
 # Bump by hand with:
 #   docker buildx imagetools inspect cgr.dev/chainguard/wolfi-base:latest --format '{{.Manifest.Digest}}'
-FROM cgr.dev/chainguard/wolfi-base:latest@sha256:8509ee4351a2e501b7f98201f2e2642396e82020c61a589cacdcfe74b9de46c1
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:24f549a7fcace88e69b9557941168c74645688ecc4acf7fb6d734a6b74e9019d
 
 ARG TARGETPLATFORM
 ARG TARGETARCH
