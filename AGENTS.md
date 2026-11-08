@@ -26,6 +26,7 @@ was newest on build day without anyone looking.
 |---|---|---|
 | Trivy (image) | `int-manual-build-scanner-cli.yml` `ver_trivy` | version + sha256 per arch, cosign signature |
 | Trivy (self-check scanner) | `self-checks.yml` `version:` | must equal the image's; the script fails otherwise |
+| Trivy (CI action) | `actions/scanner/trivy/action.yml` `version:` | must equal the image's; the script fails otherwise |
 | cosign | `int-manual-build-scanner-cli.yml` `ver_cosign` | version + sha256 per arch, Sigstore key |
 | crane | `int-manual-build-scanner-cli.yml` `ver_crane` | version + sha256 per arch, SLSA provenance |
 | TruffleHog | `int-manual-build-scanner-cli.yml` `ver_trufflehog` | version + sha256 per arch, signed checksums |
@@ -52,8 +53,8 @@ Before proposing a bump, check the candidate rather than its changelog:
 4. **Record why**: the comment next to each pin says what it was chosen over
    and which known highs it still carries. Update it with the hashes.
 
-Moving the image's Trivy means moving the self-check's scanner in the same
-commit.
+Moving the image's Trivy means moving the self-check's scanner and the Trivy
+action's `version:` in the same commit.
 
 ## Core Concept: Channels
 
