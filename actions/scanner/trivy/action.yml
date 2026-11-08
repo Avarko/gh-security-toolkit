@@ -29,7 +29,7 @@ runs:
 
     - name: Trivy cache
       continue-on-error: true
-      uses: yogeshlonkar/trivy-cache-action@ed5a0132284e2c2d52921949acf5753cce4b6a2b  # v0.1.17
+      uses: yogeshlonkar/trivy-cache-action@71c8f1342475a6582c09fc69f1baa9190bd23682  # v1.0.0
       with:
         gh-token: ${{ github.token }}
 
