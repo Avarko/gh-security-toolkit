@@ -337,7 +337,8 @@ Scanned with itself on 2026-08-29 (`make sec/scan/trivy/img`, Trivy 0.74.0):
 
 Every one has a fixed version available. The Go stdlib CVEs dominate and share
 one remedy: rebuild with Go 1.26.6 or 1.25.13. The base packages are fixed by
-rebuilding on current Wolfi.
+moving the pinned wolfi-base digest (Dependabot proposes it weekly) and
+rebuilding, which also refreshes the apk packages added on top.
 
 None is remotely reachable in the way the toolkit uses these tools -- scans run
 with `--network=none` -- but a security image carrying 31 unpatched highs is
