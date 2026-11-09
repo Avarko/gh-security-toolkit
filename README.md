@@ -134,8 +134,14 @@ then pulls the scanner image. A clone with local commits or uncommitted changes
 is reported and left as it is. If the network cannot be reached the scan goes
 on with what is installed and says so; after 14 days without a confirmed-current
 check, scans refuse, as described in [What keeps itself current](#what-keeps-itself-current).
+Offline, each scan tries the registry once before going on.
 `SCANX_NO_UPDATE=1` skips the check for one command; `SCANX_OFFLINE=1` is the
 way out on an air-gapped machine. The databases refresh themselves as before.
+
+What lands on the branch your clone follows runs on your machine at your next
+scan, with no step of yours in between, and the commits are not
+signature-checked. Keep the clone on `main`; a feature branch you checked out
+once keeps updating from that branch.
 
 `scanx` is run directly from the command line. Project Makefiles should not
 wrap it: repositories are shared with developers who do not have scanx.

@@ -119,10 +119,19 @@ self_update() {
 		echo "   scanx: branch '$(git -C "$SCANX_HOME" branch --show-current)' tracks no upstream, not updated" >&2
 		return 0
 	fi
+	# Bounded without timeout(1), which macOS lacks: HTTPS gives up on a stalled
+	# transfer, SSH on a connect that does not answer. An SSH command the user
+	# configured (GIT_SSH_COMMAND, GIT_SSH, core.sshCommand) is left alone, since
+	# it may carry the key this clone needs.
 	to=""
 	command -v timeout >/dev/null 2>&1 && to="timeout 20"
-	if ! GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes -o ConnectTimeout=10}" \
-		$to git -C "$SCANX_HOME" fetch --quiet >/dev/null 2>&1; then
+	if [ -z "${GIT_SSH_COMMAND:-}${GIT_SSH:-}" ] \
+		&& ! git -C "$SCANX_HOME" config core.sshCommand >/dev/null 2>&1; then
+		GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=10"
+		export GIT_SSH_COMMAND
+	fi
+	if ! GIT_TERMINAL_PROMPT=0 $to git -C "$SCANX_HOME" \
+		-c http.lowSpeedLimit=1000 -c http.lowSpeedTime=15 fetch --quiet >/dev/null 2>&1; then
 		echo "   scanx: could not reach $upstream, continuing with $(short HEAD)" >&2
 		return 0
 	fi
@@ -132,7 +141,8 @@ self_update() {
 		return 0
 	fi
 	if ! git -C "$SCANX_HOME" merge-base --is-ancestor HEAD '@{u}'; then
-		echo "   scanx: has commits that $upstream does not, not updated" >&2
+		echo "   scanx: has diverged from $upstream (local commits, or $upstream was rewritten), not updated." >&2
+		echo "   To follow $upstream and drop local commits: git -C '$SCANX_HOME' reset --hard '$upstream'" >&2
 		return 0
 	fi
 	if [ -n "$(git -C "$SCANX_HOME" status --porcelain --untracked-files=no)" ]; then
@@ -144,19 +154,10 @@ self_update() {
 		return 0
 	fi
 	echo "⬆️  scanx updated $(short "$before") → $(short HEAD)" >&2
-	SCANX_UPDATED=1 exec "$SCANX_HOME/bin/scanx" "$@"
+	# --no-progress has already been taken out of the arguments; it travels as
+	# the variable it was turned into.
+	SCANX_UPDATED=1 SCANX_NO_PROGRESS=${SCANX_NO_PROGRESS:-0} exec "$SCANX_HOME/bin/scanx" "$@"
 }
-
-case ${1:-} in
-	scan | db | provenance)
-		self_update "$@"
-		if [ "${SCANX_NO_UPDATE:-0}" != "1" ]; then
-			__GHST_IMAGE_MAX_AGE_DAYS=0
-			__GHST_IMAGE_UNREACHABLE_RETRY_MINUTES=0
-			export __GHST_IMAGE_MAX_AGE_DAYS __GHST_IMAGE_UNREACHABLE_RETRY_MINUTES
-		fi
-		;;
-esac
 
 # The sec/ target, and any NAME=value make needs for it, from the subcommand.
 target=""
@@ -171,6 +172,21 @@ for arg in "$@"; do
 		*) set -- "$@" "$arg" ;;
 	esac
 done
+
+# After the flag is taken out, so `scanx --no-progress scan` updates too.
+case ${1:-} in
+	scan | db | provenance)
+		self_update "$@"
+		# Under scanx the image is checked on every run as well. Offline, each scan
+		# then tries the registry once; SCANX_OFFLINE=1 skips that.
+		if [ "${SCANX_NO_UPDATE:-0}" != "1" ]; then
+			__GHST_IMAGE_MAX_AGE_DAYS=0
+			__GHST_IMAGE_UNREACHABLE_RETRY_MINUTES=0
+			export __GHST_IMAGE_MAX_AGE_DAYS __GHST_IMAGE_UNREACHABLE_RETRY_MINUTES
+		fi
+		;;
+esac
+
 [ $# -gt 0 ] || { usage >&2; exit 2; }
 cmd=$1
 shift
