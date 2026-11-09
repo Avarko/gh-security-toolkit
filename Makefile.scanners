@@ -232,7 +232,7 @@ __ghst-db-ensure: __ghst-image-ensure
 # is exactly how a database-format change once shipped to the registry days
 # before any developer's local image could read it.
 #
-# Checked once per __GHST_IMAGE_MAX_AGE_DAYS rather than every invocation, so
+# A confirmed check holds for __GHST_IMAGE_MAX_AGE_DAYS rather than every invocation, so
 # an otherwise offline scan does not pay a registry round-trip each time. Same
 # shape as __GHST_DB_MAX_AGE_DAYS above, and for the same reason: a stale tool
 # should be refreshed on a schedule, not left to a developer noticing.
@@ -631,7 +631,7 @@ __ghst-provenance: __ghst-db-ensure __ghst-self-check __ghst-freshness-floor
 	else \
 		case "$$(cat "$(__GHST_IMAGE_STAMP)" 2>/dev/null)" in \
 			current|updated) fresh="newest as of $$(stamp_age "$(__GHST_IMAGE_STAMP)")" ;; \
-			unreachable)     fresh="registry unreachable $$(stamp_age "$(__GHST_IMAGE_STAMP)")" ;; \
+			unreachable)     fresh="registry unreachable, last confirmed $$(stamp_age "$(__GHST_IMAGE_CONFIRMED)")" ;; \
 			*)               fresh="freshness unknown" ;; \
 		esac; \
 	fi; \

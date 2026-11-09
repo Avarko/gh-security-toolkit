@@ -220,9 +220,11 @@ alone leaves open. Both halves already asked it daily and discarded the answer:
 the image pull knows whether it downloaded anything, and the database update
 resolves against the published manifest. Freshness is a property of a check
 rather than of an artifact, so the report says when the question was last asked
-as well as what came back — `registry unreachable 2 days ago` is the case worth
-having, because before this an image could be arbitrarily old with nothing
-having failed and nothing having said so.
+as well as what came back — `registry unreachable, last confirmed 2 days ago`
+is the case worth having, because before this an image could be arbitrarily old
+with nothing having failed and nothing having said so. The age is measured from
+the last check that reached the registry, not the last attempt, since an
+unreachable registry is retried every hour.
 
 Both go to stderr, so neither lands in a report redirected to a file.
 
@@ -314,7 +316,7 @@ old data.
 | Artefact | Where it lives | How it refreshes | If it cannot |
 | --- | --- | --- | --- |
 | `Makefile.scanners` | `.gh-security-toolkit/` in your repository | Compared against the published file once a day during a scan. When a newer one exists, the next scan re-fetches it through your own include rule and Make restarts with it. | Scan refuses once nothing has confirmed it for `__GHST_MAX_STALE_DAYS` (14), unless the host has no `cmp` or no `curl` and so could never have compared them. |
-| Scanner image | Docker | `docker pull` when the last check is more than `__GHST_IMAGE_MAX_AGE_DAYS` (1) old. The image it replaces is removed if nothing else tags it. | Scan refuses once nothing has confirmed it for `__GHST_MAX_STALE_DAYS` (14). |
+| Scanner image | Docker | `docker pull` when the last confirmed check is more than `__GHST_IMAGE_MAX_AGE_DAYS` (1) old, or the last attempt found the registry unreachable more than `__GHST_IMAGE_UNREACHABLE_RETRY_MINUTES` (60) ago, so an offline machine waits on one registry timeout an hour. The image it replaces is removed if nothing else tags it. | Scan refuses once nothing has confirmed it for `__GHST_MAX_STALE_DAYS` (14). |
 | Trivy databases | `~/.cache/gh-security-toolkit/trivy-db` | The helper updates them incrementally, applying deltas rather than re-downloading. | Scan refuses at `__GHST_DB_MAX_AGE_DAYS` (14). |
 | Containers | Docker | Nothing to refresh: every run is `--rm`, so none are kept. | — |
 | Semgrep | Docker | Pinned to an exact version **and digest**, so Docker fetches it once and it cannot change until the pin moves. Bumping it is a deliberate edit, matched by CI's `pip install semgrep==`. | Not applicable: it cannot go stale without someone moving the pin. |
