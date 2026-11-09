@@ -34,7 +34,8 @@ Vulnerability database:
 
 Toolkit:
   scanx provenance                   What a scan here would run: image, databases, versions
-  scanx update                       Update scanx itself (git pull --ff-only)
+  scanx update                       Update scanx itself now (git pull --ff-only);
+                                     scans, db and provenance already do this first
   scanx clean                        Remove the cached scanner image
   scanx version                      Print the installed version
   scanx help                         This text
@@ -43,6 +44,7 @@ Environment:
   SCANX_FORMAT=table|json            Trivy output format on stdout (default: table);
                                      the full JSON report is always in .scanx/
   SCANX_OFFLINE=1                    No network: skip update checks, image pulls and Semgrep
+  SCANX_NO_UPDATE=1                  Network, but no update check before the command
   SCANX_NO_PROGRESS=1                Same as --no-progress
   SCANX_MAKE=gmake                   GNU make to use (macOS ships make 3.81)
 
@@ -91,6 +93,70 @@ version() {
 		echo "scanx (not a git clone) at $SCANX_HOME"
 	fi
 }
+
+# Discord-style: a scan starts by bringing itself up to date. Checking once a
+# day let a single failed check -- one evening without network -- keep a
+# machine on yesterday's scanner all of the next day, after a new image and
+# helper had been published.
+#
+# This half updates scanx itself: fetch the clone and fast-forward it to its
+# upstream, then start again from the updated script, since this one may be
+# what changed. It never merges, rebases or touches local changes; a clone that
+# cannot be fast-forwarded is reported and scanned as it is. The image half is
+# the Makefile's, told below to check on every run instead of once a day.
+short() { git -C "$SCANX_HOME" rev-parse --short=12 "$1" 2>/dev/null || echo unknown; }
+
+self_update() {
+	[ "${SCANX_OFFLINE:-0}" = "1" ] && return 0
+	[ "${SCANX_NO_UPDATE:-0}" = "1" ] && return 0
+	[ "${SCANX_UPDATED:-0}" = "1" ] && return 0
+	echo "🔄 Checking for updates..." >&2
+	if ! command -v git >/dev/null 2>&1 || ! git -C "$SCANX_HOME" rev-parse --git-dir >/dev/null 2>&1; then
+		echo "   scanx: $SCANX_HOME is not a git clone, not updated" >&2
+		return 0
+	fi
+	if ! upstream=$(git -C "$SCANX_HOME" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null); then
+		echo "   scanx: branch '$(git -C "$SCANX_HOME" branch --show-current)' tracks no upstream, not updated" >&2
+		return 0
+	fi
+	to=""
+	command -v timeout >/dev/null 2>&1 && to="timeout 20"
+	if ! GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes -o ConnectTimeout=10}" \
+		$to git -C "$SCANX_HOME" fetch --quiet >/dev/null 2>&1; then
+		echo "   scanx: could not reach $upstream, continuing with $(short HEAD)" >&2
+		return 0
+	fi
+	before=$(git -C "$SCANX_HOME" rev-parse HEAD)
+	if [ "$before" = "$(git -C "$SCANX_HOME" rev-parse '@{u}')" ]; then
+		echo "   scanx: up to date ($(short HEAD))" >&2
+		return 0
+	fi
+	if ! git -C "$SCANX_HOME" merge-base --is-ancestor HEAD '@{u}'; then
+		echo "   scanx: has commits that $upstream does not, not updated" >&2
+		return 0
+	fi
+	if [ -n "$(git -C "$SCANX_HOME" status --porcelain --untracked-files=no)" ]; then
+		echo "   scanx: has uncommitted changes, not updated" >&2
+		return 0
+	fi
+	if ! git -C "$SCANX_HOME" merge --ff-only --quiet '@{u}' >/dev/null 2>&1; then
+		echo "   scanx: fast-forward to $upstream failed, continuing with $(short HEAD)" >&2
+		return 0
+	fi
+	echo "⬆️  scanx updated $(short "$before") → $(short HEAD)" >&2
+	SCANX_UPDATED=1 exec "$SCANX_HOME/bin/scanx" "$@"
+}
+
+case ${1:-} in
+	scan | db | provenance)
+		self_update "$@"
+		if [ "${SCANX_NO_UPDATE:-0}" != "1" ]; then
+			__GHST_IMAGE_MAX_AGE_DAYS=0
+			__GHST_IMAGE_UNREACHABLE_RETRY_MINUTES=0
+			export __GHST_IMAGE_MAX_AGE_DAYS __GHST_IMAGE_UNREACHABLE_RETRY_MINUTES
+		fi
+		;;
+esac
 
 # The sec/ target, and any NAME=value make needs for it, from the subcommand.
 target=""

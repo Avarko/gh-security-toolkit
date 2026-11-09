@@ -69,7 +69,7 @@ scanx scan semgrep                  # SAST; needs network for semgrep.dev rulese
 
 scanx db update | status | clean    # shared vulnerability database cache
 scanx provenance                    # what a scan here would run
-scanx update                        # update scanx (git pull --ff-only)
+scanx update                        # update scanx now (scans already do it first)
 scanx clean                         # drop the cached scanner image
 scanx version | help
 ```
@@ -127,12 +127,15 @@ See [Ignore CVEs](#ignore-cves).
 
 ### Staying current
 
-Once a day `scanx` fetches its own clone and compares `Makefile.scanners` with
-the upstream of the checked-out branch. When they differ every scan says so and
-asks you to run `scanx update`; after 14 days without a confirmed-current
+Every `scanx scan`, `scanx db` and `scanx provenance` starts with
+"Checking for updates...": it fetches its own clone, fast-forwards it to the
+upstream of the checked-out branch and restarts itself if anything changed,
+then pulls the scanner image. A clone with local commits or uncommitted changes
+is reported and left as it is. If the network cannot be reached the scan goes
+on with what is installed and says so; after 14 days without a confirmed-current
 check, scans refuse, as described in [What keeps itself current](#what-keeps-itself-current).
-`SCANX_OFFLINE=1` is the way out on an air-gapped machine. The scanner image
-and the databases refresh themselves as before.
+`SCANX_NO_UPDATE=1` skips the check for one command; `SCANX_OFFLINE=1` is the
+way out on an air-gapped machine. The databases refresh themselves as before.
 
 `scanx` is run directly from the command line. Project Makefiles should not
 wrap it: repositories are shared with developers who do not have scanx.
