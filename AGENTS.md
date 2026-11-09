@@ -47,9 +47,11 @@ Before proposing a bump, check the candidate rather than its changelog:
 2. **Known vulnerabilities**: `trivy rootfs --scanners vuln --severity
    HIGH,CRITICAL --ignore-unfixed` on the extracted binary, compared with the
    current pin. Newer is not automatically safer.
-3. **What cannot be checked that way**: TruffleHog ships UPX-packed, so
-   neither `go version -m` nor Trivy can see inside it; judge it from
-   upstream's go.mod and release notes.
+3. **TruffleHog ships UPX-packed**, which hides its build info from both
+   `go version -m` and Trivy, so the image's self-check scan is blind to it.
+   Unpack a copy (`upx -d`, never running it) and check that like the
+   others. Trivy also skips a Go binary that is not executable: `chmod 0755`
+   the extracted files first, or every count comes back 0.
 4. **Record why**: the comment next to each pin says what it was chosen over
    and which known highs it still carries. Update it with the hashes.
 

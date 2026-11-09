@@ -98,12 +98,15 @@ jobs:
           # on the day of the build into the image, unreviewed. See "Pinned
           # components" in AGENTS.md before bumping.
           #
-          # v3.1.3 is the newest release (2026-10-12) and ships 20 known highs:
-          # go1.26.4, x/crypto v0.53.0, x/mod v0.37.0, x/net v0.56.0, x/text
-          # v0.38.0 and grpc v1.82.0. No release fixes them yet.
-          ver_cosign=v3.1.3
-          sha_cosign_amd64=4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
-          sha_cosign_arm64=c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a
+          # v3.1.4 (2026-10-20) replaced v3.1.3, which by then carried 25
+          # highs (go1.26.4, x/crypto, x/mod, x/net, x/text, grpc v1.82.0,
+          # go-jose, klauspost/compress). v3.1.4 is built with go1.27.3 and
+          # ships 1: x/net v0.61.0 CVE-2026-78661, fixed in v0.62.0, which no
+          # cosign release ships yet. Pinned at 20 days old, short of the
+          # three-week rule, because it removes 24 highs nothing older does.
+          ver_cosign=v3.1.4
+          sha_cosign_amd64=424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa
+          sha_cosign_arm64=ade83b7aac62e131cacfe96d958948b2150cc9efec46a570a2649b8e27dedad2
           echo "ver_cosign=$ver_cosign" >> "$GITHUB_OUTPUT"
 
           # Sigstore TUF bootstrap: the key every cosign binary below is
@@ -225,13 +228,14 @@ jobs:
           # bumping, and bump the self-check's scanner (self-checks.yml) with
           # it: that one must be no older than this.
           #
-          # v0.75.0 (2026-10-01) replaced v0.74.0, which carried 6 highs. It
-          # still ships 4, built with go1.27.1 and x/net v0.59.0: stdlib
-          # CVE-2026-78667, -78669 and -97031 (fixed in go1.27.2) and x/net
-          # CVE-2026-78669 (fixed in v0.60.0).
-          ver_trivy=v0.75.0
-          sha_trivy_amd64=c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f
-          sha_trivy_arm64=a1ee9f6ffb7d112b64ff726a2a0717c21175c1114361391f4a132956751a13b3
+          # v0.76.2 (2026-11-05) replaced v0.75.0, which carried 7 highs
+          # (stdlib x4, x/net v0.59.0 x2, go-jose v4.1.5). v0.76.2 is built
+          # with go1.27.3, x/net v0.62.0 and go-jose v4.1.6 and ships none.
+          # Pinned at 4 days old, an exception to the three-week rule: v0.76.0,
+          # the newest release old enough, still carries 3.
+          ver_trivy=v0.76.2
+          sha_trivy_amd64=bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf
+          sha_trivy_arm64=ab9d51f86e6a5fb936f605faff6b593ac51bc378fff4d3e8b9d58358b9c367c3
           echo "ver_trivy=$ver_trivy" >> "$GITHUB_OUTPUT"
 
           for arch in amd64 arm64; do
@@ -394,10 +398,17 @@ jobs:
           # The release binaries are UPX-packed, which hides Go's build info:
           # `go version -m` cannot read them and Trivy reports nothing for
           # them, so the self-check's scan of the image is blind to this one.
-          # A bump has to be judged from upstream's go.mod and release notes.
-          ver_trufflehog=v3.99.2
-          sha_trufflehog_amd64=3c7b0d1dc4278294269bfdd7594bca8bb28c78da0a4a06ad202ded37b48deca4
-          sha_trufflehog_arm64=929b81efffca752eafd58bf6f17bf725d354f338636a7bbbee65c086d2f9ddf3
+          # Unpack a copy with `upx -d` to check a candidate (AGENTS.md).
+          #
+          # v3.99.8 (2026-11-02) replaced v3.99.2, which unpacked carried 15
+          # highs. v3.99.8 is built with go1.27.3 and ships 4: go-jose v4.1.4
+          # (fixed in v4.1.6), x/net v0.60.0 (fixed in v0.62.0) and
+          # docker/docker v28.5.2 CVE-2026-41567 and -42306, which no release
+          # fixes. Pinned at 7 days old, an exception to the three-week rule:
+          # v3.99.3, the newest release old enough, still carries 6.
+          ver_trufflehog=v3.99.8
+          sha_trufflehog_amd64=7c3b02f160f28929a467e29e20fba98746e0729f6e37c3c25761e4f8789abe08
+          sha_trufflehog_arm64=a0382d83dd58c967af5dd0175cc732c62c836ab1d15dc9ae71b01a2d3f0911b2
           echo "ver_trufflehog=$ver_trufflehog" >> "$GITHUB_OUTPUT"
 
           CHECKSUMS="trufflehog_${ver_trufflehog#v}_checksums.txt"

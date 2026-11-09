@@ -45,7 +45,7 @@ runs:
       # version strings carrying a GOEXPERIMENT (see self-checks.yml).
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
       with:
-        version: 'v0.75.0'
+        version: 'v0.76.2'
         scan-type: 'fs'
         scan-ref: ${{ inputs.filesystem_path }}
         format: json
@@ -63,7 +63,7 @@ runs:
       continue-on-error: true
       uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
       with:
-        version: 'v0.75.0'
+        version: 'v0.76.2'
         image-ref: ${{ inputs.docker_image_ref }}
         format: json
         output: ${{ inputs.trivy_output_dir }}/trivy-image-results.json
