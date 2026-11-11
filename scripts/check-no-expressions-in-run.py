@@ -15,6 +15,8 @@ import re
 import sys
 
 RUN_START = re.compile(r"^\s*-?\s*run:\s*[|>]")
+# A one-line `run: cmd ...` carries its script on the key's own line.
+RUN_INLINE = re.compile(r"^\s*-?\s*run:\s*(?![|>])(\S.*)$")
 EXPRESSION = re.compile(r"\$\{\{([^}]*)\}\}")
 
 
@@ -45,6 +47,11 @@ def main():
     for path in paths:
         with open(path, encoding="utf-8") as handle:
             lines = handle.read().split("\n")
+        for k, line in enumerate(lines):
+            inline = RUN_INLINE.match(line)
+            if inline:
+                for expr in EXPRESSION.findall(inline.group(1)):
+                    findings.append((path, k + 1, expr.strip()))
         for start, end in run_blocks(lines):
             for k in range(start, end):
                 # Comments may name the syntax while explaining why it is banned.
