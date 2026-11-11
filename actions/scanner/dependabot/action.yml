@@ -16,7 +16,9 @@ runs:
   steps:
     - name: Prepare output directory
       shell: bash
-      run: mkdir -p "${{ inputs.dependabot_output_dir }}"
+      env:
+        OUTPUT_DIR: ${{ inputs.dependabot_output_dir }}
+      run: mkdir -p -- "$OUTPUT_DIR"
 
     - name: Fetch Dependabot alerts
       shell: bash

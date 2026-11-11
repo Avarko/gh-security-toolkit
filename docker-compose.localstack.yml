@@ -1,7 +1,8 @@
 version: '3.8'
 
 services:
-  localstack:
+  # LocalStack writes its own state inside the container; local development only.
+  localstack:  # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service
     image: localstack/localstack:latest
     ports:
       - "4566:4566"  # LocalStack Gateway
@@ -11,8 +12,10 @@ services:
       - PERSISTENCE=1
       - LOCALSTACK_HOST=localhost
     volumes:
+      # No Docker socket: only S3 runs here, and S3 starts no containers.
       - localstack_data:/var/lib/localstack
-      - /var/run/docker.sock:/var/run/docker.sock
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
       interval: 5s

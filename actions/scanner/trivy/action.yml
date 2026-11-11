@@ -25,7 +25,9 @@ runs:
   steps:
     - name: Prepare output directory
       shell: bash
-      run: mkdir -p "${{ inputs.trivy_output_dir }}"
+      env:
+        OUTPUT_DIR: ${{ inputs.trivy_output_dir }}
+      run: mkdir -p -- "$OUTPUT_DIR"
 
     - name: Trivy cache
       continue-on-error: true

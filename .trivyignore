@@ -1,0 +1,8 @@
+# cli/Dockerfile (the only Dockerfile here) copies verified-binaries/tuf-cache.tgz
+# with ADD on purpose: ADD unpacks a local archive itself, and the image has no
+# shell step to do it otherwise. No remote URL is involved.
+DS-0005
+
+# The scanner image is a CLI that exits after each run, not a service, so a
+# HEALTHCHECK has nothing to check.
+DS-0026
