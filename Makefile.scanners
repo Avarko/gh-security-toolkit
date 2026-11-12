@@ -973,18 +973,24 @@ sec/scan/trivy/config: __ghst-provenance # Scan IaC configs for misconfiguration
 # IMAGE goes into shell commands and a sed expression, so it is checked in
 # make, before any shell sees it: one word, made only of the characters an
 # image reference or ID can contain, none of which means anything to sh or to
-# sed with | as delimiter.
+# sed with | as delimiter. The allowed characters are stripped with a
+# recursive call rather than $(eval), which would expand the value a second
+# time and read # as a comment, so what it checked would not be what the
+# recipe runs. (A $(...) typed on make's command line is still expanded once
+# by make itself, as for every make variable.)
 #
-# The directory and the export are made readable to all (they hold nothing
-# but the image, under the user's own 0700-or-so cache): with rootless Docker
-# or userns-remap the container's uid is not the host's, and 0700/0600 would
-# lock Trivy out.
+# The scan directory and the export are readable to all, because with
+# rootless Docker or userns-remap the container's uid is not the host's and
+# 0700/0600 would lock Trivy out. Their parent is 0700, so other local users
+# still cannot reach a private image while it is there; the container needs
+# only the bind-mounted directory itself.
 __GHST_IMG_EXPORT_DIR = $(HOME)/.cache/gh-security-toolkit/image-export
 __GHST_IMG_INPUT := /scanx-image/image.tar
+__GHST_IMG_INPUT_RE := /scanx-image/image\.tar
 __GHST_REF_CHARS := a b c d e f g h i j k l m n o p q r s t u v w x y z \
 	A B C D E F G H I J K L M N O P Q R S T U V W X Y Z 0 1 2 3 4 5 6 7 8 9 . _ / : @ -
-__ghst-ref-rest = $(eval __ghst_ref_r := $(1))$(strip $(foreach c,$(__GHST_REF_CHARS),$(eval __ghst_ref_r := $(subst $(c),,$(__ghst_ref_r)))))$(__ghst_ref_r)
-__GHST_IMAGE_REF_BAD = $(or $(filter-out 1,$(words $(IMAGE))),$(call __ghst-ref-rest,$(IMAGE)))
+__ghst-strip = $(if $(2),$(call __ghst-strip,$(subst $(firstword $(2)),,$(1)),$(wordlist 2,$(words $(2)),$(2))),$(1))
+__GHST_IMAGE_REF_BAD = $(or $(filter-out 1,$(words $(IMAGE))),$(call __ghst-strip,$(IMAGE),$(__GHST_REF_CHARS)))
 
 .PHONY: sec/scan/trivy/img
 sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
@@ -995,9 +1001,9 @@ sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 	@echo "🔍 Scanning image $(IMAGE) (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
 	@$(__GHST_TRIVY_REPORT_PREPARE)
-	@mkdir -p "$(__GHST_IMG_EXPORT_DIR)" \
+	@mkdir -p "$(__GHST_IMG_EXPORT_DIR)" && chmod 700 "$(__GHST_IMG_EXPORT_DIR)" \
 		&& export_dir=$$(mktemp -d "$(__GHST_IMG_EXPORT_DIR)/scan.XXXXXX") || exit 2; \
-	trap '[ -n "$$export_dir" ] && rm -rf -- "$$export_dir"' EXIT; \
+	trap '[ -n "$$export_dir" ] && rm -rf -- "$$export_dir" || :' EXIT; \
 	trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP; \
 	chmod 755 "$$export_dir"; \
 	echo "📦 Exporting $(IMAGE) with docker save..." >&2; \
@@ -1009,7 +1015,7 @@ sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 		--format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
 	> $(__GHST_REPORT) && rc=0 || rc=$$?; \
 	if [ -s $(__GHST_REPORT) ] \
-		&& sed 's|$(__GHST_IMG_INPUT)|$(IMAGE)|g' $(__GHST_REPORT) > $(__GHST_REPORT).named; then \
+		&& sed 's|$(__GHST_IMG_INPUT_RE)|$(IMAGE)|g' $(__GHST_REPORT) > $(__GHST_REPORT).named; then \
 		mv $(__GHST_REPORT).named $(__GHST_REPORT); \
 	else \
 		rm -f $(__GHST_REPORT).named; \
