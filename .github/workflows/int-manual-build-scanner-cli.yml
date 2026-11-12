@@ -498,8 +498,9 @@ jobs:
             # the working directory, which is the scanned repository), must
             # resolve inside the Semgrep tree; $ORIGIN/.. that climbs out of it
             # fails like an absolute path. A NEEDED entry naming a path rather
-            # than a library is refused too. readelf is outside a pipeline, so
-            # a file it cannot read fails the step instead of passing.
+            # than a library is refused too, and so is a search path line that
+            # does not parse. readelf is outside a pipeline, so a file it
+            # cannot open fails the step instead of passing.
             site_abs=$(realpath "$site")
             bad=0
             while IFS= read -r -d '' f; do
@@ -517,8 +518,10 @@ jobs:
                   "$site_abs"|"$site_abs"/*) ;;
                   *) echo "::error::${rel} searches '${entry}' for libraries" >&2; bad=1 ;;
                 esac
-              done < <(printf '%s\n' "$dyn" | sed -n 's/.*(R[UN]*PATH).*\[\(.*\)\]$/\1/p' | tr ':' '\n')
-              if printf '%s\n' "$dyn" | grep -q '(NEEDED).*\[.*/.*\]'; then
+              done < <(printf '%s\n' "$dyn" \
+                | sed -n '/(R[UN]*PATH)/{s/^[^[]*\[\(.*\)\]$/\1/p;t;s/.*/<unparsed>/p}' \
+                | tr ':' '\n')
+              if grep -q '(NEEDED).*\[.*/.*\]' <<< "$dyn"; then
                 echo "::error::${rel} names a library by path" >&2; bad=1
               fi
             done < <(find "$site" -type f -print0)
