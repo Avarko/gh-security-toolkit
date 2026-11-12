@@ -50,7 +50,7 @@ not produce a wrong-looking answer. It produces a clean one.
  Makefile.scanners
    |
    |  (2) docker pull ghcr.io/avarko/gh-security-toolkit:main
-   |      -- image contents cosign/SLSA-verified at BUILD time
+   |      -- image contents verified at BUILD time
    v
  scanner container  (non-root uid 10001, --network=none)
    |
@@ -82,7 +82,9 @@ updates. A scanned repository cannot exfiltrate through the scanner.
 
 **The image build verifies everything it bundles.** Binaries are downloaded in
 CI and checked before they are copied in: cosign signature verification for
-cosign itself and Trivy, `slsa-verifier verify-artifact` for crane. The image
+cosign itself and Trivy. crane is built from its release tag with the job's
+Go, its module and dependencies checked against sum.golang.org, so it carries
+Go's current security fixes rather than the toolchain upstream released with. The image
 is published with SLSA3 provenance and an attested SBOM. Tool versions come
 from build args so a build is reproducible rather than "whatever was latest".
 

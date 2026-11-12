@@ -10,3 +10,10 @@ DS-0005
 # The scanner image is a CLI that exits after each run, not a service, so a
 # HEALTHCHECK has nothing to check.
 DS-0026
+
+# cosign v3.1.4 (the image's /usr/local/bin/cosign) is built with
+# golang.org/x/net v0.61.0: an x/net/html denial of service, fixed in v0.62.0.
+# cosign's main branch has v0.62.0 but no release does yet, and Wolfi's
+# cosign-3 3.1.4-r4 still carries v0.61.0. cosign here parses no HTML. The
+# entry expires so the finding comes back if no release fixes it by then.
+CVE-2026-78661 exp:2026-12-15

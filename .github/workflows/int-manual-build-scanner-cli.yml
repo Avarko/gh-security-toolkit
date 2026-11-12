@@ -50,18 +50,6 @@ jobs:
 
       # ---------- Resolve, verify, and download tool binaries ----------
 
-      # The verifier crane's provenance is checked with, so pinned like what
-      # it checks: it was releases/latest with no hash and no -f, which let
-      # whatever that URL served -- or an error page -- decide whether crane
-      # was trusted. v2.7.1 is the same release the verify job installs.
-      - name: Install SLSA verifier
-        run: |
-          set -euo pipefail
-          curl -fsSL https://github.com/slsa-framework/slsa-verifier/releases/download/v2.7.1/slsa-verifier-linux-amd64 \
-            -o slsa-verifier
-          echo "946dbec729094195e88ef78e1734324a27869f03e2c6bd2f61cbc06bd5350339  slsa-verifier" | sha256sum -c -
-          install -m 0755 slsa-verifier /usr/local/bin/slsa-verifier
-
       - name: Prepare binaries directory
         env:
           CONTEXT: ${{ env.CONTEXT }}
@@ -152,7 +140,7 @@ jobs:
           HOME="$COSIGN_HOME" "$COSIGN_BIN" initialize --output-file "$COSIGN_HOME/cosign-init.log"
           tar -C "$COSIGN_HOME" -czf "${CONTEXT}/verified-binaries/tuf-cache.tgz" .sigstore cosign-init.log
 
-      - name: Resolve & verify Crane (SLSA provenance)
+      - name: Build Crane from source
         id: crane
         env:
           CONTEXT: ${{ env.CONTEXT }}
@@ -160,57 +148,29 @@ jobs:
           set -euo pipefail
           CONTEXT="${CONTEXT}"
 
-          # Pinned rather than resolved to releases/latest, because here newer
-          # is not automatically safer. v0.22.0 dropped upstream's .go-version
-          # file in favour of go.mod's toolchain directive, but their release
-          # workflow sets GOTOOLCHAIN=local -- and setup-go skips the toolchain
-          # directive when that is set, falling back to the `go` directive.
-          # That one is a minimum-version floor, then reading 1.25.0, so
-          # v0.22.0 shipped built with go1.25.0 where v0.21.9 had shipped
-          # go1.26.5, carrying 14 extra unpatched stdlib highs. We held at
-          # v0.21.9 and waited for upstream to notice.
-          #
-          # They did. v0.22.1 declares `toolchain go1.26.6`, and both published
-          # Linux binaries verify as built with it, which clears the eight
-          # stdlib highs v0.21.9's go1.26.5 had accumulated by then. The pin
-          # stays a pin: what went wrong in v0.22.0 can recur the same way and
-          # just as quietly, since the floor only moves when upstream drops
-          # support for an old Go. Before bumping, check the candidate by hand
-          # -- download the release and run `go version -m crane`, which has to
-          # name a toolchain covering the current stdlib advisories. go.mod
-          # alone does not settle it; the v0.22.0 build disagreed with what its
-          # own go.mod asked for, and that is the whole reason for this pin.
-          #
-          # The sha256 of each tarball is pinned too. Provenance proves a
-          # tarball was built from the tag; the hash proves it is the one that
-          # was checked by hand.
+          # Built here from the release tag rather than downloaded, so the
+          # binary carries this job's Go (setup-go above, the newest 1.27.x)
+          # instead of whatever toolchain upstream released it with. Their
+          # v0.22.1 binaries are go1.26.6, and Go's own fixes since then
+          # (crypto/x509 CVE-2026-111943 among them) reach a downloaded crane
+          # only when upstream cuts a new release; v0.22.0 had even shipped
+          # with go1.25.0 against its own go.mod. go install fetches the tag's
+          # module and its dependencies through the Go module proxy and checks
+          # every one against sum.golang.org, the same way tuf-client above is
+          # trusted. The tag stays a pin: bump it when upstream releases.
           ver_crane=v0.22.1
-          sha_crane_amd64=0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0
-          sha_crane_arm64=898c0cff975f898a33e8c4580bdafb0e7c02c7faa33374e946762f97c4ab7110
           echo "ver_crane=$ver_crane" >> "$GITHUB_OUTPUT"
 
-          curl -fsSL "https://github.com/google/go-containerregistry/releases/download/${ver_crane}/multiple.intoto.jsonl" -o crane-provenance.intoto.jsonl
-
+          gobin="$(go env GOPATH)/bin"
           for arch in amd64 arm64; do
-            case "$arch" in
-              amd64) TARBALL="go-containerregistry_Linux_x86_64.tar.gz" ;;
-              arm64) TARBALL="go-containerregistry_Linux_arm64.tar.gz" ;;
-            esac
-
-            echo "Downloading crane for $arch: $TARBALL"
-            curl -fsSL "https://github.com/google/go-containerregistry/releases/download/${ver_crane}/${TARBALL}" -o "crane-${arch}.tgz"
-
-            expected_var="sha_crane_${arch}"
-            echo "${!expected_var}  crane-${arch}.tgz" | sha256sum -c -
-
-            echo "Verifying crane (${arch}) with SLSA provenance"
-            slsa-verifier verify-artifact "crane-${arch}.tgz" \
-              --provenance-path crane-provenance.intoto.jsonl \
-              --source-uri github.com/google/go-containerregistry \
-              --source-tag "${ver_crane}"
-
-            tar -xzf "crane-${arch}.tgz" crane
-            install -m 0755 crane "${CONTEXT}/verified-binaries/linux-${arch}/crane"
+            echo "Building crane ${ver_crane} for ${arch} with $(go env GOVERSION)"
+            # GOTOOLCHAIN=local: the Go set up above, never one a go.mod switches to.
+            GOTOOLCHAIN=local GOOS=linux GOARCH="$arch" CGO_ENABLED=0 \
+              go install -trimpath "github.com/google/go-containerregistry/cmd/crane@${ver_crane}"
+            # go install puts a cross-compiled binary in a GOOS_GOARCH subdirectory.
+            if [ "$arch" = "$(go env GOHOSTARCH)" ]; then built="$gobin/crane"; else built="$gobin/linux_${arch}/crane"; fi
+            go version -m "$built" | head -3
+            install -m 0755 "$built" "${CONTEXT}/verified-binaries/linux-${arch}/crane"
           done
 
       - name: Resolve Trivy

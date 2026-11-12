@@ -28,10 +28,9 @@ was newest on build day without anyone looking.
 | Trivy (self-check scanner) | `self-checks.yml` `version:` | must equal the image's; the script fails otherwise |
 | Trivy (CI action) | `actions/scanner/trivy/action.yml` `version:` | must equal the image's; the script fails otherwise |
 | cosign | `int-manual-build-scanner-cli.yml` `ver_cosign` | version + sha256 per arch, Sigstore key |
-| crane | `int-manual-build-scanner-cli.yml` `ver_crane` | version + sha256 per arch, SLSA provenance |
+| crane | `int-manual-build-scanner-cli.yml` `ver_crane` | release tag, built from source with the job's Go (setup-go 1.27.x); module and dependencies checked against sum.golang.org |
 | TruffleHog | `int-manual-build-scanner-cli.yml` `ver_trufflehog` | version + sha256 per arch, signed checksums |
 | Semgrep | `Makefile.scanners` `SEMGREP_VERSION` + digest; `actions/scanner/semgrep` | version + image digest |
-| slsa-verifier (build only) | `int-manual-build-scanner-cli.yml`, "Install SLSA verifier" | version + sha256 |
 | Trivy checks bundle | `int-manual-build-scanner-cli.yml`, "Download Trivy misconfiguration checks" | manifest digest (unsigned upstream); build fails if not installed |
 | BuildKit (build only) | `int-manual-build-scanner-cli.yml`, "Set up Buildx" | image digest |
 | Sigstore TUF bootstrap (build only) | `int-manual-build-scanner-cli.yml`, cosign step | tuf-client version (go.sum DB), root.json by commit + sha256 |
