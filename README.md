@@ -120,8 +120,9 @@ Read from the repository root:
   to Trivy as `--config`. Trivy itself would only find `trivy.yaml`.
 - `.semgrep.yaml` or `.semgrep.yml`: when present, `scanx` runs Semgrep with
   it instead of the registry rulesets. Semgrep does not pick it up by itself.
-- `.trivyignore` / `.trivyignore.yaml` and `.semgrepignore`: read by Trivy
-  and Semgrep directly.
+- `.trivyignore` and `.semgrepignore`: read by Trivy and Semgrep directly.
+  `.trivyignore.yaml` is read only when `trivy.yaml` names it with
+  `ignorefile: .trivyignore.yaml` (see [Ignoring findings](#ignoring-findings-trivyignore)).
 
 See [Ignore CVEs](#ignore-cves).
 
@@ -373,7 +374,7 @@ CVE-2023-35116 exp:2026-12-31
 CVE-2024-1234 exp:2026-10-01
 ```
 
-See [Ignoring findings (`.trivyignore`)](#ignoring-findings-.trivyignore) below for the full syntax, including per-path/per-package ignores via `.trivyignore.yaml`.
+See [Ignoring findings (`.trivyignore`)](#ignoring-findings-trivyignore) below for the full syntax, including per-path/per-package ignores via `.trivyignore.yaml`.
 
 ### GitHub Actions CI/CD
 
@@ -749,7 +750,14 @@ misconfigurations:
     statement: "Base image runs as root; acceptable for this internal tool."
 ```
 
-Both files are read straight from the repository root by the `trivy` binary the scanner steps invoke — nothing in this toolkit needs to be told they exist.
+**Trivy reads `.trivyignore.yaml` only when told to.** Its default ignore file is `.trivyignore`; the YAML file is used only when named with `--ignorefile` or with the `ignorefile` key in `trivy.yaml`. Neither `scanx` nor the CI action passes `--ignorefile`, so name it in `trivy.yaml` at the repository root, which both of them already pick up (or in the file `trivy_config` / `scanning.trivy.config` names). The path is relative to the repository root, where Trivy runs:
+
+```yaml
+# trivy.yaml
+ignorefile: .trivyignore.yaml
+```
+
+Trivy uses one ignore file, so once `trivy.yaml` names `.trivyignore.yaml`, a plain `.trivyignore` next to it is no longer read: move its entries into the YAML file.
 
 ### Security scan action inputs
 
@@ -801,7 +809,7 @@ found the same way. Two things differ from a local scan and are worth knowing:
   file at some other path, for when the file is not in the root or is not
   called `trivy.yaml`.
 
-`.trivyignore` needs no setting in either place: Trivy finds it by itself.
+`.trivyignore` needs no setting in either place: Trivy finds it by itself. `.trivyignore.yaml` does, see [Ignoring findings](#ignoring-findings-trivyignore).
 
 
 ```yaml

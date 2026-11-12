@@ -52,7 +52,8 @@ Trailing NAME=value arguments are passed to make, e.g.
   scanx scan trivy fs __GHST_TRIVY_TIMEOUT=10m
 
 Project configuration is read from the repository root: trivy.yaml,
-.trivyignore / .trivyignore.yaml, .semgrep.yaml, .semgrepignore.
+.trivyignore (or .trivyignore.yaml when trivy.yaml names it as ignorefile),
+.semgrep.yaml, .semgrepignore.
 EOF
 }
 
