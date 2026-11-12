@@ -126,6 +126,15 @@ __GRADLE_MOUNT   := $(if $(filter yes,$(__GRADLE_EXISTS)),-v $$HOME/.gradle/cach
 # provides without touching the workspace.
 __GHST_USER_OPTS := --user $(__GHST_HOST_UID):$(__GHST_HOST_GID) -e HOME=$(__GHST_SCAN_HOME)
 
+# Every container this file starts is locked down the same way, whatever it
+# runs: the image's own filesystem read-only, /tmp (which is HOME, see above)
+# a tmpfs discarded on exit, no Linux capabilities, and no way to gain
+# privileges through a setuid binary. The image has none and the scans need
+# none of this; it makes that a property Docker enforces rather than one the
+# image happens to have. A scan can write only what is mounted for it: the
+# report directory, Trivy's fanal tmpfs, the database cache for an update.
+__GHST_HARDEN_OPTS := --read-only --tmpfs /tmp --cap-drop=ALL --security-opt=no-new-privileges
+
 # Images built before VEX Hub was removed start an HTTP server for it in every
 # container unless told not to, and say so on stderr. Nothing read it. Newer images have no server and ignore this; it stays for
 # as long as an older image can still be in a developer's cache.
@@ -133,11 +142,11 @@ __GHST_SCAN_ENV := -e GHST_VEX_SERVE=0
 
 # Network isolation: --network=none ensures air-gapped execution (no data leaves your machine)
 ifeq ($(__GHST_MOUNT_RO),true)
-	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_USER_OPTS) $(__GHST_SCAN_ENV) \
+	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_HARDEN_OPTS) $(__GHST_USER_OPTS) $(__GHST_SCAN_ENV) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	 -v $(PWD):/workspace:ro $(__GHST_DB_MOUNT) $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
 else
-	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_USER_OPTS) $(__GHST_SCAN_ENV) \
+	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_HARDEN_OPTS) $(__GHST_USER_OPTS) $(__GHST_SCAN_ENV) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	-v $(PWD):/workspace $(__GHST_DB_MOUNT) $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
 endif
@@ -167,7 +176,7 @@ __GHST_TRIVY_TIMEOUT ?= 5m
 # 10001 and `sec/db/clean` could not remove them without sudo.
 #
 # Docker Desktop on macOS remaps ownership and hides this; Linux does not.
-__GHST_DB_RUN = $(__GHST_DOCKER_CMD) run --rm \
+__GHST_DB_RUN = $(__GHST_DOCKER_CMD) run --rm $(__GHST_HARDEN_OPTS) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	--user $(__GHST_HOST_UID):$(__GHST_HOST_GID) \
 	-v $(__GHST_DB_CACHE):/db-cache \
@@ -1005,7 +1014,7 @@ SEMGREP_CONFIGS ?= p/owasp-top-ten p/cwe-top-25 p/java p/javascript p/docker-com
 # library search path. The build workflow strips that, and refuses a binary
 # that still has it, but a repository mounted at /src could otherwise put its
 # own libc there for semgrep-core to load.
-SEMGREP_DOCKER_OPTS := --rm $(__GHST_USER_OPTS) \
+SEMGREP_DOCKER_OPTS := --rm $(__GHST_HARDEN_OPTS) $(__GHST_USER_OPTS) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	-v $(PWD):/workspace:ro -w /workspace
 
