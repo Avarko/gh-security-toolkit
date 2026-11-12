@@ -29,7 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / ".github/workflows/int-manual-build-scanner-cli.yml"
 SELF_CHECKS = ROOT / ".github/workflows/self-checks.yml"
-MAKEFILE = ROOT / "Makefile.scanners"
+SEMGREP_LOCK = ROOT / "cli" / "semgrep" / "requirements.in"
 TRIVY_ACTION = ROOT / "actions/scanner/trivy/action.yml"
 
 # Pin variable in the build workflow -> upstream repository.
@@ -81,8 +81,8 @@ def main() -> int:
         pins.append((name, repo, pinned(build, rf"^\s*ver_{name}=(v[\d.]+)\s*$", name),
                      BUILD.relative_to(ROOT)))
     pins.append(("semgrep", "semgrep/semgrep",
-                 "v" + pinned(MAKEFILE.read_text(), r"^SEMGREP_VERSION \?= ([\d.]+)", "semgrep"),
-                 MAKEFILE.relative_to(ROOT)))
+                 "v" + pinned(SEMGREP_LOCK.read_text(), r"^semgrep==([\d.]+)$", "semgrep"),
+                 SEMGREP_LOCK.relative_to(ROOT)))
 
     failed = False
     scanner = pinned(SELF_CHECKS.read_text(), r"^\s*version: (v[\d.]+)", "self-check Trivy")

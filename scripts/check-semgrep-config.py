@@ -16,6 +16,14 @@ different builds by construction rather than by accident.
 
 There is no fourth place that is the truth: this compares the three against
 each other and reports what differs, which is all a build needs to refuse.
+
+The scanner image now carries Semgrep itself, installed from
+cli/semgrep/requirements.txt, so the version is compared across that file, the
+requirements.in it is generated from, and the action. The image's Python is
+named in three places as well -- the package in cli/apko.yaml, the interpreter
+the build workflow installs wheels for and writes into the #! lines, and the
+one the lock is resolved for -- and wheels built for one Python do not load in
+another, so those are compared too.
 """
 import re
 import sys
@@ -26,6 +34,11 @@ ROOT = Path(__file__).resolve().parent.parent
 MAKEFILE = ROOT / "Makefile.scanners"
 ACTION = ROOT / "actions" / "scanner" / "semgrep" / "action.yml"
 CLIENT = ROOT / "actions" / "security-scan" / "scripts" / "read-client-config.sh"
+LOCK = ROOT / "cli" / "semgrep" / "requirements.txt"
+LOCK_IN = ROOT / "cli" / "semgrep" / "requirements.in"
+APKO = ROOT / "cli" / "apko.yaml"
+BUILD = ROOT / ".github" / "workflows" / "int-manual-build-scanner-cli.yml"
+LOCK_MAKEFILE = ROOT / "Makefile"
 
 
 def read(path):
@@ -65,13 +78,39 @@ def main():
     }
 
     versions = {
-        "Makefile.scanners": find(
-            MAKEFILE, r"^SEMGREP_VERSION \?= (\S+)$", "SEMGREP_VERSION assignment"
+        "cli/semgrep/requirements.txt": find(
+            LOCK, r"^semgrep==(\S+) \\$", "semgrep== line"
+        ),
+        "cli/semgrep/requirements.in": find(
+            LOCK_IN, r"^semgrep==(\S+)$", "semgrep== line"
         ),
         "actions/scanner/semgrep/action.yml": find(
             ACTION, r"semgrep==(\S+)$", "pinned pip install"
         ),
     }
+
+    pythons = {
+        "cli/apko.yaml": find(
+            APKO, r"^    - python-(3\.\d+)-base$", "python-3.X-base package"
+        ),
+        "build workflow --python-version": find(
+            BUILD, r"--python-version (3\.\d+) ", "pip --python-version"
+        ),
+        "build workflow #! line": find(
+            BUILD, r"#!/usr/bin/python(3\.\d+)\|", "#! replacement"
+        ),
+        "build workflow --abi": find(
+            BUILD, r"--abi cp3(\d+) ", "pip --abi"
+        ),
+        "Makefile SEMGREP_PYTHON": find(
+            LOCK_MAKEFILE, r"^SEMGREP_PYTHON := (3\.\d+)$", "SEMGREP_PYTHON assignment"
+        ),
+        "cli/semgrep/requirements.txt header": find(
+            LOCK, r"^# (3\.\d+) on manylinux", "Python version in the header"
+        ),
+    }
+    # --abi is spelled cp314, the rest 3.14.
+    pythons["build workflow --abi"] = "3." + pythons["build workflow --abi"]
 
     problems = []
 
@@ -89,6 +128,11 @@ def main():
         for where, value in versions.items():
             problems.append(f"  {where}: {value}")
 
+    if len(set(pythons.values())) != 1:
+        problems.append("The scanner image's Python version differs:")
+        for where, value in pythons.items():
+            problems.append(f"  {where}: {value}")
+
     if problems:
         print("\n".join(problems), file=sys.stderr)
         print(
@@ -101,8 +145,9 @@ def main():
 
     count = len(next(iter(configs.values())))
     print(
-        f"Semgrep {versions['Makefile.scanners']} and {count} ruleset(s), "
-        "agreed across all 3 declarations."
+        f"Semgrep {versions['cli/semgrep/requirements.txt']} and {count} ruleset(s), "
+        f"agreed across all 3 declarations; image Python "
+        f"{pythons['cli/apko.yaml']} agreed across {len(pythons)}."
     )
     return 0
 

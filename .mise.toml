@@ -13,3 +13,5 @@ jbang = "latest"
 # AWS CLI for LocalStack S3 operations
 awscli = "latest"
 apko = "1.4.11"
+# Re-locks cli/semgrep/requirements.txt (make image/semgrep-lock)
+uv = "0.13.6"
