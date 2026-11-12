@@ -11,6 +11,9 @@
 #   dash-binsh              /bin/sh, and only that: git runs its local transport
 #                           through `sh -c`, so without it TruffleHog cannot clone
 #                           the repository it scans ("cannot exec 'git-upload-pack'")
+#   python-3.14-base        the interpreter Semgrep runs on; Semgrep itself and its
+#                           Python dependencies are hash-locked wheels from PyPI
+#                           (cli/semgrep/requirements.txt), installed by CI
 #
 # The signing key is committed rather than fetched at build time, so a
 # compromised packages.wolfi.dev cannot hand the build a key of its choosing.
@@ -28,6 +31,7 @@ contents:
     - gnutar
     - gzip
     - dash-binsh
+    - python-3.14-base
 
 accounts:
   groups:

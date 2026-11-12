@@ -511,12 +511,11 @@ $(__GHST_SELF_TRIGGER):
 
 __GHST_MAX_STALE_DAYS ?= 14
 
-# Two halves rather than one, because they guard different things at different
-# prices. Semgrep runs out of its own image and never touches the scanner
-# image, so making a Semgrep scan wait on a docker pull it has no use for --
-# or refusing it because that pull has not happened -- would be a toll and not
-# a safeguard. It does depend on this file being current, because the command
-# line it runs is written here, so it takes the Makefile half.
+# Two halves rather than one, because they guard different things. Every scan
+# takes both now: Semgrep used to run out of an image of its own and took only
+# the Makefile half, but it runs from the scanner image too since it moved in.
+# The halves stay separate for the targets that need neither image nor scan,
+# and for the order of the messages below.
 #
 # Make stops at the first prerequisite that fails, so a machine stale in both
 # respects is told about one, fixes it, and is then told about the other.
@@ -664,10 +663,12 @@ __ghst-provenance: __ghst-db-ensure __ghst-self-check __ghst-freshness-floor
 			cosign_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.cosign.version)); \
 			crane_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.crane.version)); \
 			helper_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.trivy-db-helper.version)); \
+			semgrep_ver=$$($(call __GHST_LABEL,fi.evolver.ghst.semgrep.version)); \
 			echo "    digest      $${digest:-unknown}" >&2; \
 			echo "    revision    $${revision:-unknown}" >&2; \
 			echo "    trivy       $${trivy_ver:-unknown}" >&2; \
 			echo "    trufflehog  $${th_ver:-unknown}" >&2; \
+			echo "    semgrep     $${semgrep_ver:-unknown}" >&2; \
 			echo "    cosign      $${cosign_ver:-unknown}" >&2; \
 			echo "    crane       $${crane_ver:-unknown}" >&2; \
 			echo "    db helper   $${helper_ver:-unknown}" >&2; \
@@ -976,24 +977,17 @@ sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 # unless that file pulls p/ rules of its own. Nothing here assumes either way.
 # ============================================================================
 
-# Pinned to an exact version and digest, for the reason every action here is
-# pinned to a SHA: a tag moves and nothing ships. It was "latest" before, which
-# combined badly with nothing ever pulling it -- Docker kept whatever it had
-# first cached, indefinitely, so two developers could get different findings
-# from the same commit and neither could tell.
+# Semgrep runs from the scanner image, like Trivy, so it is updated, checked
+# for freshness and named in provenance the same way. It had an image of its
+# own until now (semgrep/semgrep, pinned by digest): a second pull of 1.5 GB,
+# and a second set of OS packages nobody here scanned. The version is fixed by
+# cli/semgrep/requirements.txt, with the hash of every wheel, and
+# actions/scanner/semgrep installs the same version, so a local scan and a CI
+# scan run the same Semgrep; scripts/check-semgrep-config.py fails the build if
+# the two drift apart.
 #
-# actions/scanner/semgrep installs this same version with pip, so a local scan
-# and a CI scan run the same Semgrep. scripts/check-semgrep-config.py fails the
-# build if the two drift apart. Bumping means moving both, plus the digest:
-#   docker buildx imagetools inspect semgrep/semgrep:<version> --format '{{.Manifest.Digest}}'
-#
-# 1.180.0 replaced 1.176.1, whose image carried 22 fixable highs and a
-# critical (PyJWT 2.13.0, urllib3 2.7.0, Alpine's python3, expat, pcre2); its
-# image has none. Same findings and errors on this repository with
-# SEMGREP_CONFIGS below. 1.180.0 drops QL rules and targets, unused here.
-SEMGREP_VERSION ?= 1.180.0
-SEMGREP_DIGEST ?= sha256:529ee8a277ec8adc5b534d7c74eea0a47e9de21d62852b6ba7ac6ba9566845c3
-SEMGREP_IMAGE ?= semgrep/semgrep:$(SEMGREP_VERSION)@$(SEMGREP_DIGEST)
+# SEMGREP_IMAGE stays overridable, to compare against another build.
+SEMGREP_IMAGE ?= $(__GHST_IMAGE)
 
 # The same rulesets CI runs. They were different lists in three files, so a
 # local scan and a CI scan disagreed about what they had checked -- this one is
@@ -1023,14 +1017,37 @@ __GHST_SEMGREP_REPORT = $(__GHST_REPORT_OUT)/semgrep.json
 SEMGREP_REPORT_OPTS = -v $(abspath $(__GHST_REPORT_OUT)):/scanx-out
 SEMGREP_REPORT_ARGS = --json-output=/scanx-out/semgrep.json --exclude=$(__GHST_REPORT_DIR)
 
+# An image from before Semgrep moved into it has no Semgrep label, and the
+# daily image check may have confirmed exactly that image minutes before this
+# file arrived. Rather than fail for up to a day, the check is repeated once,
+# now; only if the registry still has nothing newer does the scan give up.
+__GHST_SEMGREP_LABEL = $(__GHST_DOCKER_CMD) image inspect $(SEMGREP_IMAGE) \
+	--format '{{with index .Config.Labels "fi.evolver.ghst.semgrep.version"}}{{.}}{{end}}' 2>/dev/null
+
 .PHONY: sec/scan/semgrep
-sec/scan/semgrep: __ghst-floor-makefile # Scan code with Semgrep (uses .semgrep.yaml config)
+sec/scan/semgrep: __ghst-freshness-floor # Scan code with Semgrep (uses .semgrep.yaml config)
 	@if [ "$(GHST_OFFLINE)" = "1" ]; then \
 		echo "⏭️  Skipping Semgrep: its rulesets are fetched from semgrep.dev and GHST_OFFLINE=1." >&2; \
 		echo "   The Trivy scans do run air-gapped; this one has nothing to run without a network." >&2; \
 		exit 0; \
 	fi; \
-	echo "🔍 Scanning code with Semgrep $(SEMGREP_VERSION)..." >&2; \
+	semgrep_ver=$$($(__GHST_SEMGREP_LABEL)); \
+	if [ -z "$$semgrep_ver" ] && [ "$(SEMGREP_IMAGE)" = "$(__GHST_IMAGE)" ]; then \
+		echo "🔄 The cached scanner image predates Semgrep being in it; checking again." >&2; \
+		rm -f "$(__GHST_IMAGE_STAMP)"; \
+		$(MAKE) --no-print-directory $(if $(SCANX_HOME),-f $(__GHST_SELF)) __ghst-image-ensure || exit 2; \
+		semgrep_ver=$$($(__GHST_SEMGREP_LABEL)); \
+		if [ -z "$$semgrep_ver" ]; then \
+			if [ "$$(cat "$(__GHST_IMAGE_STAMP)" 2>/dev/null)" = unreachable ]; then \
+				echo "❌ $(__GHST_IMAGE) has no Semgrep, and the registry could not be reached for one that has." >&2; \
+			else \
+				echo "❌ $(__GHST_IMAGE) has no Semgrep yet: the image that adds it is not published." >&2; \
+			fi; \
+			echo "   Try again later; the Trivy scans are unaffected." >&2; \
+			exit 2; \
+		fi; \
+	fi; \
+	echo "🔍 Scanning code with Semgrep $${semgrep_ver:-(version unknown)}..." >&2; \
 	{ $(__GHST_REPORT_PREPARE) && rm -f $(__GHST_SEMGREP_REPORT); } || exit 2; \
 	config=""; \
 	for candidate in .semgrep.yaml .semgrep.yml; do \

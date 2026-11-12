@@ -40,6 +40,7 @@ jobs:
       ver_trufflehog: ${{ steps.trufflehog.outputs.ver_trufflehog }}
       ver_cosign: ${{ steps.cosign.outputs.ver_cosign }}
       ver_crane: ${{ steps.crane.outputs.ver_crane }}
+      ver_semgrep: ${{ steps.semgrep.outputs.ver_semgrep }}
       helper_version: ${{ steps.db-helper.outputs.helper_version }}
       binaries_sha256: ${{ steps.handoff.outputs.sha256 }}
     steps:
@@ -422,6 +423,66 @@ jobs:
             install -m 0755 trufflehog "${CONTEXT}/verified-binaries/linux-${arch}/trufflehog"
           done
 
+      # Semgrep is Python: the semgrep wheel and every dependency's, from PyPI,
+      # each checked against the hashes in cli/semgrep/requirements.txt
+      # (--require-hashes). Wheels only, so no package's build code runs here,
+      # and no resolution either: the file is the complete set (--no-deps).
+      # pip selects wheels for the image's interpreter and each architecture
+      # rather than the runner's, and installs them without running them.
+      #
+      # pip matches --platform literally, without the older manylinux tags a
+      # newer glibc also accepts, so each one up to the image's is listed.
+      # The wheels ask for 2.34 at most; Wolfi's glibc is newer.
+      #
+      # The two commands pip writes name the runner's Python in their #! line,
+      # so it is replaced with the image's. The bytecode Python would cache is
+      # not built here (--no-compile): this runner's Python is a different
+      # version, and the image sets PYTHONDONTWRITEBYTECODE instead.
+      #
+      # Bumping: requirements.in, then `make image/semgrep-lock`; see "Pinned
+      # components" in AGENTS.md. 1.180.0 is the version the image and CI's
+      # Semgrep action already ran (it had its own image until now).
+      - name: Install Semgrep
+        id: semgrep
+        env:
+          CONTEXT: ${{ env.CONTEXT }}
+        run: |
+          set -euo pipefail
+          req="${CONTEXT}/semgrep/requirements.txt"
+          ver_semgrep=$(sed -n 's/^semgrep==\([0-9][0-9.]*\) .*$/\1/p' "$req")
+          if [ -z "$ver_semgrep" ]; then
+            echo "::error::No semgrep== line in $req" >&2
+            exit 1
+          fi
+          echo "ver_semgrep=v${ver_semgrep}" >> "$GITHUB_OUTPUT"
+          python3 -m pip --version
+
+          for arch in amd64 arm64; do
+            case "$arch" in
+              amd64) machine=x86_64 ;;
+              arm64) machine=aarch64 ;;
+            esac
+            platforms=()
+            for minor in $(seq 17 34); do
+              platforms+=(--platform "manylinux_2_${minor}_${machine}")
+            done
+
+            out="${CONTEXT}/verified-binaries/linux-${arch}"
+            site="${out}/semgrep-site"
+            python3 -m pip install --disable-pip-version-check --no-cache-dir \
+              --target "$site" "${platforms[@]}" \
+              --python-version 3.14 --implementation cp --abi cp314 \
+              --only-binary=:all: --no-deps --no-compile --require-hashes \
+              -r "$req"
+
+            for cmd in semgrep pysemgrep; do
+              sed '1s|^#!.*$|#!/usr/bin/python3.14|' "${site}/bin/${cmd}" > "${out}/${cmd}"
+              chmod 0755 "${out}/${cmd}"
+            done
+            rm -r "${site}/bin"
+            file "${site}/semgrep/bin/semgrep-core"
+          done
+
       # A tarball rather than the directory: artifacts drop file modes, and
       # these are executables.
       - name: Hand the verified binaries to the build jobs
@@ -615,6 +676,7 @@ jobs:
             COSIGN_VER=${{ needs.prepare.outputs.ver_cosign }}
             CRANE_VER=${{ needs.prepare.outputs.ver_crane }}
             HELPER_VER=${{ needs.prepare.outputs.helper_version }}
+            SEMGREP_VER=${{ needs.prepare.outputs.ver_semgrep }}
           # No layer cache: what is built here is a handful of COPYs onto
           # a base that arrives by digest, so there is nothing worth caching.
 

@@ -30,7 +30,9 @@ was newest on build day without anyone looking.
 | cosign | `int-manual-build-scanner-cli.yml` `ver_cosign` | version + sha256 per arch, Sigstore key |
 | crane | `int-manual-build-scanner-cli.yml` `ver_crane` | release tag, built from source with the job's Go (setup-go 1.27.x); module and dependencies checked against sum.golang.org |
 | TruffleHog | `int-manual-build-scanner-cli.yml` `ver_trufflehog` | version + sha256 per arch, signed checksums |
-| Semgrep | `Makefile.scanners` `SEMGREP_VERSION` + digest; `actions/scanner/semgrep` | version + image digest |
+| Semgrep (image) | `cli/semgrep/requirements.in`, locked into `cli/semgrep/requirements.txt` by `make image/semgrep-lock` | every Python package by version and wheel hashes, wheels only (`--require-hashes --only-binary`), the same set for both architectures |
+| Semgrep (CI action) | `actions/scanner/semgrep` `semgrep==` | must equal the image's; `check-semgrep-config.py` fails otherwise |
+| Python (image) | `cli/apko.yaml` `python-3.X-base`; the build workflow's `--python-version`/`--abi`/`#!`; `Makefile` `SEMGREP_PYTHON` | all must agree; `check-semgrep-config.py` fails otherwise |
 | Trivy checks bundle | `int-manual-build-scanner-cli.yml`, "Download Trivy misconfiguration checks" | manifest digest (unsigned upstream); build fails if not installed |
 | BuildKit (build only) | `int-manual-build-scanner-cli.yml`, "Set up Buildx" | image digest |
 | Sigstore TUF bootstrap (build only) | `int-manual-build-scanner-cli.yml`, cosign step | tuf-client version (go.sum DB), root.json by commit + sha256 |
@@ -60,6 +62,15 @@ crane bump means checking that the new tag's go.mod `go` line is not newer
 than that Go: the build runs with GOTOOLCHAIN=local and fails rather than
 switch toolchains. Its dependencies can still carry vulnerabilities, so step 2
 applies too, on a local `go install` build of the new tag.
+
+Semgrep is the other exception: it is Python, so the bump is a new lock.
+Change the version in `cli/semgrep/requirements.in` (and in the action), run
+`make image/semgrep-lock`, and check the candidate by installing the lock the
+way the build workflow does (`pip install --target ... --platform ...
+--require-hashes`) and running step 2 on that directory: Trivy reads the
+installed packages' metadata. It does not see the shared libraries
+`semgrep-core` bundles in `semgrep/bin/libs` (OpenSSL, curl and others, copied
+in by auditwheel), so those are known only from Semgrep's release notes.
 
 Moving the image's Trivy means moving the self-check's scanner and the Trivy
 action's `version:` in the same commit.

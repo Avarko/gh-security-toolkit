@@ -23,6 +23,17 @@ COPY verified-binaries/linux-${TARGETARCH}/cosign          /usr/local/bin/cosign
 COPY verified-binaries/linux-${TARGETARCH}/crane           /usr/local/bin/crane
 COPY verified-binaries/linux-${TARGETARCH}/trivy-db-helper /usr/local/bin/trivy-db-helper
 
+# Semgrep: its Python packages, installed by CI from PyPI wheels whose hashes
+# cli/semgrep/requirements.txt fixes, and its two commands. `semgrep` runs
+# `pysemgrep` through PATH for most subcommands, so both go on it. The site
+# directory is root-owned like the binaries; Python therefore cannot cache
+# bytecode there, and PYTHONDONTWRITEBYTECODE stops it from trying.
+COPY verified-binaries/linux-${TARGETARCH}/semgrep-site    /opt/semgrep
+COPY verified-binaries/linux-${TARGETARCH}/semgrep         /usr/local/bin/semgrep
+COPY verified-binaries/linux-${TARGETARCH}/pysemgrep       /usr/local/bin/pysemgrep
+ENV PYTHONPATH=/opt/semgrep \
+    PYTHONDONTWRITEBYTECODE=1
+
 # Cosign's TUF cache, for verifying database signatures without a network.
 # CI creates verified-binaries/tuf-cache.tgz (.sigstore/ and cosign-init.log);
 # ADD unpacks a local archive itself, so the build needs no RUN step for it.
@@ -66,11 +77,13 @@ ARG TRUFFLEHOG_VER
 ARG COSIGN_VER
 ARG CRANE_VER
 ARG HELPER_VER
+ARG SEMGREP_VER
 LABEL fi.evolver.ghst.trivy.version="${TRIVY_VER}" \
       fi.evolver.ghst.trufflehog.version="${TRUFFLEHOG_VER}" \
       fi.evolver.ghst.cosign.version="${COSIGN_VER}" \
       fi.evolver.ghst.crane.version="${CRANE_VER}" \
-      fi.evolver.ghst.trivy-db-helper.version="${HELPER_VER}"
+      fi.evolver.ghst.trivy-db-helper.version="${HELPER_VER}" \
+      fi.evolver.ghst.semgrep.version="${SEMGREP_VER}"
 
 # The base already runs as ghst (uid 10001) in /workspace; stated again so
 # nobody has to open apko.yaml to find out.

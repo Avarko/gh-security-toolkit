@@ -329,7 +329,7 @@ old data.
 | Scanner image | Docker | `docker pull` when the last confirmed check is more than `__GHST_IMAGE_MAX_AGE_DAYS` (1) old, or the last attempt found the registry unreachable more than `__GHST_IMAGE_UNREACHABLE_RETRY_MINUTES` (60) ago, so an offline machine waits on one registry timeout an hour. The image it replaces is removed if nothing else tags it. | Scan refuses once nothing has confirmed it for `__GHST_MAX_STALE_DAYS` (14). |
 | Trivy databases | `~/.cache/gh-security-toolkit/trivy-db` | The helper updates them incrementally, applying deltas rather than re-downloading. | Scan refuses at `__GHST_DB_MAX_AGE_DAYS` (14). |
 | Containers | Docker | Nothing to refresh: every run is `--rm`, so none are kept. | — |
-| Semgrep | Docker | Pinned to an exact version **and digest**, so Docker fetches it once and it cannot change until the pin moves. Bumping it is a deliberate edit, matched by CI's `pip install semgrep==`. | Not applicable: it cannot go stale without someone moving the pin. |
+| Semgrep | Inside the scanner image | With the image. Its version and every Python package under it are pinned by hash in `cli/semgrep/requirements.txt`, matched by CI's `pip install semgrep==`. | As the scanner image. |
 | Semgrep rulesets | `semgrep.dev` | Fetched on every scan, so they are always current — and never reproducible. | Scan fails; Semgrep has no offline mode. |
 
 `GHST_OFFLINE=1` turns all of it off, including the refusals and including the
@@ -342,13 +342,10 @@ missing `cmp` or `curl` would otherwise be told, a fortnight later, to fix a
 network that was never the problem. The scanner image is still enforced there,
 since pulling it needs neither.
 
-The two refusals apply where each is relevant, which is not the same set of
-scans. `sec/scan/semgrep` runs out of Semgrep's own image and never touches the
-scanner image, so it is held to this file being current but not to that image
-having been pulled — making it wait on a pull it has no use for would be a toll
-rather than a safeguard. Every Trivy scan is held to both.
+Every scan is held to both refusals, Semgrep included: it runs from the
+scanner image too.
 
-Semgrep is the exception to all of this and the table says so twice. It is the
+Semgrep is the exception in one respect, and the table says so. It is the
 only scanner that needs the network *while it runs*: its rulesets live in a
 registry, and under `--network=none` it does not degrade but dies, with a
 Python traceback and exit 2. So `GHST_OFFLINE=1` skips it rather than leaving

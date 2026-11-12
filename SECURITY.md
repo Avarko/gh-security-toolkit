@@ -138,9 +138,11 @@ found this; reading the action did.
 **The same thing was true of Semgrep, spelled in Python.**
 `actions/scanner/semgrep` ran `pip3 install semgrep`, with no version, on the
 consumer's runner and inside the same token's reach — resolved from PyPI at the
-moment of the run. It is pinned to an exact version now, and the Makefile
-installs that same version by digest, so a local scan and a CI scan run the same
-binary. `scripts/check-semgrep-config.py` fails the build if the two drift, and
+moment of the run. It is pinned to an exact version now, and the scanner image
+carries that same version, installed from `cli/semgrep/requirements.txt`: every
+Python package Semgrep needs, each with the hashes of its wheels, wheels only, so
+nothing from PyPI runs at install time. A local scan and a CI scan therefore
+run the same Semgrep. `scripts/check-semgrep-config.py` fails the build if the two drift, and
 also if the rulesets they run drift, which they already had: eight locally
 against six in CI. That action also used to write its own `.semgrepignore` into
 the repository being scanned, overwriting whatever the project had there —
