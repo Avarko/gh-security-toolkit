@@ -120,8 +120,9 @@ Read from the repository root:
   to Trivy as `--config`. Trivy itself would only find `trivy.yaml`.
 - `.semgrep.yaml` or `.semgrep.yml`: when present, `scanx` runs Semgrep with
   it instead of the registry rulesets. Semgrep does not pick it up by itself.
-- `.trivyignore` / `.trivyignore.yaml` and `.semgrepignore`: read by Trivy
-  and Semgrep directly.
+- `.trivyignore` and `.semgrepignore`: read by Trivy and Semgrep directly.
+  `.trivyignore.yaml` is read only when `trivy.yaml` names it with
+  `ignorefile: .trivyignore.yaml` (see [Ignoring findings](#ignoring-findings-.trivyignore)).
 
 See [Ignore CVEs](#ignore-cves).
 
@@ -749,7 +750,14 @@ misconfigurations:
     statement: "Base image runs as root; acceptable for this internal tool."
 ```
 
-Both files are read straight from the repository root by the `trivy` binary the scanner steps invoke — nothing in this toolkit needs to be told they exist.
+**Trivy reads `.trivyignore.yaml` only when told to.** Its default ignore file is `.trivyignore`; the YAML file is used only when named with `--ignorefile` or with the `ignorefile` key in `trivy.yaml`. Neither `scanx` nor the CI action passes `--ignorefile`, so name it in `trivy.yaml` at the repository root, which both of them already pick up:
+
+```yaml
+# trivy.yaml
+ignorefile: .trivyignore.yaml
+```
+
+Trivy uses one ignore file, so once `trivy.yaml` names `.trivyignore.yaml`, a plain `.trivyignore` next to it is no longer read: move its entries into the YAML file.
 
 ### Security scan action inputs
 

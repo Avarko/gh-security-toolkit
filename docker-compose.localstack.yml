@@ -1,11 +1,12 @@
-version: '3.8'
-
 services:
   # LocalStack writes its own state inside the container; local development only.
   localstack:  # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service
-    image: localstack/localstack:latest
+    # 4.14.0 is the last LocalStack image that runs without an account: from
+    # 2026.x on, :latest exits 55 unless LOCALSTACK_AUTH_TOKEN is set. It gets no
+    # more updates, which is acceptable for a local S3 bound to this machine.
+    image: localstack/localstack:4.14.0@sha256:3ebc37595918b8accb852f8048fef2aff047d465167edd655528065b07bc364a
     ports:
-      - "4566:4566"  # LocalStack Gateway
+      - "127.0.0.1:4566:4566"  # LocalStack Gateway, this machine only
     environment:
       - SERVICES=s3
       - DEBUG=0
