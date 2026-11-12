@@ -384,6 +384,12 @@ this is the one command that mounts it.
 mounts the Docker socket, that is root-equivalent access to the host, and the
 scan itself still runs with `--network=none`.
 
+**Since removed altogether.** The target no longer mounts the socket: the host
+exports the image with `docker save` and Trivy scans that file with
+`trivy image --input`, the same findings without access to the Docker daemon.
+Every scanner container also runs `--read-only`, with `/tmp` as a tmpfs,
+`--cap-drop=ALL` and `--security-opt=no-new-privileges`.
+
 ---
 
 ## 5. Checks that hold this in place

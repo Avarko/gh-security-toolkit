@@ -55,9 +55,6 @@ __GHST_MOUNT_RO ?= true
 __GHST_HOST_UID := $(shell id -u)
 __GHST_HOST_GID := $(shell id -g)
 
-# Docker socket GID for image scanning (auto-detected)
-__DOCKER_SOCK_GID := $(shell stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null)
-
 # ============================================================================
 # Trivy vulnerability database cache
 #
@@ -126,6 +123,15 @@ __GRADLE_MOUNT   := $(if $(filter yes,$(__GRADLE_EXISTS)),-v $$HOME/.gradle/cach
 # provides without touching the workspace.
 __GHST_USER_OPTS := --user $(__GHST_HOST_UID):$(__GHST_HOST_GID) -e HOME=$(__GHST_SCAN_HOME)
 
+# Every container this file starts is locked down the same way, whatever it
+# runs: the image's own filesystem read-only, /tmp (which is HOME, see above)
+# a tmpfs discarded on exit, no Linux capabilities, and no way to gain
+# privileges through a setuid binary. The image has none and the scans need
+# none of this; it makes that a property Docker enforces rather than one the
+# image happens to have. A scan can write only what is mounted for it: the
+# report directory, Trivy's fanal tmpfs, the database cache for an update.
+__GHST_HARDEN_OPTS := --read-only --tmpfs /tmp --cap-drop=ALL --security-opt=no-new-privileges
+
 # Images built before VEX Hub was removed start an HTTP server for it in every
 # container unless told not to, and say so on stderr. Nothing read it. Newer images have no server and ignore this; it stays for
 # as long as an older image can still be in a developer's cache.
@@ -133,11 +139,11 @@ __GHST_SCAN_ENV := -e GHST_VEX_SERVE=0
 
 # Network isolation: --network=none ensures air-gapped execution (no data leaves your machine)
 ifeq ($(__GHST_MOUNT_RO),true)
-	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_USER_OPTS) $(__GHST_SCAN_ENV) \
+	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_HARDEN_OPTS) $(__GHST_USER_OPTS) $(__GHST_SCAN_ENV) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	 -v $(PWD):/workspace:ro $(__GHST_DB_MOUNT) $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
 else
-	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_USER_OPTS) $(__GHST_SCAN_ENV) \
+	__GHST_DOCKER_OPTS := --rm --network=none $(__GHST_HARDEN_OPTS) $(__GHST_USER_OPTS) $(__GHST_SCAN_ENV) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	-v $(PWD):/workspace $(__GHST_DB_MOUNT) $(__M2_MOUNT) $(__GRADLE_MOUNT) -w /workspace
 endif
@@ -167,11 +173,12 @@ __GHST_TRIVY_TIMEOUT ?= 5m
 # 10001 and `sec/db/clean` could not remove them without sudo.
 #
 # Docker Desktop on macOS remaps ownership and hides this; Linux does not.
-__GHST_DB_RUN = $(__GHST_DOCKER_CMD) run --rm \
+__GHST_DB_RUN = $(__GHST_DOCKER_CMD) run --rm $(__GHST_HARDEN_OPTS) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	--user $(__GHST_HOST_UID):$(__GHST_HOST_GID) \
 	-v $(__GHST_DB_CACHE):/db-cache \
 	-e GHST_DB_CACHE=/db-cache \
+	-e SQLITE_TMPDIR=/db-cache/.sqlite-tmp \
 	-e HOME=/tmp \
 	-e GHST_DB_REPO=$(__GHST_DB_REPO) \
 	-e GHST_DB_MAX_AGE_DAYS=$(__GHST_DB_MAX_AGE_DAYS) \
@@ -195,7 +202,13 @@ __GHST_PROGRESS = $$(case "$(GHST_PROGRESS)" in 0|false|no|off) echo 0 ;; *) if 
 
 # The cache directory must exist before Docker mounts it, or Docker creates it
 # owned by root.
-__GHST_DB_PREPARE = mkdir -p $(__GHST_DB_CACHE)
+#
+# The helper rebuilds the Java database's indices after a delta, and SQLite
+# spills the sort for that to its temporary directory: over a gigabyte. /tmp
+# in the container is a tmpfs, so that would be RAM, which a Docker VM on a
+# laptop may not have; SQLITE_TMPDIR (above) sends it to the cache's disk.
+# SQLite unlinks the files as it makes them, so nothing is left there.
+__GHST_DB_PREPARE = mkdir -p $(__GHST_DB_CACHE)/.sqlite-tmp
 
 .PHONY: sec/db/update
 sec/db/update: __ghst-image-ensure # Fetch Trivy database updates (incremental when possible)
@@ -945,23 +958,69 @@ sec/scan/trivy/config: __ghst-provenance # Scan IaC configs for misconfiguration
 	$(__GHST_IMAGE) trivy config . $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
 	> $(__GHST_REPORT) && rc=0 || rc=$$?; $(__GHST_REPORT_RENDER)
 
+# The image reaches Trivy as a file rather than through the Docker socket.
+# Mounting the socket gave the scanner root-equivalent access to this host on
+# every image scan; `docker save` on the host and `trivy image --input` in the
+# container need none of it, so this target now runs locked down and offline
+# like the others, as the invoking user.
+#
+# The export goes under the toolkit's cache in $HOME, which every Docker
+# runtime shares with its VM (see __GHST_REPORT_OUT), and is removed when the
+# recipe ends, Ctrl-C included. It needs about the image's size in free disk
+# while the scan runs. Trivy names what it scanned after the file, so the
+# report has the export's path replaced by the image's name.
+#
+# IMAGE goes into shell commands and a sed expression, so it is checked in
+# make, before any shell sees it: one word, made only of the characters an
+# image reference or ID can contain, none of which means anything to sh or to
+# sed with | as delimiter. The allowed characters are stripped with a
+# recursive call rather than $(eval), which would expand the value a second
+# time and read # as a comment, so what it checked would not be what the
+# recipe runs. (A $(...) typed on make's command line is still expanded once
+# by make itself, as for every make variable.)
+#
+# The scan directory and the export are readable to all, because with
+# rootless Docker or userns-remap the container's uid is not the host's and
+# 0700/0600 would lock Trivy out. Their parent is 0700, so other local users
+# still cannot reach a private image while it is there; the container needs
+# only the bind-mounted directory itself.
+__GHST_IMG_EXPORT_DIR = $(HOME)/.cache/gh-security-toolkit/image-export
+__GHST_IMG_INPUT := /scanx-image/image.tar
+__GHST_IMG_INPUT_RE := /scanx-image/image\.tar
+__GHST_REF_CHARS := a b c d e f g h i j k l m n o p q r s t u v w x y z \
+	A B C D E F G H I J K L M N O P Q R S T U V W X Y Z 0 1 2 3 4 5 6 7 8 9 . _ / : @ -
+__ghst-strip = $(if $(2),$(call __ghst-strip,$(subst $(firstword $(2)),,$(1)),$(wordlist 2,$(words $(2)),$(2))),$(1))
+__GHST_IMAGE_REF_BAD = $(or $(filter-out 1,$(words $(IMAGE))),$(call __ghst-strip,$(IMAGE),$(__GHST_REF_CHARS)))
+
 .PHONY: sec/scan/trivy/img
 sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
-	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" >&2 && exit 1)
+	@$(if $(IMAGE),:,echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" >&2; exit 1)
+	@$(if $(__GHST_IMAGE_REF_BAD),echo "❌ IMAGE is not an image reference: one word of only letters and digits and . _ / : @ -" >&2; exit 1,:)
+	@$(__GHST_DOCKER_CMD) image inspect "$(IMAGE)" >/dev/null 2>&1 \
+		|| (echo "❌ No local image $(IMAGE); build or pull it first" >&2 && exit 1)
 	@echo "🔍 Scanning image $(IMAGE) (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
-	@echo "ℹ️  Note: this target mounts the Docker socket so Trivy can read the" >&2
-	@echo "   image. That is root-equivalent access to this host, and this is the" >&2
-	@echo "   only target that needs it. The scan itself still runs with" >&2
-	@echo "   --network=none, like every other scan." >&2
 	@$(__GHST_TRIVY_REPORT_PREPARE)
-	$(__GHST_DOCKER_CMD) run --rm --network=none $(__GHST_SCAN_ENV) \
-	$(if $(__DOCKER_SOCK_GID),--group-add $(__DOCKER_SOCK_GID),) \
-	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
-	-v /var/run/docker.sock:/var/run/docker.sock \
-	-v $(PWD):/workspace:ro $(__GHST_DB_MOUNT) -w /workspace \
-	$(__GHST_IMAGE) trivy image $(IMAGE) $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) \
-	> $(__GHST_REPORT) && rc=0 || rc=$$?; $(__GHST_REPORT_RENDER)
+	@mkdir -p "$(__GHST_IMG_EXPORT_DIR)" && chmod 700 "$(__GHST_IMG_EXPORT_DIR)" \
+		&& export_dir=$$(mktemp -d "$(__GHST_IMG_EXPORT_DIR)/scan.XXXXXX") || exit 2; \
+	trap '[ -n "$$export_dir" ] && rm -rf -- "$$export_dir" || :' EXIT; \
+	trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP; \
+	chmod 755 "$$export_dir"; \
+	echo "📦 Exporting $(IMAGE) with docker save..." >&2; \
+	$(__GHST_DOCKER_CMD) save -o "$$export_dir/image.tar" "$(IMAGE)" || exit 2; \
+	chmod 644 "$$export_dir/image.tar"; \
+	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
+		-v "$$export_dir":$(dir $(__GHST_IMG_INPUT)):ro $(__GHST_IMAGE) \
+		trivy image --input $(__GHST_IMG_INPUT) $(__GHST_TRIVY_CONFIG_OPT) \
+		--format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
+	> $(__GHST_REPORT) && rc=0 || rc=$$?; \
+	if [ -s $(__GHST_REPORT) ] \
+		&& sed 's|$(__GHST_IMG_INPUT_RE)|$(IMAGE)|g' $(__GHST_REPORT) > $(__GHST_REPORT).named; then \
+		mv $(__GHST_REPORT).named $(__GHST_REPORT); \
+	else \
+		rm -f $(__GHST_REPORT).named; \
+	fi; \
+	$(__GHST_REPORT_RENDER)
 
 # ============================================================================
 # Semgrep - uses .semgrep.yaml or .semgrep.yml if present
@@ -1005,7 +1064,7 @@ SEMGREP_CONFIGS ?= p/owasp-top-ten p/cwe-top-25 p/java p/javascript p/docker-com
 # library search path. The build workflow strips that, and refuses a binary
 # that still has it, but a repository mounted at /src could otherwise put its
 # own libc there for semgrep-core to load.
-SEMGREP_DOCKER_OPTS := --rm $(__GHST_USER_OPTS) \
+SEMGREP_DOCKER_OPTS := --rm $(__GHST_HARDEN_OPTS) $(__GHST_USER_OPTS) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
 	-v $(PWD):/workspace:ro -w /workspace
 
