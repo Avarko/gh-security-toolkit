@@ -28,10 +28,9 @@ was newest on build day without anyone looking.
 | Trivy (self-check scanner) | `self-checks.yml` `version:` | must equal the image's; the script fails otherwise |
 | Trivy (CI action) | `actions/scanner/trivy/action.yml` `version:` | must equal the image's; the script fails otherwise |
 | cosign | `int-manual-build-scanner-cli.yml` `ver_cosign` | version + sha256 per arch, Sigstore key |
-| crane | `int-manual-build-scanner-cli.yml` `ver_crane` | version + sha256 per arch, SLSA provenance |
+| crane | `int-manual-build-scanner-cli.yml` `ver_crane` | release tag, built from source with the job's Go (setup-go 1.27.x); module and dependencies checked against sum.golang.org |
 | TruffleHog | `int-manual-build-scanner-cli.yml` `ver_trufflehog` | version + sha256 per arch, signed checksums |
 | Semgrep | `Makefile.scanners` `SEMGREP_VERSION` + digest; `actions/scanner/semgrep` | version + image digest |
-| slsa-verifier (build only) | `int-manual-build-scanner-cli.yml`, "Install SLSA verifier" | version + sha256 |
 | Trivy checks bundle | `int-manual-build-scanner-cli.yml`, "Download Trivy misconfiguration checks" | manifest digest (unsigned upstream); build fails if not installed |
 | BuildKit (build only) | `int-manual-build-scanner-cli.yml`, "Set up Buildx" | image digest |
 | Sigstore TUF bootstrap (build only) | `int-manual-build-scanner-cli.yml`, cosign step | tuf-client version (go.sum DB), root.json by commit + sha256 |
@@ -54,6 +53,13 @@ Before proposing a bump, check the candidate rather than its changelog:
    the extracted files first, or every count comes back 0.
 4. **Record why**: the comment next to each pin says what it was chosen over
    and which known highs it still carries. Update it with the hashes.
+
+crane is the exception: it is compiled from its tag with the build job's Go,
+so it has no hashes and its stdlib is whatever 1.27.x setup-go provides. A
+crane bump means checking that the new tag's go.mod `go` line is not newer
+than that Go: the build runs with GOTOOLCHAIN=local and fails rather than
+switch toolchains. Its dependencies can still carry vulnerabilities, so step 2
+applies too, on a local `go install` build of the new tag.
 
 Moving the image's Trivy means moving the self-check's scanner and the Trivy
 action's `version:` in the same commit.
