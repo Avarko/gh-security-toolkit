@@ -999,9 +999,15 @@ SEMGREP_CONFIGS ?= p/owasp-top-ten p/cwe-top-25 p/java p/javascript p/docker-com
 # the image happens to default to it. HOME is set for the same reason it is
 # there: Semgrep wants somewhere writable for its own scratch state, and the
 # workspace is mounted read-only.
+#
+# Mounted at /workspace, as for Trivy, and never at /src: the semgrep-core in
+# Semgrep's PyPI wheels carries its build directory, under /src, in its
+# library search path. The build workflow strips that, and refuses a binary
+# that still has it, but a repository mounted at /src could otherwise put its
+# own libc there for semgrep-core to load.
 SEMGREP_DOCKER_OPTS := --rm $(__GHST_USER_OPTS) \
 	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
-	-v $(PWD):/src:ro -w /src
+	-v $(PWD):/workspace:ro -w /workspace
 
 # The full report goes next to Trivy's in $(__GHST_REPORT_DIR), written by
 # Semgrep itself in the same run: --json-output adds a JSON file without

@@ -61,8 +61,8 @@ jobs:
             "${CONTEXT}/verified-binaries/linux-arm64" \
             "${CONTEXT}/verified-binaries/trivy-db"
 
-      - name: Install jq & openssl
-        run: sudo apt-get update && sudo apt-get install -y jq openssl
+      - name: Install jq, openssl & patchelf
+        run: sudo apt-get update && sudo apt-get install -y jq openssl patchelf
 
       - name: Setup go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
@@ -439,6 +439,13 @@ jobs:
       # not built here (--no-compile): this runner's Python is a different
       # version, and the image sets PYTHONDONTWRITEBYTECODE instead.
       #
+      # semgrep-core in the PyPI wheels keeps the directory it was built in,
+      # /src/semgrep-pro/..., ahead of $ORIGIN/libs in its RUNPATH, and the
+      # loader looks there first for every library, libc included. Whatever is
+      # mounted at /src could supply them, so the search path is cut back to
+      # the libraries the wheel ships, and any ELF file here whose search path
+      # still reaches outside its own directory fails the build.
+      #
       # Bumping: requirements.in, then `make image/semgrep-lock`; see "Pinned
       # components" in AGENTS.md. 1.180.0 is the version the image and CI's
       # Semgrep action already ran (it had its own image until now).
@@ -480,7 +487,26 @@ jobs:
               chmod 0755 "${out}/${cmd}"
             done
             rm -r "${site}/bin"
-            file "${site}/semgrep/bin/semgrep-core"
+
+            core="${site}/semgrep/bin/semgrep-core"
+            # shellcheck disable=SC2016  # $ORIGIN is for the loader, not the shell
+            patchelf --set-rpath '$ORIGIN/libs' "$core"
+            file "$core"
+
+            bad=0
+            while IFS= read -r -d '' f; do
+              [ "$(head -c 4 "$f" | od -An -c | tr -d ' ')" = '177ELF' ] || continue
+              paths=$(readelf -d "$f" 2>/dev/null | sed -n 's/.*(R[UN]*PATH).*\[\(.*\)\]$/\1/p')
+              [ -n "$paths" ] || continue
+              IFS=':' read -ra entries <<< "$paths"
+              for entry in "${entries[@]}"; do
+                case "$entry" in
+                  '$ORIGIN'|'$ORIGIN/'*) ;;
+                  *) echo "::error::${f#"${site}/"} searches ${entry} for libraries" >&2; bad=1 ;;
+                esac
+              done
+            done < <(find "$site" -type f -print0)
+            [ "$bad" -eq 0 ]
           done
 
       # A tarball rather than the directory: artifacts drop file modes, and
@@ -679,6 +705,18 @@ jobs:
             SEMGREP_VER=${{ needs.prepare.outputs.ver_semgrep }}
           # No layer cache: what is built here is a handful of COPYs onto
           # a base that arrives by digest, so there is nothing worth caching.
+
+      # Runs the image just pushed, on its own architecture: arm64 is
+      # otherwise never executed before it is tagged. Semgrep is the one tool
+      # here with an interpreter, #! lines and bundled libraries to get wrong.
+      - name: Smoke test
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker run --rm "$IMAGE" semgrep --version
+          docker run --rm "$IMAGE" pysemgrep --version
+          docker run --rm "$IMAGE" trivy --version
 
       # A matrix job's outputs overwrite each other, so each digest travels
       # as a file of its own.

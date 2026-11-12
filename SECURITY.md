@@ -141,8 +141,10 @@ consumer's runner and inside the same token's reach — resolved from PyPI at th
 moment of the run. It is pinned to an exact version now, and the scanner image
 carries that same version, installed from `cli/semgrep/requirements.txt`: every
 Python package Semgrep needs, each with the hashes of its wheels, wheels only, so
-nothing from PyPI runs at install time. A local scan and a CI scan therefore
-run the same Semgrep. `scripts/check-semgrep-config.py` fails the build if the two drift, and
+nothing from PyPI runs at install time. The CI action still installs with pip
+on the runner, pinned to the same Semgrep version but not to the same
+dependencies or hashes, until it runs from the image too.
+`scripts/check-semgrep-config.py` fails the build if the two versions drift, and
 also if the rulesets they run drift, which they already had: eight locally
 against six in CI. That action also used to write its own `.semgrepignore` into
 the repository being scanned, overwriting whatever the project had there —

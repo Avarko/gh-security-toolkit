@@ -71,6 +71,10 @@ way the build workflow does (`pip install --target ... --platform ...
 installed packages' metadata. It does not see the shared libraries
 `semgrep-core` bundles in `semgrep/bin/libs` (OpenSSL, curl and others, copied
 in by auditwheel), so those are known only from Semgrep's release notes.
+The wheel's `semgrep-core` also lists its build directory, `/src/...`, in
+its RUNPATH; the build workflow resets that to `$ORIGIN/libs` with patchelf
+and fails if any ELF file in the Semgrep tree still searches outside its own
+directory. Never mount a scanned repository at `/src`.
 
 Moving the image's Trivy means moving the self-check's scanner and the Trivy
 action's `version:` in the same commit.
