@@ -9,13 +9,18 @@ This check exists because the repository had 231 such interpolations, two of
 which were exploitable: a branch name reaching `eval` in the TruffleHog
 scanner, and the artifact-name validator executing the very input it was
 called on to make safe.
+
+Lines are matched, not parsed: a run: value in flow style ({run: ...}), under a
+quoted key, or a plain scalar continued onto the next line is not seen.
 """
 import glob
 import re
 import sys
 
 RUN_START = re.compile(r"^\s*-?\s*run:\s*[|>]")
-EXPRESSION = re.compile(r"\$\{\{([^}]*)\}\}")
+# A one-line `run: cmd ...` carries its script on the key's own line.
+RUN_INLINE = re.compile(r"^\s*-?\s*run:\s*(?![|>])(\S.*)$")
+EXPRESSION = re.compile(r"\$\{\{(.*?)\}\}")
 
 
 def run_blocks(lines):
@@ -41,21 +46,26 @@ def main():
         set(glob.glob("actions/**/action.yml", recursive=True))
         | set(glob.glob(".github/workflows/*.yml"))
     )
-    findings = []
+    findings = set()
     for path in paths:
         with open(path, encoding="utf-8") as handle:
             lines = handle.read().split("\n")
+        for k, line in enumerate(lines):
+            inline = RUN_INLINE.match(line)
+            if inline:
+                for expr in EXPRESSION.findall(inline.group(1)):
+                    findings.add((path, k + 1, expr.strip()))
         for start, end in run_blocks(lines):
             for k in range(start, end):
                 # Comments may name the syntax while explaining why it is banned.
                 if lines[k].lstrip().startswith("#"):
                     continue
                 for expr in EXPRESSION.findall(lines[k]):
-                    findings.append((path, k + 1, expr.strip()))
+                    findings.add((path, k + 1, expr.strip()))
 
     if findings:
         print("Expressions interpolated into run: bodies -- move them to env:\n")
-        for path, line, expr in findings:
+        for path, line, expr in sorted(findings):
             print(f"  {path}:{line}: ${{{{ {expr} }}}}")
         print(f"\n{len(findings)} finding(s). See SECURITY.md, F-1 to F-3.")
         return 1

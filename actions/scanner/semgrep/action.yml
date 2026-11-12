@@ -16,7 +16,9 @@ runs:
   steps:
     - name: Prepare output directory
       shell: bash
-      run: mkdir -p "${{ inputs.semgrep_output_dir }}"
+      env:
+        OUTPUT_DIR: ${{ inputs.semgrep_output_dir }}
+      run: mkdir -p -- "$OUTPUT_DIR"
 
     # Pinned, because this installs on the consumer's runner with the
     # consumer's token in the environment. It read "pip3 install semgrep",

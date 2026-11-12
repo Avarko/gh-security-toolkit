@@ -25,9 +25,9 @@ permissions:
 jobs:
   actions-hygiene:
     name: Actions hygiene
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: "No expressions inside run: bodies"
         run: python3 scripts/check-no-expressions-in-run.py
@@ -71,14 +71,14 @@ jobs:
 
   dashboard:
     name: Dashboard
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: dashboard
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
           node-version: 22
           cache: npm
@@ -104,9 +104,9 @@ jobs:
     # Pull requests cannot change the published image, and a contributor should
     # not see a red check for something they did not cause.
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # Scanned with Trivy directly rather than through the toolkit image,
       # so a vulnerability in the toolkit cannot suppress its own report.

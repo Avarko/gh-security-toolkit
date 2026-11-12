@@ -19,7 +19,7 @@ on:
 jobs:
   rebuild-dashboard:
     name: Rebuild Dashboard Only
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       pages: write
@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Generate timestamp
         id: ts
@@ -67,7 +67,8 @@ jobs:
 
       - name: Publish to GitHub Pages
         id: pages
-        uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@v1
+        # This repository's own release tag, which a self-reference cannot pin by SHA.
+        uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@v1  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
         with:
           github_token: ${{ github.token }}
           outdir: ${{ steps.setup.outputs.output_dir }}
