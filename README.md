@@ -831,6 +831,8 @@ severity:
 **Local development (Makefile):**
 - **Offline scans**: Trivy runs with `--network=none` against the vulnerability databases in the shared host cache (`scanx db update`); the image carries the misconfiguration checks and Cosign's TUF cache
 - **Read-only workspace mounts**: Your source code is mounted read-only (`:ro`) by default
+- **Locked-down containers**: every scanner container runs as your own uid with `--read-only` (only `/tmp`, a tmpfs, and what is mounted for it are writable), `--cap-drop=ALL` and `no-new-privileges`
+- **No Docker socket**: an image scan exports the image with `docker save` on the host and Trivy reads that file (`trivy image --input`), so no container gets access to the Docker daemon. The export needs about the image's size in free disk under `~/.cache/gh-security-toolkit/` while the scan runs, and is removed afterwards
 
 **GitHub Actions CI/CD:**
 - **Network communication only for publishing**: Results are published only to your own git repository's GitHub Releases/Pages

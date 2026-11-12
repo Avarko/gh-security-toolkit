@@ -55,9 +55,6 @@ __GHST_MOUNT_RO ?= true
 __GHST_HOST_UID := $(shell id -u)
 __GHST_HOST_GID := $(shell id -g)
 
-# Docker socket GID for image scanning (auto-detected)
-__DOCKER_SOCK_GID := $(shell stat -c '%g' /var/run/docker.sock 2>/dev/null || stat -f '%g' /var/run/docker.sock 2>/dev/null)
-
 # ============================================================================
 # Trivy vulnerability database cache
 #
@@ -954,23 +951,50 @@ sec/scan/trivy/config: __ghst-provenance # Scan IaC configs for misconfiguration
 	$(__GHST_IMAGE) trivy config . $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
 	> $(__GHST_REPORT) && rc=0 || rc=$$?; $(__GHST_REPORT_RENDER)
 
+# The image reaches Trivy as a file rather than through the Docker socket.
+# Mounting the socket gave the scanner root-equivalent access to this host on
+# every image scan; `docker save` on the host and `trivy image --input` in the
+# container need none of it, so this target now runs locked down and offline
+# like the others, as the invoking user.
+#
+# The export goes under the toolkit's cache in $HOME, which every Docker
+# runtime shares with its VM (see __GHST_REPORT_OUT), and is removed when the
+# recipe ends, Ctrl-C included. It needs about the image's size in free disk
+# while the scan runs. Trivy names what it scanned after the file, so the
+# report has the export's path replaced by the image's name; references are
+# limited to the characters Docker allows, and anything else is left as it is.
+__GHST_IMG_EXPORT_DIR = $(HOME)/.cache/gh-security-toolkit/image-export
+__GHST_IMG_INPUT := /scanx-image/image.tar
+
 .PHONY: sec/scan/trivy/img
 sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" >&2 && exit 1)
+	@$(__GHST_DOCKER_CMD) image inspect "$(IMAGE)" >/dev/null 2>&1 \
+		|| (echo "❌ No local image $(IMAGE); build or pull it first" >&2 && exit 1)
 	@echo "🔍 Scanning image $(IMAGE) (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
-	@echo "ℹ️  Note: this target mounts the Docker socket so Trivy can read the" >&2
-	@echo "   image. That is root-equivalent access to this host, and this is the" >&2
-	@echo "   only target that needs it. The scan itself still runs with" >&2
-	@echo "   --network=none, like every other scan." >&2
 	@$(__GHST_TRIVY_REPORT_PREPARE)
-	$(__GHST_DOCKER_CMD) run --rm --network=none $(__GHST_SCAN_ENV) \
-	$(if $(__DOCKER_SOCK_GID),--group-add $(__DOCKER_SOCK_GID),) \
-	$(if $(__GHST_PLATFORM),--platform=$(__GHST_PLATFORM),) \
-	-v /var/run/docker.sock:/var/run/docker.sock \
-	-v $(PWD):/workspace:ro $(__GHST_DB_MOUNT) -w /workspace \
-	$(__GHST_IMAGE) trivy image $(IMAGE) $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) \
-	> $(__GHST_REPORT) && rc=0 || rc=$$?; $(__GHST_REPORT_RENDER)
+	@mkdir -p "$(__GHST_IMG_EXPORT_DIR)" \
+		&& export_dir=$$(mktemp -d "$(__GHST_IMG_EXPORT_DIR)/scan.XXXXXX") || exit 2; \
+	trap 'rm -f "$$export_dir/image.tar"; rmdir "$$export_dir" 2>/dev/null' EXIT; \
+	trap 'exit 130' INT TERM HUP; \
+	echo "📦 Exporting $(IMAGE) with docker save..." >&2; \
+	$(__GHST_DOCKER_CMD) save -o "$$export_dir/image.tar" "$(IMAGE)" || exit 2; \
+	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
+		-v "$$export_dir":$(dir $(__GHST_IMG_INPUT)):ro $(__GHST_IMAGE) \
+		trivy image --input $(__GHST_IMG_INPUT) $(__GHST_TRIVY_CONFIG_OPT) \
+		--format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
+	> $(__GHST_REPORT) && rc=0 || rc=$$?; \
+	case "$(IMAGE)" in \
+		*[!A-Za-z0-9._/:@-]*) ;; \
+		*) if [ -s $(__GHST_REPORT) ] \
+			&& sed 's|$(__GHST_IMG_INPUT)|$(IMAGE)|g' $(__GHST_REPORT) > $(__GHST_REPORT).named; then \
+				mv $(__GHST_REPORT).named $(__GHST_REPORT); \
+			else \
+				rm -f $(__GHST_REPORT).named; \
+			fi ;; \
+	esac; \
+	$(__GHST_REPORT_RENDER)
 
 # ============================================================================
 # Semgrep - uses .semgrep.yaml or .semgrep.yml if present
