@@ -54,6 +54,12 @@ Before proposing a bump, check the candidate rather than its changelog:
 4. **Record why**: the comment next to each pin says what it was chosen over
    and which known highs it still carries. Update it with the hashes.
 
+crane is the exception: it is compiled from its tag with the build job's Go,
+so it has no hashes and its stdlib is whatever 1.27.x setup-go provides. A
+crane bump means checking that the new tag's go.mod `go` line is not newer
+than that Go: the build runs with GOTOOLCHAIN=local and fails rather than
+switch toolchains.
+
 Moving the image's Trivy means moving the self-check's scanner and the Trivy
 action's `version:` in the same commit.
 
