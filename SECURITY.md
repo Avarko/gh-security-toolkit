@@ -83,7 +83,7 @@ updates. A scanned repository cannot exfiltrate through the scanner.
 **The image build verifies everything it bundles.** Binaries are downloaded in
 CI and checked before they are copied in: cosign signature verification for
 cosign itself and Trivy. crane is built from its release tag with the newest
-Go 1.27.x, its module and dependencies checked against sum.golang.org, so it
+Go 1.27.x setup-go resolves, its module and dependencies checked against sum.golang.org, so it
 carries Go's current security fixes rather than the toolchain upstream
 released with; its image label names that Go. The image is published with
 SLSA3 provenance and an attested SBOM. Tool versions come from build args, so

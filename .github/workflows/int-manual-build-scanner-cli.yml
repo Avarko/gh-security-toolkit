@@ -69,8 +69,11 @@ jobs:
           # A supported release: tuf-client is what fetches the key every
           # cosign binary here is verified with, and crane is compiled with
           # it, so its patch level is the stdlib crane ships with.
-          # check-latest: the newest 1.27.x, not a copy cached on the runner
-          # image that can trail a Go security release.
+          # check-latest: the newest 1.27.x in actions/go-versions rather than
+          # a copy cached on the runner image, which can trail a Go security
+          # release. If that manifest cannot be fetched, setup-go falls back to
+          # the cached copy with only an info line; crane's image label records
+          # the Go actually used, so `scanx provenance` shows it either way.
           go-version: '1.27.x'
           check-latest: true
           # Only tuf-client and crane are built, and there is no go.mod here
@@ -154,7 +157,7 @@ jobs:
           CONTEXT="${CONTEXT}"
 
           # Built here from the release tag rather than downloaded, so the
-          # binary carries this job's Go (setup-go above, the newest 1.27.x)
+          # binary carries this job's Go (setup-go above, 1.27.x, check-latest)
           # instead of whatever toolchain upstream released it with. Their
           # v0.22.1 binaries are go1.26.6, and Go's own fixes since then
           # (crypto/x509 CVE-2026-111943 among them) reach a downloaded crane
