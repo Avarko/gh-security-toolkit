@@ -73,8 +73,9 @@ installed packages' metadata. It does not see the shared libraries
 in by auditwheel), so those are known only from Semgrep's release notes.
 The wheel's `semgrep-core` also lists its build directory, `/src/...`, in
 its RUNPATH; the build workflow resets that to `$ORIGIN/libs` with patchelf
-and fails if any ELF file in the Semgrep tree still searches outside its own
-directory. Never mount a scanned repository at `/src`.
+and fails if any ELF file in the Semgrep tree searches for libraries outside
+that tree (absolute, empty or escaping `$ORIGIN/..` entries) or names one by
+path. Never mount a scanned repository at `/src`.
 
 Moving the image's Trivy means moving the self-check's scanner and the Trivy
 action's `version:` in the same commit.

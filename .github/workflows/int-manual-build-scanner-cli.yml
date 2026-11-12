@@ -444,7 +444,7 @@ jobs:
       # loader looks there first for every library, libc included. Whatever is
       # mounted at /src could supply them, so the search path is cut back to
       # the libraries the wheel ships, and any ELF file here whose search path
-      # still reaches outside its own directory fails the build.
+      # reaches outside the Semgrep tree fails the build.
       #
       # Bumping: requirements.in, then `make image/semgrep-lock`; see "Pinned
       # components" in AGENTS.md. 1.180.0 is the version the image and CI's
@@ -493,18 +493,34 @@ jobs:
             patchelf --set-rpath '$ORIGIN/libs' "$core"
             file "$core"
 
+            # Every RPATH/RUNPATH entry of every ELF file, each line and each
+            # field, empty ones included (the loader reads an empty entry as
+            # the working directory, which is the scanned repository), must
+            # resolve inside the Semgrep tree; $ORIGIN/.. that climbs out of it
+            # fails like an absolute path. A NEEDED entry naming a path rather
+            # than a library is refused too. readelf is outside a pipeline, so
+            # a file it cannot read fails the step instead of passing.
+            site_abs=$(realpath "$site")
             bad=0
             while IFS= read -r -d '' f; do
               [ "$(head -c 4 "$f" | od -An -c | tr -d ' ')" = '177ELF' ] || continue
-              paths=$(readelf -d "$f" 2>/dev/null | sed -n 's/.*(R[UN]*PATH).*\[\(.*\)\]$/\1/p')
-              [ -n "$paths" ] || continue
-              IFS=':' read -ra entries <<< "$paths"
-              for entry in "${entries[@]}"; do
+              rel="${f#"${site}/"}"
+              dir=$(dirname "$f")
+              dyn=$(readelf -d "$f")
+              while IFS= read -r entry; do
                 case "$entry" in
-                  '$ORIGIN'|'$ORIGIN/'*) ;;
-                  *) echo "::error::${f#"${site}/"} searches ${entry} for libraries" >&2; bad=1 ;;
+                  '$ORIGIN') resolved=$(realpath -m "$dir") ;;
+                  '$ORIGIN/'*) resolved=$(realpath -m "${dir}/${entry#'$ORIGIN/'}") ;;
+                  *) resolved="" ;;
                 esac
-              done
+                case "$resolved" in
+                  "$site_abs"|"$site_abs"/*) ;;
+                  *) echo "::error::${rel} searches '${entry}' for libraries" >&2; bad=1 ;;
+                esac
+              done < <(printf '%s\n' "$dyn" | sed -n 's/.*(R[UN]*PATH).*\[\(.*\)\]$/\1/p' | tr ':' '\n')
+              if printf '%s\n' "$dyn" | grep -q '(NEEDED).*\[.*/.*\]'; then
+                echo "::error::${rel} names a library by path" >&2; bad=1
+              fi
             done < <(find "$site" -type f -print0)
             [ "$bad" -eq 0 ]
           done
@@ -715,6 +731,8 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm "$IMAGE" semgrep --version
+          # As scans run it: the host's uid, HOME=/tmp.
+          docker run --rm --user 12345:12345 -e HOME=/tmp "$IMAGE" semgrep --version
           docker run --rm "$IMAGE" pysemgrep --version
           docker run --rm "$IMAGE" trivy --version
 
