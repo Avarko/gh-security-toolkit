@@ -232,7 +232,7 @@ __ghst-db-ensure: __ghst-image-ensure
 # is exactly how a database-format change once shipped to the registry days
 # before any developer's local image could read it.
 #
-# Checked once per __GHST_IMAGE_MAX_AGE_DAYS rather than every invocation, so
+# A confirmed check holds for __GHST_IMAGE_MAX_AGE_DAYS rather than every invocation, so
 # an otherwise offline scan does not pay a registry round-trip each time. Same
 # shape as __GHST_DB_MAX_AGE_DAYS above, and for the same reason: a stale tool
 # should be refreshed on a schedule, not left to a developer noticing.
@@ -244,10 +244,12 @@ __ghst-db-ensure: __ghst-image-ensure
 # it was confirmed newest twenty minutes ago or last looked at on Wednesday.
 #
 # Three verdicts, and "unreachable" is the one worth having: it also stamps the
-# file, so the next scan will not retry for a day. That is deliberate -- a
-# developer on a train should not wait for a registry timeout before every scan
-# -- but it means the image can be arbitrarily old with nothing having failed,
-# which is only defensible now that the banner says so.
+# file, so the next scans do not retry at once. A developer on a train should
+# not wait for a registry timeout before every scan. But it is retried after
+# __GHST_IMAGE_UNREACHABLE_RETRY_MINUTES, not after the full day a confirmed
+# check gets: one failed pull in the evening used to keep a machine on the old
+# image until the same time the next evening, while every scan in between
+# reported it as published the day before.
 #
 # What the stamp says is what decides whether to skip, not that it exists. A
 # scan interrupted between the truncation and the write leaves an empty file,
@@ -256,6 +258,7 @@ __ghst-db-ensure: __ghst-image-ensure
 # ============================================================================
 
 __GHST_IMAGE_MAX_AGE_DAYS ?= 1
+__GHST_IMAGE_UNREACHABLE_RETRY_MINUTES ?= 60
 __GHST_IMAGE_STAMP := $(HOME)/.cache/gh-security-toolkit/.image-checked-$(subst /,_,$(__GHST_IMAGE_TAG))
 
 # The registry answering at all is the confirmation, whether it handed over a
@@ -275,8 +278,11 @@ __ghst-image-ensure:
 	   && $(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) >/dev/null 2>&1; then \
 		now=$$(date +%s); \
 		checked=$$(stat -c %Y "$(__GHST_IMAGE_STAMP)" 2>/dev/null || stat -f %m "$(__GHST_IMAGE_STAMP)"); \
-		age_days=$$(( (now - checked) / 86400 )); \
-		[ "$$age_days" -lt "$(__GHST_IMAGE_MAX_AGE_DAYS)" ] && exit 0; \
+		if [ "$$verdict" = unreachable ]; then \
+			[ $$(( (now - checked) / 60 )) -lt "$(__GHST_IMAGE_UNREACHABLE_RETRY_MINUTES)" ] && exit 0; \
+		else \
+			[ $$(( (now - checked) / 86400 )) -lt "$(__GHST_IMAGE_MAX_AGE_DAYS)" ] && exit 0; \
+		fi; \
 	fi; \
 	echo "🔄 Checking for a newer $(__GHST_IMAGE)..." >&2; \
 	before=$$($(__GHST_DOCKER_CMD) image inspect $(__GHST_IMAGE) --format '{{.Id}}' 2>/dev/null || true); \
@@ -625,7 +631,7 @@ __ghst-provenance: __ghst-db-ensure __ghst-self-check __ghst-freshness-floor
 	else \
 		case "$$(cat "$(__GHST_IMAGE_STAMP)" 2>/dev/null)" in \
 			current|updated) fresh="newest as of $$(stamp_age "$(__GHST_IMAGE_STAMP)")" ;; \
-			unreachable)     fresh="registry unreachable $$(stamp_age "$(__GHST_IMAGE_STAMP)")" ;; \
+			unreachable)     fresh="registry unreachable, last confirmed $$(stamp_age "$(__GHST_IMAGE_CONFIRMED)")" ;; \
 			*)               fresh="freshness unknown" ;; \
 		esac; \
 	fi; \
