@@ -178,6 +178,7 @@ __GHST_DB_RUN = $(__GHST_DOCKER_CMD) run --rm $(__GHST_HARDEN_OPTS) \
 	--user $(__GHST_HOST_UID):$(__GHST_HOST_GID) \
 	-v $(__GHST_DB_CACHE):/db-cache \
 	-e GHST_DB_CACHE=/db-cache \
+	-e SQLITE_TMPDIR=/db-cache/.sqlite-tmp \
 	-e HOME=/tmp \
 	-e GHST_DB_REPO=$(__GHST_DB_REPO) \
 	-e GHST_DB_MAX_AGE_DAYS=$(__GHST_DB_MAX_AGE_DAYS) \
@@ -201,7 +202,13 @@ __GHST_PROGRESS = $$(case "$(GHST_PROGRESS)" in 0|false|no|off) echo 0 ;; *) if 
 
 # The cache directory must exist before Docker mounts it, or Docker creates it
 # owned by root.
-__GHST_DB_PREPARE = mkdir -p $(__GHST_DB_CACHE)
+#
+# The helper rebuilds the Java database's indices after a delta, and SQLite
+# spills the sort for that to its temporary directory: over a gigabyte. /tmp
+# in the container is a tmpfs, so that would be RAM, which a Docker VM on a
+# laptop may not have; SQLITE_TMPDIR (above) sends it to the cache's disk.
+# SQLite unlinks the files as it makes them, so nothing is left there.
+__GHST_DB_PREPARE = mkdir -p $(__GHST_DB_CACHE)/.sqlite-tmp
 
 .PHONY: sec/db/update
 sec/db/update: __ghst-image-ensure # Fetch Trivy database updates (incremental when possible)
@@ -961,14 +968,28 @@ sec/scan/trivy/config: __ghst-provenance # Scan IaC configs for misconfiguration
 # runtime shares with its VM (see __GHST_REPORT_OUT), and is removed when the
 # recipe ends, Ctrl-C included. It needs about the image's size in free disk
 # while the scan runs. Trivy names what it scanned after the file, so the
-# report has the export's path replaced by the image's name; references are
-# limited to the characters Docker allows, and anything else is left as it is.
+# report has the export's path replaced by the image's name.
+#
+# IMAGE goes into shell commands and a sed expression, so it is checked in
+# make, before any shell sees it: one word, made only of the characters an
+# image reference or ID can contain, none of which means anything to sh or to
+# sed with | as delimiter.
+#
+# The directory and the export are made readable to all (they hold nothing
+# but the image, under the user's own 0700-or-so cache): with rootless Docker
+# or userns-remap the container's uid is not the host's, and 0700/0600 would
+# lock Trivy out.
 __GHST_IMG_EXPORT_DIR = $(HOME)/.cache/gh-security-toolkit/image-export
 __GHST_IMG_INPUT := /scanx-image/image.tar
+__GHST_REF_CHARS := a b c d e f g h i j k l m n o p q r s t u v w x y z \
+	A B C D E F G H I J K L M N O P Q R S T U V W X Y Z 0 1 2 3 4 5 6 7 8 9 . _ / : @ -
+__ghst-ref-rest = $(eval __ghst_ref_r := $(1))$(strip $(foreach c,$(__GHST_REF_CHARS),$(eval __ghst_ref_r := $(subst $(c),,$(__ghst_ref_r)))))$(__ghst_ref_r)
+__GHST_IMAGE_REF_BAD = $(or $(filter-out 1,$(words $(IMAGE))),$(call __ghst-ref-rest,$(IMAGE)))
 
 .PHONY: sec/scan/trivy/img
 sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
-	@[ -n "$(IMAGE)" ] || (echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" >&2 && exit 1)
+	@$(if $(IMAGE),:,echo "❌ Usage: make sec/scan/trivy/img IMAGE=name:tag" >&2; exit 1)
+	@$(if $(__GHST_IMAGE_REF_BAD),echo "❌ IMAGE is not an image reference: one word of only letters and digits and . _ / : @ -" >&2; exit 1,:)
 	@$(__GHST_DOCKER_CMD) image inspect "$(IMAGE)" >/dev/null 2>&1 \
 		|| (echo "❌ No local image $(IMAGE); build or pull it first" >&2 && exit 1)
 	@echo "🔍 Scanning image $(IMAGE) (offline mode)..." >&2
@@ -976,24 +997,23 @@ sec/scan/trivy/img: __ghst-provenance # Scan Docker image (IMAGE=name:tag)
 	@$(__GHST_TRIVY_REPORT_PREPARE)
 	@mkdir -p "$(__GHST_IMG_EXPORT_DIR)" \
 		&& export_dir=$$(mktemp -d "$(__GHST_IMG_EXPORT_DIR)/scan.XXXXXX") || exit 2; \
-	trap 'rm -f "$$export_dir/image.tar"; rmdir "$$export_dir" 2>/dev/null' EXIT; \
-	trap 'exit 130' INT TERM HUP; \
+	trap '[ -n "$$export_dir" ] && rm -rf -- "$$export_dir"' EXIT; \
+	trap 'exit 130' INT; trap 'exit 143' TERM; trap 'exit 129' HUP; \
+	chmod 755 "$$export_dir"; \
 	echo "📦 Exporting $(IMAGE) with docker save..." >&2; \
 	$(__GHST_DOCKER_CMD) save -o "$$export_dir/image.tar" "$(IMAGE)" || exit 2; \
+	chmod 644 "$$export_dir/image.tar"; \
 	$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) \
 		-v "$$export_dir":$(dir $(__GHST_IMG_INPUT)):ro $(__GHST_IMAGE) \
 		trivy image --input $(__GHST_IMG_INPUT) $(__GHST_TRIVY_CONFIG_OPT) \
 		--format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
 	> $(__GHST_REPORT) && rc=0 || rc=$$?; \
-	case "$(IMAGE)" in \
-		*[!A-Za-z0-9._/:@-]*) ;; \
-		*) if [ -s $(__GHST_REPORT) ] \
-			&& sed 's|$(__GHST_IMG_INPUT)|$(IMAGE)|g' $(__GHST_REPORT) > $(__GHST_REPORT).named; then \
-				mv $(__GHST_REPORT).named $(__GHST_REPORT); \
-			else \
-				rm -f $(__GHST_REPORT).named; \
-			fi ;; \
-	esac; \
+	if [ -s $(__GHST_REPORT) ] \
+		&& sed 's|$(__GHST_IMG_INPUT)|$(IMAGE)|g' $(__GHST_REPORT) > $(__GHST_REPORT).named; then \
+		mv $(__GHST_REPORT).named $(__GHST_REPORT); \
+	else \
+		rm -f $(__GHST_REPORT).named; \
+	fi; \
 	$(__GHST_REPORT_RENDER)
 
 # ============================================================================
