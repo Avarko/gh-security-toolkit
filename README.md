@@ -412,18 +412,24 @@ jobs:
 
 | Input | Default | |
 |---|---|---|
-| `path` | `.` | Directory to scan |
+| `path` | `.` | Directory to scan; its `trivy.yaml`, `.trivyignore(.yaml)`, `.semgrep.yaml` and `.semgrepignore` apply |
 | `image-ref` | | Image to scan as well; must be in the runner's Docker daemon |
 | `scanners` | `fs,config,semgrep` (+ `image` with `image-ref`) | Subset to run |
-| `output-dir` | `$RUNNER_TEMP/gh-security-toolkit` | Where the files go |
-| `fail-on-error` | `true` | Fail when a scanner produced no report. Findings never fail the step |
+| `output-dir` | `$RUNNER_TEMP/gh-security-toolkit` | Where the files go; must be outside `path` |
+| `fail-on-error` | `true` | Fail when a scanner did not complete or the database update failed. Findings never fail the step |
+
+`path` and `output-dir` may contain only letters, digits and `. _ / @ + = , : ~ -`,
+and `image-ref` only what an image reference can: the values reach `make`,
+which would otherwise expand them.
 
 Output files: `trivy-fs.json`, `trivy-config.json`, `trivy-image.json` and
 `semgrep.json` (each only if its scanner ran) are the tools' native JSON.
 `manifest.json` says which release and image ran, the tool and database
-versions, the target's commit and image, and for each scanner `ok`, `failed`
-or `skipped` -- the difference between "no findings" and "did not run". Its
-schema is [`actions/scan/manifest.schema.json`](actions/scan/manifest.schema.json).
+versions, the target's commit and image, which of the project's configuration
+files applied (a `.semgrep.yaml` replaces the default rulesets), and for each
+scanner `ok`, `failed` or `skipped` -- the difference between "no findings"
+and "did not run". Its schema is
+[`actions/scan/manifest.schema.json`](actions/scan/manifest.schema.json).
 
 The vulnerability databases (a few GB unpacked) are fetched on every run into
 `~/.cache/gh-security-toolkit/trivy-db`. Caching that directory with

@@ -29,9 +29,18 @@ concurrency:
 permissions: {}
 
 jobs:
+  # The action, on this very commit, against a project with known findings,
+  # on both architectures. Whatever the release pull request ran, main may
+  # have moved since.
+  test:
+    if: github.repository == 'Avarko/gh-security-toolkit' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/test-scan-action.yml
+
   release:
     name: Release v${{ inputs.version }}
-    if: github.repository == 'Avarko/gh-security-toolkit' && github.ref == 'refs/heads/main'
+    needs: [test]
     runs-on: ubuntu-24.04
     permissions:
       contents: write      # the tags and the GitHub release
@@ -56,14 +65,21 @@ jobs:
             exit 1
           fi
           tag="v$VERSION"
+          # A tag that already names this commit is a run being finished after
+          # a failure part way through: every step below is safe to repeat.
+          # On any other commit it is a released version, which never moves.
           if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-            echo "::error::$tag already exists. Released versions are never moved; release the next one."
-            exit 1
-          fi
-          newest=$(git tag -l 'v2.*.*' | sort -V | tail -n 1)
-          if [ -n "$newest" ] && [ "$(printf '%s\n%s\n' "$newest" "$tag" | sort -V | tail -n 1)" != "$tag" ]; then
-            echo "::error::$tag is not newer than $newest."
-            exit 1
+            if [ "$(git rev-parse "$tag^{commit}")" != "$(git rev-parse HEAD)" ]; then
+              echo "::error::$tag already exists on another commit. Released versions are never moved; release the next one."
+              exit 1
+            fi
+            echo "$tag already names this commit; completing the release."
+          else
+            newest=$(git tag -l 'v2.*.*' | sort -V | tail -n 1)
+            if [ -n "$newest" ] && [ "$(printf '%s\n%s\n' "$newest" "$tag" | sort -V | tail -n 1)" != "$tag" ]; then
+              echo "::error::$tag is not newer than $newest."
+              exit 1
+            fi
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "major=v${VERSION%%.*}" >> "$GITHUB_OUTPUT"
@@ -87,10 +103,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # The same checks the build's own verify job makes: provenance and SBOM
-      # signed by that workflow, in this repository. An image.ref pointing at
-      # anything else -- a typo, another repository's image -- stops here.
-      # The image must also have been built from this branch's history.
+      # The same checks the build's own verify job makes -- provenance and SBOM
+      # signed by that workflow, in this repository -- and that the build ran
+      # from main: a branch could carry its own copy of the workflow file. An
+      # image.ref pointing at anything else stops here. The commit the image
+      # names as its source must also be in main's history.
       - name: Check where the image came from
         id: check
         env:
@@ -103,6 +120,7 @@ jobs:
             gh attestation verify "oci://$IMAGE" \
               --repo "$GITHUB_REPOSITORY" \
               --signer-workflow "$signer" \
+              --source-ref refs/heads/main \
               --predicate-type "$predicate" \
               --bundle-from-oci > /dev/null
             echo "verified: $predicate"
@@ -163,8 +181,10 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "$TAG" -m "Scanner image: $IMAGE" HEAD
-          git push origin "refs/tags/$TAG"
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            git tag -a "$TAG" -m "$TAG" -m "Scanner image: $IMAGE" HEAD
+            git push origin "refs/tags/$TAG"
+          fi
           # Moving the major tag is the release reaching callers on @v2.
           git tag -f -a "$MAJOR" -m "$MAJOR -> $TAG" HEAD
           git push -f origin "refs/tags/$MAJOR"
@@ -194,4 +214,8 @@ jobs:
             echo "| trivy-db-helper | ${HELPER} |"
             echo "| TruffleHog | ${TRUFFLEHOG} |"
           } > notes.md
-          gh release create "$TAG" --verify-tag --title "$TAG" --notes-file notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file notes.md
+          fi

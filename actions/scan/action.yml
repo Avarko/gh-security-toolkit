@@ -13,7 +13,10 @@ description: >
 
 inputs:
   path:
-    description: "Directory to scan, relative to the workspace."
+    description: >
+      Directory to scan, relative to the workspace. Its trivy.yaml,
+      .trivyignore(.yaml), .semgrep.yaml and .semgrepignore apply, and are
+      listed in the manifest. Letters, digits and . _ / @ + = , : ~ - only.
     required: false
     default: "."
   image-ref:
@@ -30,13 +33,16 @@ inputs:
     required: false
     default: ""
   output-dir:
-    description: "Where to write the reports and manifest.json. Default: $RUNNER_TEMP/gh-security-toolkit."
+    description: >
+      Where to write the reports and manifest.json, outside the scanned path.
+      Default: $RUNNER_TEMP/gh-security-toolkit.
     required: false
     default: ""
   fail-on-error:
     description: >
-      Fail the step when a scanner produced no report. Findings never fail it;
-      a trivy.yaml exit-code does not either, but is recorded in the manifest.
+      Fail the step when a scanner did not complete or the database update
+      failed. Findings never fail it, a trivy.yaml exit-code included; the
+      manifest says per scanner what happened either way.
     required: false
     default: "true"
 

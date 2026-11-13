@@ -531,7 +531,12 @@ __GHST_MAX_STALE_DAYS ?= 14
 # so a newer one would be the wrong one. The self-check is skipped for the
 # same reason: an action is unpacked from a tarball, not a clone, and would
 # otherwise warn on every run that it cannot compare itself with anything.
-GHST_RELEASE ?=
+#
+# Taken from make's command line only: a GHST_RELEASE left in someone's
+# environment must not quietly switch these checks off for scanx.
+ifneq ($(origin GHST_RELEASE),command line)
+GHST_RELEASE :=
+endif
 
 # Two halves rather than one, because they guard different things. Every scan
 # takes both now: Semgrep used to run out of an image of its own and took only

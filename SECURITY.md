@@ -414,10 +414,12 @@ value except the one that matters.
 
 ## 6. Releasing
 
-Internal action references are pinned to `@v2`, so a consumer pinning a release
-gets that release all the way down. The cost is that `main` is not what
-consumers run: publishing means moving the tag. `scripts/check-internal-action-refs.py`
-fails if the references drift apart.
+Internal action references are pinned to `@v2`, so a consumer on `@v2` gets
+one release all the way down, and `main` is not what consumers run:
+publishing means moving the tag. `scripts/check-internal-action-refs.py` fails
+if the references drift apart. They follow the moving `v2`, so pinning
+`security-scan@v2.1.0` pins that action but not the siblings it calls.
+`actions/scan` calls none, and is the one to pin by version or commit.
 
 A release is two steps, each of which someone decides:
 

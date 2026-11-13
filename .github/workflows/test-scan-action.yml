@@ -10,7 +10,8 @@
 # toolkit itself, forever.
 #
 # Not a required check: it only runs when what it tests changes, and a
-# required check that does not run blocks the pull request.
+# required check that does not run blocks the pull request. The release
+# workflow calls it too, on the commit it is about to tag.
 name: Test actions/scan
 
 on:
@@ -26,6 +27,7 @@ on:
       - Makefile.scanners
       - .github/workflows/test-scan-action.yml
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -114,5 +116,31 @@ jobs:
           check "$OUT/trivy-fs.json" '[.Results[]?.Vulnerabilities[]?.VulnerabilityID] | index("CVE-2021-23337")' "fs scan finds CVE-2021-23337 in lodash"
           check "$OUT/trivy-config.json" '[.Results[]?.Misconfigurations[]? | select(.Status == "FAIL") | .ID] | index("DS-0002")' "config scan finds DS-0002"
           check "$OUT/trivy-image.json" '.SchemaVersion == 2 and .ArtifactName == "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"' "image scan reported on the image"
-          check "$OUT/semgrep.json" 'has("results") and has("errors")' "semgrep report"
+          check "$OUT/semgrep.json" '(.paths.scanned | length) > 0' "semgrep scanned files"
+          check "$MANIFEST" '.target.config_files == []' "no project config reported for the fixture"
           exit "$failed"
+
+      # The other half: a Semgrep that could not run its rules still writes
+      # a JSON report, with nothing scanned. It has to come out as failed.
+      - name: Break the Semgrep configuration
+        run: |
+          printf 'rules: [\n' > "$RUNNER_TEMP/fixture/.semgrep.yaml"
+
+      - name: Scan with the broken configuration
+        id: broken
+        uses: ./actions/scan
+        with:
+          path: ${{ runner.temp }}/fixture
+          scanners: semgrep
+          output-dir: ${{ runner.temp }}/broken
+          fail-on-error: "false"
+
+      - name: Check it is reported as failed
+        env:
+          MANIFEST: ${{ steps.broken.outputs.manifest }}
+        run: |
+          set -euo pipefail
+          jq -e '.scanners.semgrep.status == "failed" and .scanners.fs.status == "skipped"
+                 and (.target.config_files | index(".semgrep.yaml"))' "$MANIFEST" >/dev/null \
+            || { jq . "$MANIFEST"; echo "::error::a Semgrep run that scanned nothing was not reported as failed"; exit 1; }
+          echo "ok: broken Semgrep configuration reported as failed"
