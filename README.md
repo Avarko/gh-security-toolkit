@@ -373,6 +373,78 @@ CVE-2024-1234 exp:2026-10-01
 
 See [Ignoring findings (`.trivyignore`)](#ignoring-findings-trivyignore) below for the full syntax, including per-path/per-package ignores via `.trivyignore.yaml`.
 
+### Scanning in CI: `actions/scan@v2`
+
+`actions/scan` runs the same scans as `scanx scan`, from the same release of
+`Makefile.scanners`, in the scanner image that release names by digest. It
+installs nothing on the runner and publishes nothing: it writes each tool's own
+JSON report and a `manifest.json`, and what happens to them next is up to the
+workflow. A finding it reports can be reproduced with `scanx scan` on the same
+commit.
+
+```yaml
+name: Nightly production scan
+on:
+  schedule:
+    - cron: "17 2 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04   # Linux, with Docker, make, jq and git
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: v1.4.2          # what runs in production
+
+      # Optional: the production image, pulled with your own credentials.
+      - run: docker pull registry.example.com/app@sha256:...
+
+      - id: scan
+        uses: Avarko/gh-security-toolkit/actions/scan@v2
+        with:
+          image-ref: registry.example.com/app@sha256:...
+
+      # Reports and manifest are in ${{ steps.scan.outputs.output-dir }}.
+```
+
+| Input | Default | |
+|---|---|---|
+| `path` | `.` | Directory to scan |
+| `image-ref` | | Image to scan as well; must be in the runner's Docker daemon |
+| `scanners` | `fs,config,semgrep` (+ `image` with `image-ref`) | Subset to run |
+| `output-dir` | `$RUNNER_TEMP/gh-security-toolkit` | Where the files go |
+| `fail-on-error` | `true` | Fail when a scanner produced no report. Findings never fail the step |
+
+Output files: `trivy-fs.json`, `trivy-config.json`, `trivy-image.json` and
+`semgrep.json` (each only if its scanner ran) are the tools' native JSON.
+`manifest.json` says which release and image ran, the tool and database
+versions, the target's commit and image, and for each scanner `ok`, `failed`
+or `skipped` -- the difference between "no findings" and "did not run". Its
+schema is [`actions/scan/manifest.schema.json`](actions/scan/manifest.schema.json).
+
+The vulnerability databases (a few GB unpacked) are fetched on every run into
+`~/.cache/gh-security-toolkit/trivy-db`. Caching that directory with
+`actions/cache` in your own workflow saves most of the download.
+
+**Which ref to pin.** Releases are tagged `v2.x.y`, which never moves, and
+`v2`, which is moved to each new release once it has been tested by hand.
+
+| Pin | You get |
+|---|---|
+| `@v2` | Every compatible release, the run after it is published |
+| `@v2.1.0`, or its commit | Exactly that release; Dependabot proposes the next |
+
+Within v2 the inputs, outputs, file names and the manifest's existing fields
+keep their names, types and meaning. Fields, files, inputs and scanners may be
+added, so a reader should ignore what it does not know. A change that would
+break a reader -- including a tool changing its own report format, such as
+Trivy's `SchemaVersion` -- is released as v3, and `v2` stays where it is.
+
+`v1` is frozen at an August 2026 snapshot and is not updated; move to `v2`.
+
 ### GitHub Actions CI/CD
 
 The security scan runs as a composite action in the same job as your build. No artifact uploads needed - just pass the filesystem path and/or Docker image reference directly.
@@ -432,11 +504,11 @@ jobs:
       # Run security scan - everything in the same job!
       # Config from .gh-security-toolkit/config.yaml is automatically loaded
       - name: Security scan
-        uses: Avarko/gh-security-toolkit/actions/security-scan@main
+        uses: Avarko/gh-security-toolkit/actions/security-scan@v2
         with:
           channel: nightly-master
-          filesystem_paths: .                       # Scan the checkout directory
-          docker_image_ref: myapp:${{ github.sha }} # Scan the built image
+          scan_filesystem_paths: .                       # Scan the checkout directory
+          scan_docker_image_ref: myapp:${{ github.sha }} # Scan the built image
           publish_to: github-pages
 ```
 
@@ -447,7 +519,7 @@ jobs:
         run: mvn test jacoco:report surefire-report:report
 
       - name: Publish test reports
-        uses: Avarko/gh-security-toolkit/actions/publish-test-reports@main
+        uses: Avarko/gh-security-toolkit/actions/publish-test-reports@v2
         with:
           channel: main
           jacoco_report_path: target/site/jacoco
@@ -559,6 +631,7 @@ gh-security-toolkit/
 
 | Action | Purpose |
 |--------|---------|
+| **`actions/scan`** | Runs scanx's scans from the pinned scanner image; native JSON reports and a manifest, no publishing |
 | **`actions/security-scan`** | Main composite action: runs Trivy + Semgrep, summarizes, publishes |
 | **`actions/publish-test-reports`** | Publishes JaCoCo/Surefire test reports to GitHub Pages |
 

@@ -388,7 +388,7 @@ __GHST_SELF_TRIGGER := $(HOME)/.cache/gh-security-toolkit/.makefile-outdated-$(s
 
 .PHONY: __ghst-self-check
 __ghst-self-check:
-	@if [ "$(GHST_OFFLINE)" = "1" ]; then exit 0; fi; \
+	@if [ "$(GHST_OFFLINE)" = "1" ] || [ -n "$(GHST_RELEASE)" ]; then exit 0; fi; \
 	mkdir -p "$(dir $(__GHST_SELF_STAMP))"; \
 	verdict=$$(cat "$(__GHST_SELF_STAMP)" 2>/dev/null); \
 	case "$$verdict" in current|stale|unknown|unsupported) ;; *) verdict="" ;; esac; \
@@ -524,6 +524,15 @@ $(__GHST_SELF_TRIGGER):
 
 __GHST_MAX_STALE_DAYS ?= 14
 
+# A released copy of this file, run with the image its release names by
+# digest: actions/scan sets this to the release it was called at. Neither
+# half of the floor applies there. The Makefile is the release's, so there is
+# no newer one it should have been, and the image is the one tested with it,
+# so a newer one would be the wrong one. The self-check is skipped for the
+# same reason: an action is unpacked from a tarball, not a clone, and would
+# otherwise warn on every run that it cannot compare itself with anything.
+GHST_RELEASE ?=
+
 # Two halves rather than one, because they guard different things. Every scan
 # takes both now: Semgrep used to run out of an image of its own and took only
 # the Makefile half, but it runs from the scanner image too since it moved in.
@@ -547,7 +556,7 @@ __GHST_SELF_REMEDY = $(if $(SCANX_HOME),run: scanx update,delete $(__GHST_SELF) 
 __GHST_IMAGE_REMEDY = $(if $(SCANX_HOME),run 'scanx clean' to drop the cached image,run 'make sec/scan/clean' to drop the cached image)
 
 define __ghst-floor-check
-if [ "$(GHST_OFFLINE)" = "1" ]; then exit 0; fi; \
+if [ "$(GHST_OFFLINE)" = "1" ] || [ -n "$(GHST_RELEASE)" ]; then exit 0; fi; \
 mkdir -p "$(dir $(1))"; \
 if [ -n "$(3)" ] && [ "$$(cat "$(3)" 2>/dev/null)" = "unsupported" ]; then \
 	echo "⚠️  $(__GHST_SELF_UNSUPPORTED), so $(__GHST_SELF) cannot be compared with the published one. Its age is reported but not enforced." >&2; \
@@ -685,7 +694,9 @@ __ghst-provenance: __ghst-db-ensure __ghst-self-check __ghst-freshness-floor
 			echo "    cosign      $${cosign_ver:-unknown}" >&2; \
 			echo "    crane       $${crane_ver:-unknown}" >&2; \
 			echo "    db helper   $${helper_ver:-unknown}" >&2; \
-			if [ -n "$(SCANX_HOME)" ]; then \
+			if [ -n "$(GHST_RELEASE)" ]; then \
+				echo "    makefile    release $(GHST_RELEASE), image pinned by digest" >&2; \
+			elif [ -n "$(SCANX_HOME)" ]; then \
 				echo "    makefile    scanx $$(git -C "$(SCANX_HOME)" describe --tags --always --dirty 2>/dev/null || echo unknown) in $(SCANX_HOME), image tag '$(__GHST_IMAGE_TAG)'" >&2; \
 			else \
 				echo "    makefile    taken from '$(__GHST_VERSION)', image tag '$(__GHST_IMAGE_TAG)'" >&2; \

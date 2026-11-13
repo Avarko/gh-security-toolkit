@@ -35,7 +35,7 @@ jobs:
           fetch-depth: 0  # Full history for base comparison
       
       - name: Scan for secrets
-        uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@main
+        uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
         with:
           base: ${{ github.event.pull_request.base.sha }}
           head: ${{ github.event.pull_request.head.sha }}
@@ -58,7 +58,7 @@ jobs:
           fetch-depth: 0
       
       - name: Scan for secrets
-        uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@main
+        uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
         with:
           base: ${{ github.event.before }}
           head: ${{ github.event.after }}
@@ -73,7 +73,7 @@ Scan entire Git history:
   with:
     fetch-depth: 0  # Required for full history
 
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@main
+- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
   # No base/head specified = full history scan
 ```
 
@@ -85,7 +85,7 @@ Scan current files without Git history:
 - uses: actions/checkout@v7
   # No fetch-depth needed
 
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@main
+- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
   with:
     scan_type: filesystem
 ```
@@ -114,7 +114,7 @@ Scan current files without Git history:
 ### Only Fail on Verified Secrets
 
 ```yaml
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@main
+- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
   with:
     only_verified: true
     fail_on_findings: true
@@ -123,7 +123,7 @@ Scan current files without Git history:
 ### Warning Mode (Don't Fail)
 
 ```yaml
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@main
+- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
   with:
     fail_on_findings: false
 ```
@@ -131,7 +131,7 @@ Scan current files without Git history:
 ### Custom TruffleHog Arguments
 
 ```yaml
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@main
+- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
   with:
     extra_args: --no-update --concurrency=4
 ```
@@ -141,7 +141,7 @@ Scan current files without Git history:
 ```yaml
 - name: Scan for secrets
   id: scan
-  uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@main
+  uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
   with:
     fail_on_findings: false
 
@@ -191,7 +191,7 @@ Now TruffleHog runs on every commit!
 ### Scan Specific Branch
 
 ```yaml
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@main
+- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
   with:
     base: origin/main
     head: origin/develop
@@ -204,7 +204,7 @@ Now TruffleHog runs on every commit!
   with:
     fetch-depth: 10
 
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@main
+- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
   with:
     base: HEAD~10
     head: HEAD
@@ -213,11 +213,11 @@ Now TruffleHog runs on every commit!
 ### Multi-directory Scan
 
 ```yaml
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@main
+- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
   with:
     path: ./frontend
 
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@main
+- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
   with:
     path: ./backend
 ```
@@ -254,7 +254,7 @@ Try full history scan:
   with:
     fetch-depth: 0  # Important!
 
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@main
+- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
 ```
 
 ### Scan takes too long

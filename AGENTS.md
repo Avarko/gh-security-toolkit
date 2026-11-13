@@ -36,6 +36,7 @@ was newest on build day without anyone looking.
 | Trivy checks bundle | `int-manual-build-scanner-cli.yml`, "Download Trivy misconfiguration checks" | manifest digest (unsigned upstream); build fails if not installed |
 | BuildKit (build only) | `int-manual-build-scanner-cli.yml`, "Set up Buildx" | image digest |
 | Sigstore TUF bootstrap (build only) | `int-manual-build-scanner-cli.yml`, cosign step | tuf-client version (go.sum DB), root.json by commit + sha256 |
+| Scanner image used by `actions/scan` | `actions/scan/image.ref` | image digest, changed only by a release pull request; `release.yml` checks its build provenance and tags it (see SECURITY.md, Releasing) |
 | trivy-db-helper | newest `helper-vX.Y.Z` in ghcr.io/avarko/trivy-incremental-dbs | cosign keyless signature from its release-helper.yml at that tag; checksums in the artifact |
 | OS layer (Wolfi packages) | `cli/apko.yaml` + `cli/apko.lock.json` | every package by version and checksum, verified against the committed Wolfi key (`cli/wolfi-signing.rsa.pub`); the build refuses a lock that does not match the config. `make image/lock` re-resolves to the newest packages |
 | apko (build only) | `int-manual-build-scanner-cli.yml` `ver_apko`; `.mise.toml` locally | version + sha256, Chainguard-signed checksums |
@@ -232,7 +233,7 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Security scan
-        uses: Avarko/gh-security-toolkit/actions/security-scan@main
+        uses: Avarko/gh-security-toolkit/actions/security-scan@v2
         with:
           channel: "manual"
           filesystem_path: .
@@ -380,7 +381,7 @@ Example:
   run: docker build -t myapp:latest .
 
 - name: Security scan
-  uses: Avarko/gh-security-toolkit/actions/security-scan@main
+  uses: Avarko/gh-security-toolkit/actions/security-scan@v2
   with:
     docker_image_ref: myapp:latest  # Trivy scans this directly
 ```
@@ -510,7 +511,7 @@ npm run build  # Output: dashboard/dist/
 ### Production Build (in workflow)
 
 ```yaml
-- uses: Avarko/gh-security-toolkit/actions/builder/dashboard@main
+- uses: Avarko/gh-security-toolkit/actions/builder/dashboard@v2
   # Outputs artifact: security-dashboard-build
 ```
 

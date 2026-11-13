@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Avarko/gh-security-toolkit/blob/v2/actions/scan/manifest.schema.json",
+  "title": "actions/scan manifest.json, format 2.x",
+  "description": "What produced a scan's reports and whether each scanner ran. Within format 2.x fields are only added, never removed or changed: readers should ignore what they do not know and check that format_version starts with '2.'.",
+  "type": "object",
+  "required": ["format_version", "toolkit", "databases", "target", "run", "scanners"],
+  "properties": {
+    "format_version": { "type": "string", "pattern": "^2\\.[0-9]+$" },
+    "toolkit": {
+      "type": "object",
+      "required": ["release", "image", "tools"],
+      "properties": {
+        "release": { "type": "string", "description": "The ref the action was called at (v2, v2.1.0, a commit), or 'local'." },
+        "repository": { "type": ["string", "null"] },
+        "image": { "type": "string", "pattern": "^ghcr\\.io/avarko/gh-security-toolkit@sha256:[0-9a-f]{64}$" },
+        "image_revision": { "type": ["string", "null"], "description": "Commit the scanner image was built from." },
+        "tools": {
+          "type": "object",
+          "required": ["trivy", "semgrep", "trivy_db_helper"],
+          "properties": {
+            "trivy": { "type": ["string", "null"] },
+            "semgrep": { "type": ["string", "null"] },
+            "trivy_db_helper": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "databases": {
+      "type": "object",
+      "required": ["update_exit_code", "main", "java"],
+      "properties": {
+        "update_exit_code": { "type": "integer", "description": "Non-zero when the update failed; the scans then used whatever the cache held, or failed." },
+        "main": { "type": ["string", "null"], "pattern": "^[0-9]{8}$", "description": "Publication date (YYYYMMDD) of the vulnerability database scanned against." },
+        "java": { "type": ["string", "null"], "pattern": "^[0-9]{8}$" }
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": ["path", "git", "image"],
+      "properties": {
+        "path": { "type": "string" },
+        "git": {
+          "type": "object",
+          "required": ["remote", "commit", "describe"],
+          "properties": {
+            "remote": { "type": ["string", "null"] },
+            "commit": { "type": ["string", "null"] },
+            "describe": { "type": ["string", "null"] }
+          }
+        },
+        "image": {
+          "type": ["object", "null"],
+          "required": ["ref"],
+          "properties": {
+            "ref": { "type": "string" },
+            "id": { "type": ["string", "null"] },
+            "repo_digest": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "required": ["started_at", "finished_at"],
+      "properties": {
+        "repository": { "type": ["string", "null"] },
+        "url": { "type": ["string", "null"] },
+        "started_at": { "type": "string", "format": "date-time" },
+        "finished_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "scanners": {
+      "type": "object",
+      "description": "One entry per known scanner. 'ok' means its report exists and is the tool's JSON, findings or not; 'failed' means it produced none; 'skipped' means it was not asked to run.",
+      "required": ["fs", "config", "image", "semgrep"],
+      "additionalProperties": { "$ref": "#/$defs/scanner" },
+      "properties": {
+        "fs": { "$ref": "#/$defs/scanner" },
+        "config": { "$ref": "#/$defs/scanner" },
+        "image": { "$ref": "#/$defs/scanner" },
+        "semgrep": { "$ref": "#/$defs/scanner" }
+      }
+    }
+  },
+  "$defs": {
+    "scanner": {
+      "type": "object",
+      "required": ["status", "exit_code", "file"],
+      "properties": {
+        "status": { "type": "string", "description": "ok, failed or skipped; further values may be added within 2.x." },
+        "exit_code": { "type": ["integer", "null"] },
+        "file": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

@@ -308,9 +308,14 @@ landing on main and every consumer executing it, so a mistake or a compromise
 propagates immediately and unreviewably. `anchore/sbom-action@v0` floats on a
 major version for the same reason.
 
-**Fixed.** Internal references are pinned to `@v1`, and
+**Fixed.** Internal references are pinned to the major tag, now `@v2`, and
 `scripts/check-internal-action-refs.py` keeps them identical so that moving the
 tag is one step rather than ten. See §6 for what a release now involves.
+
+`@v1` was moved by hand and then not at all: by November 2026 it was 114
+commits behind main, and every consumer -- `@main` ones too, through these
+references -- ran Trivy 0.69.3 from it. Releases are now a workflow, and
+`actions/scan` calls no sibling at all.
 
 ### F-7 (medium) -- Dashboard route parameters are interpolated into fetch paths
 
@@ -409,16 +414,30 @@ value except the one that matters.
 
 ## 6. Releasing
 
-Internal action references are pinned to `@v1`, so a consumer pinning a release
+Internal action references are pinned to `@v2`, so a consumer pinning a release
 gets that release all the way down. The cost is that `main` is not what
-consumers run: publishing means moving the tag.
+consumers run: publishing means moving the tag. `scripts/check-internal-action-refs.py`
+fails if the references drift apart.
 
-```
-git tag -f v1 <commit> && git push -f origin v1
-```
+A release is two steps, each of which someone decides:
 
-`scripts/check-internal-action-refs.py` fails if the references drift apart, so
-this stays one step.
+1. **A release pull request** sets `actions/scan/image.ref` to the digest of a
+   scanner image built from main and tried by hand, with scanx and with the
+   action. `.github/workflows/test-scan-action.yml` runs the action against a
+   project with known findings on both architectures, so a scan that silently
+   reads nothing fails there.
+2. **`[Internal] Release actions`** (`release.yml`), dispatched from main with
+   the version. It checks the image's provenance and SBOM were signed by this
+   repository's build workflow and that the image was built from main's
+   history, tags the image `v2.x.y` in GHCR (which the GHCR cleanup keeps),
+   creates the immutable `v2.x.y` git tag, moves `v2` to it, and publishes a
+   GitHub release naming the image and tool versions.
+
+`v2.x.y` tags cannot be moved or deleted (ruleset "Protect release tags"); a
+bad release is followed by the next patch release, or `v2` is moved back to
+the previous one. Within v2, inputs, outputs, report file names and the
+manifest's fields are only added to. Anything a reader could break on -- a
+tool's own report format included -- is v3, and `v2` stays where it is.
 
 ## 7. Standing expectations
 

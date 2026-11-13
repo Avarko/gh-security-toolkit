@@ -143,7 +143,7 @@ runs:
     - name: Cleanup old releases
       if: ${{ inputs.channel != '' && (inputs.retention_keep != '0' || inputs.retention_days != '0') }}
       # This repository's own release tag, which a self-reference cannot pin by SHA.
-      uses: Avarko/gh-security-toolkit/actions/cleanup/github-release@v1  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      uses: Avarko/gh-security-toolkit/actions/cleanup/github-release@v2  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
       with:
         channel: ${{ inputs.channel }}
         retention_keep: ${{ inputs.retention_keep }}

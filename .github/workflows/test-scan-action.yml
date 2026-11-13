@@ -1,0 +1,118 @@
+# Runs actions/scan, as a caller would, against a project with known
+# findings, on both architectures.
+#
+# The point is the failure a reader cannot see: a scan that ran and found
+# nothing looks exactly like one that read nothing. So the checks below are
+# for specific findings that must be there, not for the absence of errors.
+#
+# The project is written at run time rather than committed: a lockfile with a
+# vulnerable lodash in the repository would be a Dependabot alert on the
+# toolkit itself, forever.
+#
+# Not a required check: it only runs when what it tests changes, and a
+# required check that does not run blocks the pull request.
+name: Test actions/scan
+
+on:
+  pull_request:
+    paths:
+      - actions/scan/**
+      - Makefile.scanners
+      - .github/workflows/test-scan-action.yml
+  push:
+    branches: [main]
+    paths:
+      - actions/scan/**
+      - Makefile.scanners
+      - .github/workflows/test-scan-action.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Scan (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Write a project with known findings
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/fixture"
+          mkdir -p "$dir"
+          cd "$dir"
+          # lodash 4.17.20: CVE-2021-23337 (HIGH), among others.
+          cat > package.json <<'EOF'
+          { "name": "fixture", "version": "1.0.0", "dependencies": { "lodash": "4.17.20" } }
+          EOF
+          cat > package-lock.json <<'EOF'
+          {
+            "name": "fixture",
+            "version": "1.0.0",
+            "lockfileVersion": 3,
+            "requires": true,
+            "packages": {
+              "": { "name": "fixture", "version": "1.0.0", "dependencies": { "lodash": "4.17.20" } },
+              "node_modules/lodash": {
+                "version": "4.17.20",
+                "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.20.tgz",
+                "integrity": "sha512-PlhdFcillOINfeV7Ni6oF1TAEayyZBoZ8bcshTHqOYJYlrqzRK5hagpagky5o4HfCzzd1TRkXPMFq6cKk9rGmA=="
+              }
+            }
+          }
+          EOF
+          # No USER: DS-0002 (HIGH).
+          printf 'FROM alpine:3.20\nRUN echo hi\n' > Dockerfile
+          git init -q
+          git add -A
+          git -c user.email=ci@example.invalid -c user.name=ci commit -qm fixture
+
+      - name: Pull an image to scan
+        run: docker pull -q alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+
+      - name: Scan
+        id: scan
+        uses: ./actions/scan
+        with:
+          path: ${{ runner.temp }}/fixture
+          image-ref: alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+
+      - name: Check the reports
+        env:
+          OUT: ${{ steps.scan.outputs.output-dir }}
+          MANIFEST: ${{ steps.scan.outputs.manifest }}
+        run: |
+          set -euo pipefail
+          check() {
+            if jq -e "$2" "$1" >/dev/null; then
+              echo "ok: $3"
+            else
+              echo "::error::$3 ($1)"
+              failed=1
+            fi
+          }
+          failed=0
+          image=$(grep -v -E '^[[:space:]]*(#|$)' actions/scan/image.ref | head -n 1)
+          check "$MANIFEST" '.format_version | startswith("2.")' "manifest format 2.x"
+          check "$MANIFEST" '[.scanners[] | .status] | all(. == "ok")' "every scanner ok"
+          if jq -e --arg image "$image" '.toolkit.image == $image' "$MANIFEST" >/dev/null; then
+            echo "ok: manifest names the pinned image"
+          else
+            echo "::error::manifest does not name $image"
+            failed=1
+          fi
+          check "$MANIFEST" '.databases.main | test("^[0-9]{8}$")' "database version recorded"
+          check "$MANIFEST" '.target.git.commit | test("^[0-9a-f]{40}$")' "target commit recorded"
+          check "$OUT/trivy-fs.json" '[.Results[]?.Vulnerabilities[]?.VulnerabilityID] | index("CVE-2021-23337")' "fs scan finds CVE-2021-23337 in lodash"
+          check "$OUT/trivy-config.json" '[.Results[]?.Misconfigurations[]? | select(.Status == "FAIL") | .ID] | index("DS-0002")' "config scan finds DS-0002"
+          check "$OUT/trivy-image.json" '.SchemaVersion == 2 and .ArtifactName == "alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"' "image scan reported on the image"
+          check "$OUT/semgrep.json" 'has("results") and has("errors")' "semgrep report"
+          exit "$failed"
