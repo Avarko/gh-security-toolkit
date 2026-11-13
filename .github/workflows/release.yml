@@ -213,6 +213,7 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           MAJOR: ${{ steps.version.outputs.major }}
           IMAGE: ${{ steps.image.outputs.ref }}
+          MOVE_MAJOR: ${{ steps.version.outputs.move_major }}
           REVISION: ${{ steps.check.outputs.revision }}
           TRIVY: ${{ steps.check.outputs.trivy }}
           SEMGREP: ${{ steps.check.outputs.semgrep }}
@@ -221,7 +222,11 @@ jobs:
         run: |
           set -euo pipefail
           {
-            echo "Callers on \`actions/scan@${MAJOR}\` get this release on their next run; pin \`@${TAG}\` or this commit to choose when."
+            if [ "$MOVE_MAJOR" = true ]; then
+              echo "Callers on \`actions/scan@${MAJOR}\` get this release on their next run; pin \`@${TAG}\` or this commit to choose when."
+            else
+              echo "\`${MAJOR}\` points at a newer release; pin \`@${TAG}\` or this commit to use this one."
+            fi
             echo
             echo "| | |"
             echo "|---|---|"
