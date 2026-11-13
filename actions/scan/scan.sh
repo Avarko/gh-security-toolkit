@@ -22,7 +22,7 @@ die() {
 	exit 1
 }
 
-for tool in docker make jq git; do
+for tool in docker make jq git realpath; do
 	command -v "$tool" >/dev/null 2>&1 || die "actions/scan needs $tool on the runner"
 done
 
@@ -67,14 +67,13 @@ for s in "${scanner_list[@]}"; do
 	esac
 done
 
-cd "${INPUT_PATH:-.}" 2>/dev/null || die "path '${INPUT_PATH:-.}' does not exist"
-scan_dir=$(pwd -P)
+scan_dir=$(cd "${INPUT_PATH:-.}" 2>/dev/null && pwd -P) || die "path '${INPUT_PATH:-.}' does not exist"
 [[ $scan_dir =~ $safe_path ]] \
 	|| die "the scanned path '$scan_dir' has characters the scan cannot pass on safely: use letters, digits and . _ / @ + = , : ~ -"
 
-out=${INPUT_OUTPUT_DIR:-${RUNNER_TEMP:-/tmp}/gh-security-toolkit}
-mkdir -p "$out"
-out=$(cd "$out" && pwd -P)
+# Relative to the workspace, like path, and resolved before anything is
+# created, so a refused output-dir leaves nothing behind in the checkout.
+out=$(realpath -m -- "${INPUT_OUTPUT_DIR:-${RUNNER_TEMP:-/tmp}/gh-security-toolkit}")
 [[ $out =~ $safe_path ]] \
 	|| die "output-dir '$out' has characters the scan cannot pass on safely: use letters, digits and . _ / @ + = , : ~ -"
 # Inside the scanned tree the reports would be scanned themselves (Semgrep's
@@ -83,6 +82,8 @@ out=$(cd "$out" && pwd -P)
 case "$out/" in
 	"$scan_dir/"*) die "output-dir must be outside the scanned path ($scan_dir)" ;;
 esac
+mkdir -p "$out"
+cd "$scan_dir"
 rm -f "$out"/trivy-*.json "$out/semgrep.json" "$out/manifest.json"
 
 # GHST_RELEASE turns off the checks that only make sense for a clone that

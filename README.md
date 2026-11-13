@@ -428,7 +428,8 @@ Output files: `trivy-fs.json`, `trivy-config.json`, `trivy-image.json` and
 versions, the target's commit and image, which of the project's configuration
 files applied (a `.semgrep.yaml` replaces the default rulesets), and for each
 scanner `ok`, `failed` or `skipped` -- the difference between "no findings"
-and "did not run". Its schema is
+and "did not run". Judge a scanner by its `status`, not by its `file`: a
+Semgrep that failed still leaves its report, for the errors in it. Its schema is
 [`actions/scan/manifest.schema.json`](actions/scan/manifest.schema.json).
 
 The vulnerability databases (a few GB unpacked) are fetched on every run into

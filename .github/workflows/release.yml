@@ -74,15 +74,27 @@ jobs:
               exit 1
             fi
             echo "$tag already names this commit; completing the release."
-          else
-            newest=$(git tag -l 'v2.*.*' | sort -V | tail -n 1)
-            if [ -n "$newest" ] && [ "$(printf '%s\n%s\n' "$newest" "$tag" | sort -V | tail -n 1)" != "$tag" ]; then
+          fi
+          # The major tag only ever moves forward. A new version must be the
+          # newest; a resumed one whose successor has been released since is
+          # completed without touching it.
+          newest=$(git tag -l 'v2.*.*' | sort -V | tail -n 1)
+          move_major=true
+          if [ -n "$newest" ] && [ "$newest" != "$tag" ] \
+             && [ "$(printf '%s\n%s\n' "$newest" "$tag" | sort -V | tail -n 1)" != "$tag" ]; then
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "::warning::$newest is newer than $tag; v${VERSION%%.*} stays on $newest."
+              move_major=false
+            else
               echo "::error::$tag is not newer than $newest."
               exit 1
             fi
           fi
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "major=v${VERSION%%.*}" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$tag"
+            echo "move_major=$move_major"
+            echo "major=v${VERSION%%.*}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Read the pinned image
         id: image
@@ -176,6 +188,7 @@ jobs:
         env:
           TAG: ${{ steps.version.outputs.tag }}
           MAJOR: ${{ steps.version.outputs.major }}
+          MOVE_MAJOR: ${{ steps.version.outputs.move_major }}
           IMAGE: ${{ steps.image.outputs.ref }}
         run: |
           set -euo pipefail
@@ -186,9 +199,13 @@ jobs:
             git push origin "refs/tags/$TAG"
           fi
           # Moving the major tag is the release reaching callers on @v2.
-          git tag -f -a "$MAJOR" -m "$MAJOR -> $TAG" HEAD
-          git push -f origin "refs/tags/$MAJOR"
-          echo "$TAG and $MAJOR -> $(git rev-parse HEAD)"
+          if [ "$MOVE_MAJOR" = true ]; then
+            git tag -f -a "$MAJOR" -m "$MAJOR -> $TAG" HEAD
+            git push -f origin "refs/tags/$MAJOR"
+            echo "$TAG and $MAJOR -> $(git rev-parse HEAD)"
+          else
+            echo "$TAG -> $(git rev-parse HEAD); $MAJOR not moved"
+          fi
 
       - name: Create the GitHub release
         env:
