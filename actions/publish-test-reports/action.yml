@@ -111,7 +111,7 @@ runs:
       if: ${{ contains(inputs.publish_to, 'github-pages') }}
       id: pages
       # This repository's own release tag, which a self-reference cannot pin by SHA.
-      uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@v1  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@v2  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
       with:
         github_token: ${{ inputs.github_token }}
         outdir: ${{ steps.setup.outputs.output_dir }}

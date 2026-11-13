@@ -42,7 +42,7 @@ The publisher reads all metadata from `scan-context.json` in the outdir. This fi
 
 ```yaml
 - name: Publish to GitHub Pages
-  uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@main
+  uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@v2
   with:
     github_token: ${{ github.token }}
     outdir: scan-output
@@ -161,7 +161,7 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Security scan
-        uses: Avarko/gh-security-toolkit/actions/security-scan@main
+        uses: Avarko/gh-security-toolkit/actions/security-scan@v2
         with:
           channel: nightly
           filesystem_path: .
@@ -176,7 +176,7 @@ jobs:
         run: mvn test jacoco:report surefire-report:report
 
       - name: Publish test reports
-        uses: Avarko/gh-security-toolkit/actions/publish-test-reports@main
+        uses: Avarko/gh-security-toolkit/actions/publish-test-reports@v2
         with:
           channel: ci
           jacoco_report_path: target/site/jacoco

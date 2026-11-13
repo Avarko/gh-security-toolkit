@@ -18,7 +18,7 @@ on:
 
 jobs:
   test-dashboard:
-    uses: Avarko/gh-security-toolkit/.github/workflows/publish-dashboard.yml@main
+    uses: Avarko/gh-security-toolkit/.github/workflows/publish-dashboard.yml@v2
     permissions:
       contents: write
       pages: write
@@ -82,7 +82,7 @@ on:
 
 jobs:
   test:
-    uses: Avarko/gh-security-toolkit/.github/workflows/publish-dashboard.yml@main
+    uses: Avarko/gh-security-toolkit/.github/workflows/publish-dashboard.yml@v2
     permissions:
       contents: write
       pages: write
@@ -144,7 +144,7 @@ on:
 jobs:
   rebuild-dashboard:
     name: Rebuild Dashboard UI
-    uses: Avarko/gh-security-toolkit/.github/workflows/publish-dashboard.yml@main
+    uses: Avarko/gh-security-toolkit/.github/workflows/publish-dashboard.yml@v2
     permissions:
       contents: write
       pages: write

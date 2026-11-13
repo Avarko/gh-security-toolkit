@@ -142,7 +142,7 @@ runs:
     - name: Run Trivy scans
       id: trivy
       # This repository's own release tag, which a self-reference cannot pin by SHA.
-      uses: Avarko/gh-security-toolkit/actions/scanner/trivy@v1  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      uses: Avarko/gh-security-toolkit/actions/scanner/trivy@v2  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
       with:
         filesystem_path: ${{ steps.fsroot.outputs.scan_root || '' }}
         docker_image_ref: ${{ inputs.scan_docker_image_ref }}
@@ -155,7 +155,7 @@ runs:
       id: semgrep
       if: ${{ steps.fsroot.outputs.has_fs_scan == 'true' }}
       # This repository's own release tag, which a self-reference cannot pin by SHA.
-      uses: Avarko/gh-security-toolkit/actions/scanner/semgrep@v1  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      uses: Avarko/gh-security-toolkit/actions/scanner/semgrep@v2  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
       with:
         filesystem_path: ${{ steps.fsroot.outputs.scan_root }}
         semgrep_output_dir: ${{ steps.setup.outputs.output_dir }}
@@ -165,7 +165,7 @@ runs:
     - name: Summarizer
       id: sum
       # This repository's own release tag, which a self-reference cannot pin by SHA.
-      uses: Avarko/gh-security-toolkit/actions/summarizer@v1  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      uses: Avarko/gh-security-toolkit/actions/summarizer@v2  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
       with:
         fs_json: ${{ steps.trivy.outputs.fs_json || '' }}
         image_json: ${{ steps.trivy.outputs.image_json || '' }}
@@ -182,7 +182,7 @@ runs:
     - name: Publish to GitHub Release
       if: ${{ contains(inputs.publish_to, 'github-release') }}
       # This repository's own release tag, which a self-reference cannot pin by SHA.
-      uses: Avarko/gh-security-toolkit/actions/publisher/github-release@v1  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      uses: Avarko/gh-security-toolkit/actions/publisher/github-release@v2  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
       with:
         outdir: ${{ steps.setup.outputs.output_dir }}
         release_name: "Security scan ${{ inputs.channel }} ${{ steps.ts.outputs.ts }}"
@@ -201,7 +201,7 @@ runs:
       if: ${{ contains(inputs.publish_to, 'github-pages') }}
       id: pages
       # This repository's own release tag, which a self-reference cannot pin by SHA.
-      uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@v1  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      uses: Avarko/gh-security-toolkit/actions/publisher/github-pages@v2  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
       with:
         github_token: ${{ inputs.github_token }}
         outdir: ${{ steps.setup.outputs.output_dir }}

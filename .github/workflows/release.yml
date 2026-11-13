@@ -1,0 +1,243 @@
+# Publishes a release of the toolkit's actions: the commit on main whose
+# actions/scan/image.ref names the scanner image that was tested by hand.
+#
+# What callers pin to, and what this moves:
+#   v2.x.y  a new, immutable tag (the "Protect release tags" ruleset refuses
+#           to move or delete it), on the git commit and on the image in GHCR
+#   v2      the major tag, moved to the same commit; callers on @v2 get the
+#           release on their next run
+#
+# The image gets a registry tag too, because the GHCR cleanup keeps any image
+# carrying a tag other than sha-<commit> and would otherwise delete a
+# released image once newer builds pushed it out of the newest five.
+#
+# Before running this: the release pull request that sets image.ref has been
+# merged, and the image has been tried with scanx and with this action.
+name: "[Internal] Release actions"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 2.0.0 (major 2 moves the v2 tag)"
+        required: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  # The action, on this very commit, against a project with known findings,
+  # on both architectures. Whatever the release pull request ran, main may
+  # have moved since.
+  test:
+    if: github.repository == 'Avarko/gh-security-toolkit' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/test-scan-action.yml
+
+  release:
+    name: Release v${{ inputs.version }}
+    needs: [test]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write      # the tags and the GitHub release
+      packages: write      # the registry tag on the released image
+      attestations: read   # checking the image came from this repository's build
+    steps:
+      # Credentials are kept: this job pushes the tags. Nothing it runs comes
+      # from outside this repository except the pinned login action.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Check the version
+        id: version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! [[ $VERSION =~ ^2\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::'$VERSION' is not a 2.x.y version. A new major is a decision of its own: see SECURITY.md, Releasing."
+            exit 1
+          fi
+          tag="v$VERSION"
+          # A tag that already names this commit is a run being finished after
+          # a failure part way through: every step below is safe to repeat.
+          # On any other commit it is a released version, which never moves.
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            if [ "$(git rev-parse "$tag^{commit}")" != "$(git rev-parse HEAD)" ]; then
+              echo "::error::$tag already exists on another commit. Released versions are never moved; release the next one."
+              exit 1
+            fi
+            echo "$tag already names this commit; completing the release."
+          fi
+          # The major tag only ever moves forward. A new version must be the
+          # newest; a resumed one whose successor has been released since is
+          # completed without touching it.
+          newest=$(git tag -l 'v2.*.*' | sort -V | tail -n 1)
+          move_major=true
+          if [ -n "$newest" ] && [ "$newest" != "$tag" ] \
+             && [ "$(printf '%s\n%s\n' "$newest" "$tag" | sort -V | tail -n 1)" != "$tag" ]; then
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "::warning::$newest is newer than $tag; v${VERSION%%.*} stays on $newest."
+              move_major=false
+            else
+              echo "::error::$tag is not newer than $newest."
+              exit 1
+            fi
+          fi
+          {
+            echo "tag=$tag"
+            echo "move_major=$move_major"
+            echo "major=v${VERSION%%.*}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Read the pinned image
+        id: image
+        run: |
+          set -euo pipefail
+          image=$(grep -v -E '^[[:space:]]*(#|$)' actions/scan/image.ref | head -n 1 | tr -d '[:space:]')
+          if ! [[ $image =~ ^ghcr\.io/avarko/gh-security-toolkit@sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::actions/scan/image.ref does not name the scanner image by digest: '$image'"
+            exit 1
+          fi
+          echo "ref=$image" >> "$GITHUB_OUTPUT"
+          echo "digest=${image#*@}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6  # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The same checks the build's own verify job makes -- provenance and SBOM
+      # signed by that workflow, in this repository -- and that the build ran
+      # from main: a branch could carry its own copy of the workflow file. An
+      # image.ref pointing at anything else stops here. The commit the image
+      # names as its source must also be in main's history.
+      - name: Check where the image came from
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          set -euo pipefail
+          signer="${GITHUB_REPOSITORY}/.github/workflows/int-manual-build-scanner-cli.yml"
+          for predicate in https://slsa.dev/provenance/v1 https://spdx.dev/Document/v2.3; do
+            gh attestation verify "oci://$IMAGE" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$signer" \
+              --source-ref refs/heads/main \
+              --predicate-type "$predicate" \
+              --bundle-from-oci > /dev/null
+            echo "verified: $predicate"
+          done
+          docker pull -q "$IMAGE" > /dev/null
+          label() { docker image inspect "$IMAGE" --format "{{with index .Config.Labels \"$1\"}}{{.}}{{end}}"; }
+          revision=$(label org.opencontainers.image.revision)
+          if [ -z "$revision" ] || ! git merge-base --is-ancestor "$revision" HEAD; then
+            echo "::error::The image was built from '$revision', which is not in main's history."
+            exit 1
+          fi
+          {
+            echo "revision=$revision"
+            echo "trivy=$(label fi.evolver.ghst.trivy.version)"
+            echo "semgrep=$(label fi.evolver.ghst.semgrep.version)"
+            echo "helper=$(label fi.evolver.ghst.trivy-db-helper.version)"
+            echo "trufflehog=$(label fi.evolver.ghst.trufflehog.version)"
+          } >> "$GITHUB_OUTPUT"
+
+      # The manifest is copied as it is, so the tag names the same digest; the
+      # registry's answer is checked to make sure of it. Straight to the
+      # registry API rather than through an image tool, which could rewrite a
+      # multi-architecture index into a new one with a different digest.
+      - name: Tag the image in GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          repo=avarko/gh-security-toolkit
+          token=$(curl -fsS -u "${GITHUB_ACTOR}:${GH_TOKEN}" \
+            "https://ghcr.io/token?scope=repository:${repo}:pull,push" | jq -r .token)
+          accept='application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json'
+          curl -fsS -H "Authorization: Bearer $token" -H "Accept: $accept" \
+            -D headers.txt -o manifest.json "https://ghcr.io/v2/${repo}/manifests/${DIGEST}"
+          type=$(awk -F': ' 'tolower($1) == "content-type" { print $2 }' headers.txt | tr -d '\r')
+          if [ "sha256:$(sha256sum manifest.json | cut -d' ' -f1)" != "$DIGEST" ]; then
+            echo "::error::The registry returned a manifest that does not match $DIGEST"
+            exit 1
+          fi
+          curl -fsS -X PUT -H "Authorization: Bearer $token" -H "Content-Type: $type" \
+            --data-binary @manifest.json -D put.txt -o /dev/null \
+            "https://ghcr.io/v2/${repo}/manifests/${TAG}"
+          tagged=$(awk -F': ' 'tolower($1) == "docker-content-digest" { print $2 }' put.txt | tr -d '\r')
+          if [ "$tagged" != "$DIGEST" ]; then
+            echo "::error::ghcr.io/${repo}:${TAG} is $tagged, expected $DIGEST"
+            exit 1
+          fi
+          echo "ghcr.io/${repo}:${TAG} -> $DIGEST"
+
+      - name: Tag the release and move the major tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          MAJOR: ${{ steps.version.outputs.major }}
+          MOVE_MAJOR: ${{ steps.version.outputs.move_major }}
+          IMAGE: ${{ steps.image.outputs.ref }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            git tag -a "$TAG" -m "$TAG" -m "Scanner image: $IMAGE" HEAD
+            git push origin "refs/tags/$TAG"
+          fi
+          # Moving the major tag is the release reaching callers on @v2.
+          if [ "$MOVE_MAJOR" = true ]; then
+            git tag -f -a "$MAJOR" -m "$MAJOR -> $TAG" HEAD
+            git push -f origin "refs/tags/$MAJOR"
+            echo "$TAG and $MAJOR -> $(git rev-parse HEAD)"
+          else
+            echo "$TAG -> $(git rev-parse HEAD); $MAJOR not moved"
+          fi
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          MAJOR: ${{ steps.version.outputs.major }}
+          IMAGE: ${{ steps.image.outputs.ref }}
+          MOVE_MAJOR: ${{ steps.version.outputs.move_major }}
+          REVISION: ${{ steps.check.outputs.revision }}
+          TRIVY: ${{ steps.check.outputs.trivy }}
+          SEMGREP: ${{ steps.check.outputs.semgrep }}
+          HELPER: ${{ steps.check.outputs.helper }}
+          TRUFFLEHOG: ${{ steps.check.outputs.trufflehog }}
+        run: |
+          set -euo pipefail
+          {
+            if [ "$MOVE_MAJOR" = true ]; then
+              echo "Callers on \`actions/scan@${MAJOR}\` get this release on their next run; pin \`@${TAG}\` or this commit to choose when."
+            else
+              echo "\`${MAJOR}\` points at a newer release; pin \`@${TAG}\` or this commit to use this one."
+            fi
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Scanner image | \`${IMAGE}\` (built from ${REVISION}) |"
+            echo "| Trivy | ${TRIVY} |"
+            echo "| Semgrep | ${SEMGREP} |"
+            echo "| trivy-db-helper | ${HELPER} |"
+            echo "| TruffleHog | ${TRUFFLEHOG} |"
+          } > notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file notes.md
+          fi

@@ -1,0 +1,9 @@
+# The scanner image this release of actions/scan runs, by digest.
+#
+# Changed only by a release pull request, to the digest of a build that was
+# tested by hand; .github/workflows/release.yml then tags that commit. The
+# action refuses a tag here: a pinned release must not change its scanner.
+#
+# Built from b047c7a (2026-11-12): trivy v0.76.2, semgrep v1.180.0,
+# trivy-db-helper helper-v1.3.1.
+ghcr.io/avarko/gh-security-toolkit@sha256:c676a591f0aa74315b3357db1dc6301004445619ab86dbafc4a60d59a8a12909

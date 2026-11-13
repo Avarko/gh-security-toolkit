@@ -17,13 +17,13 @@ Compares security scan results with the previous run and sends Slack notificatio
 ```yaml
 - name: Run security scan
   id: scan
-  uses: Avarko/gh-security-toolkit/actions/security-scan@main
+  uses: Avarko/gh-security-toolkit/actions/security-scan@v2
   with:
     channel: push-to-main
 
 - name: Notify Slack on changes
   if: always()
-  uses: Avarko/gh-security-toolkit/actions/notify/slack@main
+  uses: Avarko/gh-security-toolkit/actions/notify/slack@v2
   with:
     channel: push-to-main
     timestamp: ${{ steps.scan.outputs.timestamp }}
@@ -36,7 +36,7 @@ Compares security scan results with the previous run and sends Slack notificatio
 
 ```yaml
 - name: Notify Slack on changes
-  uses: Avarko/gh-security-toolkit/actions/notify/slack@main
+  uses: Avarko/gh-security-toolkit/actions/notify/slack@v2
   with:
     channel: push-to-main
     timestamp: ${{ steps.scan.outputs.timestamp }}
