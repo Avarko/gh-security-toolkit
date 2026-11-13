@@ -37,7 +37,7 @@ was newest on build day without anyone looking.
 | BuildKit (build only) | `int-manual-build-scanner-cli.yml`, "Set up Buildx" | image digest |
 | Sigstore TUF bootstrap (build only) | `int-manual-build-scanner-cli.yml`, cosign step | tuf-client version (go.sum DB), root.json by commit + sha256 |
 | Scanner image used by `actions/scan` | `actions/scan/image.ref` | image digest, changed only by a release pull request; `release.yml` checks its build provenance and tags it (see SECURITY.md, Releasing) |
-| trivy-db-helper | newest `helper-vX.Y.Z` in ghcr.io/avarko/trivy-incremental-dbs | cosign keyless signature from its release-helper.yml at that tag; checksums in the artifact |
+| trivy-db-helper | newest `helper-vX.Y.Z` in ghcr.io/avarko/trivy-incremental-dbs | cosign keyless signature from its release-helper.yml (that tag or main) carrying `release=<that tag>`, which helpers before helper-v1.3.2 lack; the binary's version stamp must name the tag; checksums in the artifact |
 | OS layer (Wolfi packages) | `cli/apko.yaml` + `cli/apko.lock.json` | every package by version and checksum, verified against the committed Wolfi key (`cli/wolfi-signing.rsa.pub`); the build refuses a lock that does not match the config. `make image/lock` re-resolves to the newest packages |
 | apko (build only) | `int-manual-build-scanner-cli.yml` `ver_apko`; `.mise.toml` locally | version + sha256, Chainguard-signed checksums |
 
