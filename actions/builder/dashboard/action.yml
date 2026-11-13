@@ -19,7 +19,10 @@ runs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
         repository: Avarko/gh-security-toolkit
-        ref: main
+        # The release this action was called at, so a dashboard built through
+        # a pinned publisher is that release's too. Empty only when the action
+        # is used by path from a checkout of this repository.
+        ref: ${{ github.action_ref || 'main' }}
         path: _toolkit
 
     - name: Setup Node.js

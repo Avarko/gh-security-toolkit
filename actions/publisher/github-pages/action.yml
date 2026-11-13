@@ -123,7 +123,7 @@ runs:
 
     - name: Build Dashboard
       # This repository's own release tag, which a self-reference cannot pin by SHA.
-      uses: Avarko/gh-security-toolkit/actions/builder/dashboard@v1  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
+      uses: Avarko/gh-security-toolkit/actions/builder/dashboard@v2  # nosemgrep: yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag
       with:
         node-version: '24'
 

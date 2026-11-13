@@ -13,7 +13,7 @@ import glob
 import re
 import sys
 
-EXPECTED_REF = "v1"
+EXPECTED_REF = "v2"
 USES = re.compile(r"uses:\s*Avarko/gh-security-toolkit/(\S+)@(\S+)")
 
 

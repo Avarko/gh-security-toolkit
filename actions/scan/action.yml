@@ -1,0 +1,74 @@
+name: "gh-security-toolkit: scan"
+description: >
+  Scan a checkout (and optionally a container image) with Trivy and Semgrep
+  from the toolkit's scanner image, pinned by digest in this release. Writes
+  each tool's own JSON report and a manifest.json describing the run.
+
+# What a caller can rely on within v2: these inputs and outputs, the report
+# file names, and manifest.json's existing fields keep their names, types and
+# meaning. New inputs, fields, files and scanners may be added. Anything else
+# is v3. The reports are the tools' native JSON (Trivy's carries
+# SchemaVersion); a change in a tool's format that breaks a reader is a v3
+# release too.
+
+inputs:
+  path:
+    description: >
+      Directory to scan, relative to the workspace. Its trivy.yaml,
+      .trivyignore(.yaml), .semgrep.yaml and .semgrepignore apply, and are
+      listed in the manifest. Letters, digits and . _ / @ + = , : ~ - only.
+    required: false
+    default: "."
+  image-ref:
+    description: >
+      Container image to scan as well. It must already be in the runner's
+      Docker daemon (pull or build it first). Adds the 'image' scanner when
+      'scanners' is left empty.
+    required: false
+    default: ""
+  scanners:
+    description: >
+      Comma-separated subset of fs, config, semgrep, image. Empty means
+      fs,config,semgrep, plus image when image-ref is set.
+    required: false
+    default: ""
+  output-dir:
+    description: >
+      Where to write the reports and manifest.json, outside the scanned path.
+      Default: $RUNNER_TEMP/gh-security-toolkit.
+    required: false
+    default: ""
+  fail-on-error:
+    description: >
+      Fail the step when a scanner did not complete or the database update
+      failed. Findings never fail it, a trivy.yaml exit-code included; the
+      manifest says per scanner what happened either way.
+    required: false
+    default: "true"
+
+outputs:
+  output-dir:
+    description: "Directory holding trivy-fs.json, trivy-config.json, trivy-image.json, semgrep.json and manifest.json (each report only if its scanner ran)."
+    value: ${{ steps.scan.outputs.output-dir }}
+  manifest:
+    description: "Path to manifest.json."
+    value: ${{ steps.scan.outputs.manifest }}
+
+runs:
+  using: composite
+  steps:
+    # Everything runs from this action's own files, with no further `uses:`:
+    # a caller whose policy requires actions pinned by commit can pin this one
+    # and have nothing else resolved behind it.
+    - id: scan
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        ACTION_REF: ${{ github.action_ref }}
+        ACTION_REPOSITORY: ${{ github.action_repository }}
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_IMAGE_REF: ${{ inputs.image-ref }}
+        INPUT_SCANNERS: ${{ inputs.scanners }}
+        INPUT_OUTPUT_DIR: ${{ inputs.output-dir }}
+        INPUT_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
+      run: '"$ACTION_PATH/scan.sh"'
