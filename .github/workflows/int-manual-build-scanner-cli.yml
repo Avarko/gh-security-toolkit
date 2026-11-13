@@ -319,8 +319,6 @@ jobs:
           # intact and nothing about who made it. This binary decides which
           # database every scan runs against, and checks the databases'
           # signatures itself, so it is the last one to take on trust.
-          # Helpers before helper-v1.2.4 were published unsigned.
-          #
           # The identity alone does not name the version: a dispatched release
           # is signed as release-helper.yml on main, whatever it released. So
           # an older signed helper copied to a higher helper-v* tag would pass
@@ -363,12 +361,16 @@ jobs:
 
           # The version the binary was built as, not only the tag it was
           # found under. The runner is amd64, so that one can be run.
-          reported=$("${CONTEXT}/verified-binaries/linux-amd64/trivy-db-helper" -command version)
+          if ! reported=$("${CONTEXT}/verified-binaries/linux-amd64/trivy-db-helper" -command version); then
+            echo "::error::helper ${version} could not report its version"
+            exit 1
+          fi
           reported=${reported%%$'\n'*}
-          case "$reported" in
-            *"${version}"*) echo "Helper reports $reported" ;;
-            *) echo "::error::helper tagged ${version} reports '${reported}'"; exit 1 ;;
-          esac
+          if [ "$reported" != "trivy-db-helper ${version}" ]; then
+            echo "::error::helper tagged ${version} reports '${reported}'"
+            exit 1
+          fi
+          echo "Helper reports $reported"
 
       - name: Resolve TruffleHog
         id: trufflehog
@@ -390,9 +392,10 @@ jobs:
           # v3.99.9 (2026-11-12) replaced v3.99.8, whose go-jose v4.1.4 and
           # x/net v0.60.0 were high (CVE-2026-116587, CVE-2026-78661). v3.99.9
           # is built with go1.27.4 with go-jose v4.1.6 and x/net v0.62.0, and
-          # unpacked Trivy finds no fixed high or critical in it. Pinned at
-          # one day old, an exception to the three-week rule for that reason,
-          # as v3.99.8 was.
+          # unpacked Trivy finds no fixed high or critical in it. It still
+          # carries docker/docker v28.5.2 CVE-2026-41567 and -42306, which no
+          # release fixes. Pinned at one day old, an exception to the
+          # three-week rule for that reason, as v3.99.8 was.
           ver_trufflehog=v3.99.9
           sha_trufflehog_amd64=12050095c8063bf4d34f9f6cbce6ba9fa8d0deea9d503d0570364feba093658e
           sha_trufflehog_arm64=778b1913196dc9b9234e8fd366f64387efeb08c01930a1d2110dcb2ffd07e68b
@@ -465,9 +468,10 @@ jobs:
       #
       # Bumping: requirements.in, then `make image/semgrep-lock`; see "Pinned
       # components" in AGENTS.md. 1.185.0 (2026-11-10) adds structlog to the
-      # dependencies; Trivy finds no fixed high or critical in it or in 1.180.0.
-      # Before it, 1.180.0 was the version the image and CI's
-      # Semgrep action already ran (it had its own image until now).
+      # dependencies; Trivy finds no fixed high or critical in it or in
+      # 1.180.0, so pinning it at three days old was a decision to keep
+      # current, not a security fix. pydantic-settings is held at 2.16.2 in
+      # requirements.in: the re-lock otherwise took 2.16.3, released that day.
       - name: Install Semgrep
         id: semgrep
         env:
