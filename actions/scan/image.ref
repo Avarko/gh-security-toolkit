@@ -4,6 +4,6 @@
 # tested by hand; .github/workflows/release.yml then tags that commit. The
 # action refuses a tag here: a pinned release must not change its scanner.
 #
-# Built from b047c7a (2026-11-12): trivy v0.76.2, semgrep v1.180.0,
-# trivy-db-helper helper-v1.3.1.
-ghcr.io/avarko/gh-security-toolkit@sha256:c676a591f0aa74315b3357db1dc6301004445619ab86dbafc4a60d59a8a12909
+# Built from c80365f (2026-11-13): trivy v0.76.2, semgrep v1.185.0,
+# trivy-db-helper helper-v1.3.2, TruffleHog v3.99.9.
+ghcr.io/avarko/gh-security-toolkit@sha256:a694dcaf28a8a9c38d6277c924b3a44e9d78e4d12bccb165336c43832ea4bd14
