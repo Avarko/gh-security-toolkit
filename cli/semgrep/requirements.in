@@ -2,4 +2,4 @@
 # `make image/semgrep-lock`, and check the result as AGENTS.md describes
 # ("Pinned components"). actions/scanner/semgrep pins the same version, and
 # scripts/check-semgrep-config.py fails if the two differ.
-semgrep==1.180.0
+semgrep==1.185.0

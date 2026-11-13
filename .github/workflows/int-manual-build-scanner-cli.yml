@@ -320,10 +320,18 @@ jobs:
           # database every scan runs against, and checks the databases'
           # signatures itself, so it is the last one to take on trust.
           # Helpers before helper-v1.2.4 were published unsigned.
+          #
+          # The identity alone does not name the version: a dispatched release
+          # is signed as release-helper.yml on main, whatever it released. So
+          # an older signed helper copied to a higher helper-v* tag would pass
+          # it and ship as the newest. Since helper-v1.3.2 the signature
+          # carries release=<tag>, and the version is required to match; the
+          # binary's own version stamp is checked below too.
           digest=$("$CRANE" digest "${HELPER_PKG}:${version}")
           "$COSIGN_BIN" verify \
             --certificate-identity-regexp "^https://github\.com/Avarko/trivy-incremental-dbs/\.github/workflows/release-helper\.yml@refs/(tags/${version//./\\.}|heads/main)\$" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            -a "release=${version}" \
             "${HELPER_PKG}@${digest}" > /dev/null
           echo "Helper signature verified: ${digest}"
 
@@ -353,6 +361,15 @@ jobs:
           rm -rf "$workdir"
           echo "Helper checksums verified"
 
+          # The version the binary was built as, not only the tag it was
+          # found under. The runner is amd64, so that one can be run.
+          reported=$("${CONTEXT}/verified-binaries/linux-amd64/trivy-db-helper" -command version)
+          reported=${reported%%$'\n'*}
+          case "$reported" in
+            *"${version}"*) echo "Helper reports $reported" ;;
+            *) echo "::error::helper tagged ${version} reports '${reported}'"; exit 1 ;;
+          esac
+
       - name: Resolve TruffleHog
         id: trufflehog
         env:
@@ -370,15 +387,15 @@ jobs:
           # them, so the self-check's scan of the image is blind to this one.
           # Unpack a copy with `upx -d` to check a candidate (AGENTS.md).
           #
-          # v3.99.8 (2026-11-02) replaced v3.99.2, which unpacked carried 15
-          # highs. v3.99.8 is built with go1.27.3 and ships 4: go-jose v4.1.4
-          # (fixed in v4.1.6), x/net v0.60.0 (fixed in v0.62.0) and
-          # docker/docker v28.5.2 CVE-2026-41567 and -42306, which no release
-          # fixes. Pinned at 7 days old, an exception to the three-week rule:
-          # v3.99.3, the newest release old enough, still carries 6.
-          ver_trufflehog=v3.99.8
-          sha_trufflehog_amd64=7c3b02f160f28929a467e29e20fba98746e0729f6e37c3c25761e4f8789abe08
-          sha_trufflehog_arm64=a0382d83dd58c967af5dd0175cc732c62c836ab1d15dc9ae71b01a2d3f0911b2
+          # v3.99.9 (2026-11-12) replaced v3.99.8, whose go-jose v4.1.4 and
+          # x/net v0.60.0 were high (CVE-2026-116587, CVE-2026-78661). v3.99.9
+          # is built with go1.27.4 with go-jose v4.1.6 and x/net v0.62.0, and
+          # unpacked Trivy finds no fixed high or critical in it. Pinned at
+          # one day old, an exception to the three-week rule for that reason,
+          # as v3.99.8 was.
+          ver_trufflehog=v3.99.9
+          sha_trufflehog_amd64=12050095c8063bf4d34f9f6cbce6ba9fa8d0deea9d503d0570364feba093658e
+          sha_trufflehog_arm64=778b1913196dc9b9234e8fd366f64387efeb08c01930a1d2110dcb2ffd07e68b
           echo "ver_trufflehog=$ver_trufflehog" >> "$GITHUB_OUTPUT"
 
           CHECKSUMS="trufflehog_${ver_trufflehog#v}_checksums.txt"
@@ -447,7 +464,9 @@ jobs:
       # reaches outside the Semgrep tree fails the build.
       #
       # Bumping: requirements.in, then `make image/semgrep-lock`; see "Pinned
-      # components" in AGENTS.md. 1.180.0 is the version the image and CI's
+      # components" in AGENTS.md. 1.185.0 (2026-11-10) adds structlog to the
+      # dependencies; Trivy finds no fixed high or critical in it or in 1.180.0.
+      # Before it, 1.180.0 was the version the image and CI's
       # Semgrep action already ran (it had its own image until now).
       - name: Install Semgrep
         id: semgrep
@@ -585,15 +604,17 @@ jobs:
 
       # Pinned by version and sha256 like every other tool here, and the
       # pinned hash is also checked against checksums.txt as Chainguard's
-      # release workflow signed it. v1.4.11 (2026-10-12) is the newest release
-      # at least three weeks old when it was pinned.
+      # release workflow signed it. v1.5.0 (2026-11-12) replaced v1.4.11, built
+      # with go1.27.0 and carrying six highs (x/net v0.59.0 and the Go 1.27.0
+      # stdlib); v1.5.0 is built with go1.27.4 and Trivy finds none. Pinned
+      # at one day old, an exception to the three-week rule for that reason.
       - name: Install apko
         env:
           CONTEXT: ${{ env.CONTEXT }}
         run: |
           set -euo pipefail
-          ver_apko=v1.4.11
-          sha_apko_amd64=5445ea2467a4ab0db3e31d9f795133128d0564c7afdaa46fcdaa1ee3cf92c757
+          ver_apko=v1.5.0
+          sha_apko_amd64=611cd21aad41dbef2a2698087ebfbb308ba6b0f171797e5571033fb6622ba708
           tarball="apko_${ver_apko#v}_linux_amd64.tar.gz"
           url="https://github.com/chainguard-dev/apko/releases/download/${ver_apko}"
           for f in checksums.txt checksums.txt.crt checksums.txt.sig "${tarball}"; do
