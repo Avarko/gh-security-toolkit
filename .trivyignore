@@ -17,3 +17,18 @@ DS-0026
 # cosign-3 3.1.4-r4 still carries v0.61.0. cosign here parses no HTML. The
 # entry expires so the finding comes back if no release fixes it by then.
 CVE-2026-78661 exp:2026-12-15
+
+# mcp 1.29.0 (cli/semgrep/requirements.txt, in the image under Semgrep's
+# packages): the MCP Python SDK's OAuth client and HTTP transports, fixed in
+# 1.30.0. Semgrep pins mcp==1.29.0 exactly, through 1.186.0, so no Semgrep
+# release takes the fix and overriding its pin is not worth breaking it for.
+# The SDK backs only the `semgrep mcp` subcommand; the image runs `semgrep
+# scan`, which acts as no MCP client or server. The HIGH is the OAuth client
+# sending credentials to a server-chosen authorization server; the MEDIUMs are
+# the same package's client and server transports. They expire so they come
+# back if Semgrep has not moved by then.
+CVE-2026-115563 exp:2026-12-15
+CVE-2026-116684 exp:2026-12-15
+CVE-2026-116685 exp:2026-12-15
+CVE-2026-116686 exp:2026-12-15
+CVE-2026-59951 exp:2026-12-15
