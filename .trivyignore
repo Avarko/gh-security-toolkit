@@ -17,3 +17,23 @@ DS-0026
 # cosign-3 3.1.4-r4 still carries v0.61.0. cosign here parses no HTML. The
 # entry expires so the finding comes back if no release fixes it by then.
 CVE-2026-78661 exp:2026-12-15
+
+# mcp 1.29.0 (cli/semgrep/requirements.txt, in the image under Semgrep's
+# packages): the MCP Python SDK's OAuth client and HTTP transports, fixed in
+# 1.30.0. Semgrep pins mcp==1.29.0 exactly, through 1.186.0, so no Semgrep
+# release takes the fix and overriding its pin is not worth breaking it for.
+# The SDK backs only the `semgrep mcp` subcommand; the image runs `semgrep
+# scan`, which acts as no MCP client or server. The gating self-check sees only
+# the HIGH; the MEDIUMs are listed so local scans that include MEDIUM do not
+# report the same unreachable package four more times. All five are fixed in
+# mcp 1.30.0, and they expire so they come back if Semgrep has not moved.
+# HIGH   GHSA-qx49-fqc8-xw99  OAuth client sends credentials to a server-chosen authorization server
+CVE-2026-115563 exp:2026-12-15
+# MEDIUM GHSA-w4fh-qvv9-3v23  server bearer-token auth accepts tokens for another resource server
+CVE-2026-116684 exp:2026-12-15
+# MEDIUM GHSA-5h93-6whr-6q8j  client transports follow cross-origin redirects with headers and bodies
+CVE-2026-116685 exp:2026-12-15
+# MEDIUM GHSA-rwrf-2pqf-9j8j  client fetches server-chosen $ref URLs validating tool output
+CVE-2026-116686 exp:2026-12-15
+# MEDIUM GHSA-84m7-p3x7-pcfv  unbounded sessions in the StreamableHTTP server transport
+CVE-2026-59951 exp:2026-12-15
