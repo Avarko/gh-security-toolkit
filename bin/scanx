@@ -158,7 +158,9 @@ image_check_start() {
 
 image_check_stop() {
 	[ -n "${image_pid:-}" ] || return 0
-	kill "$image_pid" 2>/dev/null
+	# The docker pull under it may run on to the end and record what it found,
+	# which is a true answer, so only make itself is stopped.
+	kill "$image_pid" 2>/dev/null || true
 	rm -f "$image_log"
 	image_pid=""
 }
