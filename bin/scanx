@@ -45,6 +45,8 @@ Environment:
                                      the full JSON report is always in .scanx/
   SCANX_OFFLINE=1                    No network: skip update checks, image pulls and Semgrep
   SCANX_NO_UPDATE=1                  Network, but no update check before the command
+  SCANX_CHECK_INTERVAL_MINUTES=10    How long a successful check for a newer scanx or
+                                     image holds (default 10; 0 checks on every run)
   SCANX_NO_PROGRESS=1                Same as --no-progress
   SCANX_MAKE=gmake                   GNU make to use (macOS ships make 3.81)
 
@@ -104,8 +106,53 @@ version() {
 # upstream, then start again from the updated script, since this one may be
 # what changed. It never merges, rebases or touches local changes; a clone that
 # cannot be fast-forwarded is reported and scanned as it is. The image half is
-# the Makefile's, told below to check on every run instead of once a day.
+# the Makefile's, told below to check as often as this one instead of once a day.
 short() { git -C "$SCANX_HOME" rev-parse --short=12 "$1" 2>/dev/null || echo unknown; }
+
+# A successful check holds for SCANX_CHECK_INTERVAL_MINUTES, for scanx and the
+# image alike. Checking on every run cost a git fetch and a docker pull, a few
+# seconds, on every scan, and scans tend to come in runs a few minutes apart.
+# Ten minutes is still not the day whose one failed check this replaced: only
+# a check that succeeded holds, so a failed one is retried on the next scan.
+check_interval=${SCANX_CHECK_INTERVAL_MINUTES:-10}
+case $check_interval in '' | *[!0-9]*) check_interval=10 ;; esac
+
+# Minutes since the clone last fetched, or nothing when that cannot be told.
+# FETCH_HEAD is rewritten by every fetch that succeeds, including one that
+# finds nothing new, and by no fetch that fails.
+minutes_since_fetch() {
+	f=$(git -C "$SCANX_HOME" rev-parse --path-format=absolute --git-path FETCH_HEAD 2>/dev/null) || return 0
+	[ -f "$f" ] || return 0
+	m=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null) || return 0
+	[ -n "$m" ] || return 0
+	echo $(( ($(date +%s) - m) / 60 ))
+}
+
+# The image check runs alongside scanx's own, rather than after it: both wait
+# on the network, a git fetch and a docker pull, and neither needs the other.
+# Its output is held back and printed after scanx's, in the order it always
+# came in. Whatever this background run leaves unchecked -- it failed, or
+# make's own arguments name another image -- the scan's make checks again.
+image_check_start() {
+	image_pid=""
+	[ "${SCANX_OFFLINE:-0}" = "1" ] && return 0
+	[ "${SCANX_UPDATED:-0}" = "1" ] && return 0
+	image_log=$(mktemp 2>/dev/null) || return 0
+	"${SCANX_MAKE:-make}" --no-print-directory -s -f "$MAKEFILE" \
+		SCANX_HOME="$SCANX_HOME" __ghst-image-ensure >"$image_log" 2>&1 </dev/null &
+	image_pid=$!
+}
+
+image_check_wait() {
+	[ -n "${image_pid:-}" ] || return 0
+	wait "$image_pid" 2>/dev/null || true
+	cat "$image_log" >&2
+	rm -f "$image_log"
+	image_pid=""
+	# Exported so a scanx restarted on its update knows it too.
+	SCANX_IMAGE_CHECKED=1
+	export SCANX_IMAGE_CHECKED
+}
 
 self_update() {
 	[ "${SCANX_OFFLINE:-0}" = "1" ] && return 0
@@ -124,6 +171,13 @@ self_update() {
 	# transfer, SSH on a connect that does not answer. An SSH command the user
 	# configured (GIT_SSH_COMMAND, GIT_SSH, core.sshCommand) is left alone, since
 	# it may carry the key this clone needs.
+	since=$(minutes_since_fetch)
+	if [ -n "$since" ] && [ "$since" -ge 0 ] && [ "$since" -lt "$check_interval" ]; then
+		if [ "$(git -C "$SCANX_HOME" rev-parse HEAD)" = "$(git -C "$SCANX_HOME" rev-parse '@{u}')" ]; then
+			echo "   scanx: up to date ($(short HEAD), checked $since min ago)" >&2
+			return 0
+		fi
+	fi
 	to=""
 	command -v timeout >/dev/null 2>&1 && to="timeout 20"
 	if [ -z "${GIT_SSH_COMMAND:-}${GIT_SSH:-}" ] \
@@ -157,6 +211,7 @@ self_update() {
 	echo "⬆️  scanx updated $(short "$before") → $(short HEAD)" >&2
 	# --no-progress has already been taken out of the arguments; it travels as
 	# the variable it was turned into.
+	image_check_wait
 	SCANX_UPDATED=1 SCANX_NO_PROGRESS=${SCANX_NO_PROGRESS:-0} exec "$SCANX_HOME/bin/scanx" "$@"
 }
 
@@ -177,13 +232,23 @@ done
 # After the flag is taken out, so `scanx --no-progress scan` updates too.
 case ${1:-} in
 	scan | db | provenance)
-		self_update "$@"
-		# Under scanx the image is checked on every run as well. Offline, each scan
-		# then tries the registry once; SCANX_OFFLINE=1 skips that.
+		# Under scanx the image is checked as often as scanx itself, not once a
+		# day. Offline, each scan then tries the registry once; SCANX_OFFLINE=1
+		# skips that.
 		if [ "${SCANX_NO_UPDATE:-0}" != "1" ]; then
-			__GHST_IMAGE_MAX_AGE_DAYS=0
+			__GHST_IMAGE_MAX_AGE_MINUTES=$check_interval
 			__GHST_IMAGE_UNREACHABLE_RETRY_MINUTES=0
-			export __GHST_IMAGE_MAX_AGE_DAYS __GHST_IMAGE_UNREACHABLE_RETRY_MINUTES
+			export __GHST_IMAGE_MAX_AGE_MINUTES __GHST_IMAGE_UNREACHABLE_RETRY_MINUTES
+			image_check_start
+		fi
+		self_update "$@"
+		image_check_wait
+		# Checked a moment ago, whatever the interval: SCANX_CHECK_INTERVAL_MINUTES=0
+		# means once per run, not twice, and an unreachable registry is not
+		# waited on a second time either.
+		if [ "${SCANX_IMAGE_CHECKED:-0}" = "1" ] && [ "${SCANX_NO_UPDATE:-0}" != "1" ]; then
+			[ "$check_interval" -gt 0 ] || __GHST_IMAGE_MAX_AGE_MINUTES=1
+			__GHST_IMAGE_UNREACHABLE_RETRY_MINUTES=1
 		fi
 		;;
 esac

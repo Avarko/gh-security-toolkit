@@ -187,6 +187,7 @@ __GHST_DB_RUN = $(__GHST_DOCKER_CMD) run --rm $(__GHST_HARDEN_OPTS) \
 	-e GHST_DB_DEBUG=$(GHST_DB_DEBUG) \
 	-e GHST_PROGRESS=$(__GHST_PROGRESS) \
 	-e GHST_VEX_SERVE=0 \
+	$(__GHST_DB_RUN_ENV) \
 	$(__GHST_IMAGE) trivy-db-helper
 
 # Whether the helper may redraw a progress line on stderr. It runs without a
@@ -231,9 +232,26 @@ sec/db/clean: # Remove the cached Trivy databases
 
 # Scan targets depend on this: it updates a stale cache and is a no-op when the
 # cache is current. GHST_OFFLINE=1 turns it into a freshness warning instead.
+#
+# It also asks the helper to leave its status report in the cache, and the
+# provenance banner prints from that instead of starting a second container
+# to ask: on a current cache, starting containers was most of the time these
+# two steps took. The file is named after this make's process, so two scans at
+# once do not read each other's, and is removed first, so a report left by an
+# earlier process with the same number is never taken for this one's. A
+# helper too old to write it leaves no file, and the banner asks with
+# -command status as before. A scan interrupted between the two leaves its
+# report behind; any older than a day is swept here.
+__GHST_RUN_ID := $(shell echo $$PPID)
+__GHST_DB_STATUS_NAME := .status-$(__GHST_RUN_ID)
+__GHST_DB_STATUS := $(__GHST_DB_CACHE)/$(__GHST_DB_STATUS_NAME)
+
 .PHONY: __ghst-db-ensure
+__ghst-db-ensure: __GHST_DB_RUN_ENV = -e GHST_STATUS_FILE=/db-cache/$(__GHST_DB_STATUS_NAME)
 __ghst-db-ensure: __ghst-image-ensure
 	@$(__GHST_DB_PREPARE)
+	@rm -f "$(__GHST_DB_STATUS)"
+	@find "$(__GHST_DB_CACHE)" -maxdepth 1 -name '.status-*' -mmin +1440 -exec rm -f {} + 2>/dev/null || true
 	@$(__GHST_DB_RUN) -command ensure >&2
 
 # ============================================================================
@@ -271,6 +289,10 @@ __ghst-db-ensure: __ghst-image-ensure
 # ============================================================================
 
 __GHST_IMAGE_MAX_AGE_DAYS ?= 1
+# Minutes instead of days, when set. scanx sets it: it checks for a newer
+# image on every scan rather than once a day, and this is what keeps scans
+# that follow one another within a few minutes from each asking again.
+__GHST_IMAGE_MAX_AGE_MINUTES ?=
 __GHST_IMAGE_UNREACHABLE_RETRY_MINUTES ?= 60
 __GHST_IMAGE_STAMP := $(HOME)/.cache/gh-security-toolkit/.image-checked-$(subst /,_,$(__GHST_IMAGE_TAG))
 
@@ -293,6 +315,8 @@ __ghst-image-ensure:
 		checked=$$(stat -c %Y "$(__GHST_IMAGE_STAMP)" 2>/dev/null || stat -f %m "$(__GHST_IMAGE_STAMP)"); \
 		if [ "$$verdict" = unreachable ]; then \
 			[ $$(( (now - checked) / 60 )) -lt "$(__GHST_IMAGE_UNREACHABLE_RETRY_MINUTES)" ] && exit 0; \
+		elif [ -n "$(__GHST_IMAGE_MAX_AGE_MINUTES)" ]; then \
+			[ $$(( (now - checked) / 60 )) -lt "$(__GHST_IMAGE_MAX_AGE_MINUTES)" ] && exit 0; \
 		else \
 			[ $$(( (now - checked) / 86400 )) -lt "$(__GHST_IMAGE_MAX_AGE_DAYS)" ] && exit 0; \
 		fi; \
@@ -671,17 +695,14 @@ __ghst-provenance: __ghst-db-ensure __ghst-self-check __ghst-freshness-floor
 		selfstate="not checked"; \
 	fi; \
 	ref='$(__GHST_IMAGE)'; \
-	if ! $(__GHST_DOCKER_CMD) image inspect $$ref >/dev/null 2>&1; then \
+	if ! info=$$($(__GHST_DOCKER_CMD) image inspect $$ref --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}|{{with index .Config.Labels "org.opencontainers.image.revision"}}{{.}}{{end}}|{{with index .Config.Labels "org.opencontainers.image.created"}}{{.}}{{end}}|{{.Created}}' 2>/dev/null); then \
 		echo "==> gh-security-toolkit: $$ref is not present locally yet" >&2; \
 	else \
-		digest=$$($(__GHST_DOCKER_CMD) image inspect $$ref \
-			--format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' 2>/dev/null \
-			| sed 's/.*@//'); \
-		revision=$$($(call __GHST_LABEL,org.opencontainers.image.revision)); \
-		built=$$($(call __GHST_LABEL,org.opencontainers.image.created)); \
-		if [ -z "$$built" ]; then \
-			built=$$($(__GHST_DOCKER_CMD) image inspect $$ref --format '{{.Created}}' 2>/dev/null); \
-		fi; \
+		: "One inspect for the four values, rather than one each"; \
+		digest=$$(echo "$$info" | cut -d'|' -f1 | sed 's/.*@//'); \
+		revision=$$(echo "$$info" | cut -d'|' -f2); \
+		built=$$(echo "$$info" | cut -d'|' -f3); \
+		[ -n "$$built" ] || built=$$(echo "$$info" | cut -d'|' -f4); \
 		built=$$(echo "$$built" | cut -c1-10); \
 		echo "==> gh-security-toolkit: image '$(__GHST_IMAGE_TAG)' published $${built:-unknown} ($$fresh), digest $$(echo $${digest:-unknown} | cut -c1-19), revision $$(echo $${revision:-unknown} | cut -c1-12)" >&2; \
 		if [ "$(GHST_PROVENANCE_VERBOSE)" = "1" ]; then \
@@ -719,7 +740,13 @@ __ghst-provenance: __ghst-db-ensure __ghst-self-check __ghst-freshness-floor
 	fi; \
 	$(__GHST_DB_PREPARE); \
 	dberr=$$(mktemp); \
-	if status=$$($(__GHST_DB_RUN) -command status 2>"$$dberr"); then \
+	if [ -s "$(__GHST_DB_STATUS)" ] && status=$$(cat "$(__GHST_DB_STATUS)"); then \
+		rm -f "$(__GHST_DB_STATUS)"; \
+		echo "==> trivy-incremental-dbs: $$(echo "$$status" | $(__GHST_AWK_DB_VERSIONS))" >&2; \
+		if [ "$(GHST_PROVENANCE_VERBOSE)" = "1" ]; then \
+			echo "$$status" | sed 's/^/    /' >&2; \
+		fi; \
+	elif status=$$($(__GHST_DB_RUN) -command status 2>"$$dberr"); then \
 		echo "==> trivy-incremental-dbs: $$(echo "$$status" | $(__GHST_AWK_DB_VERSIONS))" >&2; \
 		if [ "$(GHST_PROVENANCE_VERBOSE)" = "1" ]; then \
 			echo "$$status" | sed 's/^/    /' >&2; \
