@@ -117,12 +117,13 @@ short() { git -C "$SCANX_HOME" rev-parse --short=12 "$1" 2>/dev/null || echo unk
 check_interval=${SCANX_CHECK_INTERVAL_MINUTES:-10}
 case $check_interval in '' | *[!0-9]*) check_interval=10 ;; esac
 
-# Minutes since the clone last fetched, or nothing when that cannot be told.
-# FETCH_HEAD is rewritten by every fetch that succeeds, including one that
-# finds nothing new, and by no fetch that fails.
+# Minutes since the clone last fetched successfully, or nothing when that
+# cannot be told. A fetch that succeeds writes the refs it fetched into
+# FETCH_HEAD, even when nothing is new. One that fails also rewrites it, but
+# empty, so only a file with something in it counts as a check.
 minutes_since_fetch() {
 	f=$(git -C "$SCANX_HOME" rev-parse --path-format=absolute --git-path FETCH_HEAD 2>/dev/null) || return 0
-	[ -f "$f" ] || return 0
+	[ -s "$f" ] || return 0
 	m=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null) || return 0
 	[ -n "$m" ] || return 0
 	echo $(( ($(date +%s) - m) / 60 ))
@@ -133,19 +134,39 @@ minutes_since_fetch() {
 # Its output is held back and printed after scanx's, in the order it always
 # came in. Whatever this background run leaves unchecked -- it failed, or
 # make's own arguments name another image -- the scan's make checks again.
+#
+# Only for a command that will use the image, and only when make is given no
+# NAME=value: that may name another image or another container engine, and
+# this run would not see it. The scan's make checks in either case.
 image_check_start() {
 	image_pid=""
 	[ "${SCANX_OFFLINE:-0}" = "1" ] && return 0
 	[ "${SCANX_UPDATED:-0}" = "1" ] && return 0
+	case "$1 ${2:-}" in "db update" | "db status" | scan* | provenance*) ;; *) return 0 ;; esac
+	for a in "$@"; do
+		case $a in *=*) return 0 ;; esac
+	done
 	image_log=$(mktemp 2>/dev/null) || return 0
 	"${SCANX_MAKE:-make}" --no-print-directory -s -f "$MAKEFILE" \
 		SCANX_HOME="$SCANX_HOME" __ghst-image-ensure >"$image_log" 2>&1 </dev/null &
 	image_pid=$!
+	# A background job started without job control ignores Ctrl-C, so it is
+	# stopped here rather than left pulling after scanx has gone.
+	trap 'image_check_stop; exit 130' INT
+	trap 'image_check_stop; exit 143' TERM
+}
+
+image_check_stop() {
+	[ -n "${image_pid:-}" ] || return 0
+	kill "$image_pid" 2>/dev/null
+	rm -f "$image_log"
+	image_pid=""
 }
 
 image_check_wait() {
 	[ -n "${image_pid:-}" ] || return 0
 	wait "$image_pid" 2>/dev/null || true
+	trap - INT TERM
 	cat "$image_log" >&2
 	rm -f "$image_log"
 	image_pid=""
@@ -239,7 +260,7 @@ case ${1:-} in
 			__GHST_IMAGE_MAX_AGE_MINUTES=$check_interval
 			__GHST_IMAGE_UNREACHABLE_RETRY_MINUTES=0
 			export __GHST_IMAGE_MAX_AGE_MINUTES __GHST_IMAGE_UNREACHABLE_RETRY_MINUTES
-			image_check_start
+			image_check_start "$@"
 		fi
 		self_update "$@"
 		image_check_wait

@@ -131,7 +131,9 @@ See [Ignore CVEs](#ignore-cves).
 Every `scanx scan`, `scanx db` and `scanx provenance` starts with
 "Checking for updates...": it fetches its own clone, fast-forwards it to the
 upstream of the checked-out branch and restarts itself if anything changed,
-then pulls the scanner image. A clone with local commits or uncommitted changes
+then pulls the scanner image; the two run side by side. A check that succeeded
+holds for `SCANX_CHECK_INTERVAL_MINUTES` (10), so scans in quick succession do
+not repeat it; `0` checks on every run. A clone with local commits or uncommitted changes
 is reported and left as it is. If the network cannot be reached the scan goes
 on with what is installed and says so; after 14 days without a confirmed-current
 check, scans refuse, as described in [What keeps itself current](#what-keeps-itself-current).
