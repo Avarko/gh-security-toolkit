@@ -131,7 +131,9 @@ See [Ignore CVEs](#ignore-cves).
 Every `scanx scan`, `scanx db` and `scanx provenance` starts with
 "Checking for updates...": it fetches its own clone, fast-forwards it to the
 upstream of the checked-out branch and restarts itself if anything changed,
-then pulls the scanner image. A clone with local commits or uncommitted changes
+then pulls the scanner image; the two run side by side. A check that succeeded
+holds for `SCANX_CHECK_INTERVAL_MINUTES` (10), so scans in quick succession do
+not repeat it; `0` checks on every run. A clone with local commits or uncommitted changes
 is reported and left as it is. If the network cannot be reached the scan goes
 on with what is installed and says so; after 14 days without a confirmed-current
 check, scans refuse, as described in [What keeps itself current](#what-keeps-itself-current).
@@ -326,8 +328,8 @@ old data.
 | Artefact | Where it lives | How it refreshes | If it cannot |
 | --- | --- | --- | --- |
 | `Makefile.scanners` | `.gh-security-toolkit/` in your repository | Compared against the published file once a day during a scan. When a newer one exists, the next scan re-fetches it through your own include rule and Make restarts with it. | Scan refuses once nothing has confirmed it for `__GHST_MAX_STALE_DAYS` (14), unless the host has no `cmp` or no `curl` and so could never have compared them. |
-| Scanner image | Docker | `docker pull` when the last confirmed check is more than `__GHST_IMAGE_MAX_AGE_DAYS` (1) old, or the last attempt found the registry unreachable more than `__GHST_IMAGE_UNREACHABLE_RETRY_MINUTES` (60) ago, so an offline machine waits on one registry timeout an hour. The image it replaces is removed if nothing else tags it. | Scan refuses once nothing has confirmed it for `__GHST_MAX_STALE_DAYS` (14). |
-| Trivy databases | `~/.cache/gh-security-toolkit/trivy-db` | The helper updates them incrementally, applying deltas rather than re-downloading. | Scan refuses at `__GHST_DB_MAX_AGE_DAYS` (14). |
+| Scanner image | Docker | `docker pull` when the last confirmed check is more than `__GHST_IMAGE_MAX_AGE_DAYS` (1) old (under scanx, more than `SCANX_CHECK_INTERVAL_MINUTES` (10) minutes old, the same interval as scanx's own check), or the last attempt found the registry unreachable more than `__GHST_IMAGE_UNREACHABLE_RETRY_MINUTES` (60) ago, so an offline machine waits on one registry timeout an hour. The image it replaces is removed if nothing else tags it. | Scan refuses once nothing has confirmed it for `__GHST_MAX_STALE_DAYS` (14). |
+| Trivy databases | `~/.cache/gh-security-toolkit/trivy-db` | The helper updates them incrementally, applying deltas rather than re-downloading: when they are a day old, and once after each daily publication (04:00 UTC). A failed check after the publication does not stop a scan, and is retried an hour later. Two scans at once share one update; the second waits for it. | Scan refuses at `__GHST_DB_MAX_AGE_DAYS` (14). |
 | Containers | Docker | Nothing to refresh: every run is `--rm`, so none are kept. | — |
 | Semgrep | Inside the scanner image | With the image. Its version and every Python package under it are pinned by hash in `cli/semgrep/requirements.txt`, matched by CI's `pip install semgrep==`. | As the scanner image. |
 | Semgrep rulesets | `semgrep.dev` | Fetched on every scan, so they are always current — and never reproducible. | Scan fails; Semgrep has no offline mode. |
