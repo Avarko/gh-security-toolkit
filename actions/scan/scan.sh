@@ -189,7 +189,7 @@ fi
 # .semgrep.yaml replaces the default rulesets, a trivy.yaml can change
 # severities and skip directories, ignore files suppress findings. A reader
 # deciding how much a clean result means needs to know which were there.
-config_files=$(for f in trivy.yaml .trivy.yaml .trivyignore .trivyignore.yaml .semgrep.yaml .semgrep.yml .semgrepignore; do
+config_files=$(for f in trivy.yaml .trivy.yaml .trivyignore .trivyignore.yaml .semgrep.yaml .semgrep.yml .semgrepignore .trufflehogignore; do
 	if [ -f "$scan_dir/$f" ]; then printf '%s\n' "$f"; fi
 done | jq -R . | jq -s -c .)
 

@@ -150,7 +150,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Project configuration files present in the scanned path that the scans honour: trivy.yaml, .trivy.yaml, .trivyignore, .trivyignore.yaml, .semgrep.yaml, .semgrep.yml, .semgrepignore. A .semgrep.yaml replaces the default rulesets."
+          "description": "Project configuration files present in the scanned path that the scans honour: trivy.yaml, .trivy.yaml, .trivyignore, .trivyignore.yaml, .semgrep.yaml, .semgrep.yml, .semgrepignore, .trufflehogignore (read by actions/scanner/trufflehog, which actions/scan does not run). A .semgrep.yaml replaces the default rulesets."
         },
         "image": {
           "type": [

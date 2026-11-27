@@ -1,0 +1,181 @@
+# Runs the TruffleHog action and actions/findings as a caller would, against
+# fixtures with known content, and checks for specific results -- a scanner
+# that read nothing looks exactly like one that found nothing.
+#
+# Fixtures are written at run time: a committed file with a credential in it
+# would be a finding on the toolkit itself, forever. The credentials below are
+# made-up strings for hosts under example.internal.
+name: Test findings actions
+
+on:
+  pull_request:
+    paths:
+      - actions/scanner/trufflehog/**
+      - actions/findings/**
+      - actions/notify/slack/**
+      - actions/scan/image.ref
+      - .github/workflows/test-findings-actions.yml
+  push:
+    branches: [main]
+    paths:
+      - actions/scanner/trufflehog/**
+      - actions/findings/**
+      - actions/notify/slack/**
+      - actions/scan/image.ref
+      - .github/workflows/test-findings-actions.yml
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  trufflehog:
+    name: TruffleHog action
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Write a repository with a leaked credential
+        id: fixture
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/th-fixture"
+          mkdir -p "$dir/local"
+          cd "$dir"
+          git init -q
+          git config user.email test@example.invalid
+          git config user.name test
+          echo "clean" > README
+          git add README && git commit -qm init
+          echo "base=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          # The secret is assembled so this workflow file does not carry it.
+          pw="Fx9$(printf 'Qw%.0s' 1 2 3)Passw0rd"
+          echo "url: postgresql://app:${pw}@db1.example.internal:5432/app" > config.yml
+          echo "url: postgresql://app:${pw}@db2.example.internal:5432/app" > local/dev.yml
+          echo "url: postgresql://app:${pw}@db3.example.internal:5432/app # trufflehog:ignore" > inline.yml
+          printf '%s\n' '# local only' '^local/' > .trufflehogignore
+          git add -A && git commit -qm leak
+          echo "secret=$pw" >> "$GITHUB_OUTPUT"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      - name: Incremental git scan
+        id: th
+        uses: ./actions/scanner/trufflehog
+        with:
+          path: ${{ steps.fixture.outputs.dir }}
+          base: ${{ steps.fixture.outputs.base }}
+          fail_on_findings: "false"
+
+      - name: Expected findings, and no secret values anywhere
+        env:
+          COUNT: ${{ steps.th.outputs.findings_count }}
+          REPORT: ${{ steps.th.outputs.report }}
+          SECRET: ${{ steps.fixture.outputs.secret }}
+        run: |
+          set -euo pipefail
+          jq . "$REPORT"
+          # config.yml only: local/ is in .trufflehogignore, inline.yml is
+          # marked on its line.
+          [ "$COUNT" = 1 ] || { echo "::error::expected 1 finding, got $COUNT"; exit 1; }
+          [ "$(jq -r '.findings[0].file' "$REPORT")" = config.yml ] || { echo "::error::wrong file"; exit 1; }
+          [ "$(jq -r '.findings[0].detector' "$REPORT")" = Postgres ] || { echo "::error::wrong detector"; exit 1; }
+          if grep -rqF "$SECRET" "$(dirname "$REPORT")" "$GITHUB_STEP_SUMMARY"; then
+            echo "::error::the secret value reached the report or the job summary"; exit 1
+          fi
+          ! ls -A "$(dirname "$REPORT")" | grep -q '^\.' || { echo "::error::scratch files left behind"; ls -A "$(dirname "$REPORT")"; exit 1; }
+
+      - name: Fails on findings by default
+        id: th_fail
+        continue-on-error: true
+        uses: ./actions/scanner/trufflehog
+        with:
+          path: ${{ steps.fixture.outputs.dir }}
+          scan_type: filesystem
+
+      - name: Check it failed
+        env:
+          OUTCOME: ${{ steps.th_fail.outcome }}
+          COUNT: ${{ steps.th_fail.outputs.findings_count }}
+        run: |
+          [ "$OUTCOME" = failure ] || { echo "::error::expected failure, got $OUTCOME"; exit 1; }
+          [ "$COUNT" = 1 ] || { echo "::error::filesystem scan: expected 1 finding, got $COUNT"; exit 1; }
+
+  findings:
+    name: actions/findings
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Two scans' worth of reports
+        id: fixture
+        run: |
+          set -euo pipefail
+          prev="$RUNNER_TEMP/scan-prev"; cur="$RUNNER_TEMP/scan-cur"
+          mkdir -p "$prev" "$cur"
+          vuln() { jq -n --arg id "$1" --arg sev "$2" '{VulnerabilityID: $id, PkgName: "org.example:lib", InstalledVersion: "1.0", FixedVersion: "1.1", Severity: $sev}'; }
+          jq -n --argjson a "$(vuln CVE-2000-0001 HIGH)" --argjson b "$(vuln CVE-2000-0002 MEDIUM)" \
+            '{SchemaVersion: 2, Results: [{Target: "pom.xml", Vulnerabilities: [$a, $b]}]}' > "$prev/trivy-fs.json"
+          # One fixed (0002), one new (0003) -- the counts per severity change
+          # only for CRITICAL, so a count comparison would see half of it.
+          jq -n --argjson a "$(vuln CVE-2000-0001 HIGH)" --argjson c "$(vuln CVE-2000-0003 CRITICAL)" \
+            '{SchemaVersion: 2, Results: [{Target: "pom.xml", Vulnerabilities: [$a, $c]}]}' > "$cur/trivy-fs.json"
+          jq -n '{results: [{check_id: "r.x", path: "a|b.java", start: {line: 3}, extra: {severity: "ERROR", message: "m"}}], errors: []}' > "$cur/semgrep.json"
+          echo "prev=$prev" >> "$GITHUB_OUTPUT"
+          echo "cur=$cur" >> "$GITHUB_OUTPUT"
+
+      - name: Baseline
+        uses: ./actions/findings
+        with:
+          scan-dir: ${{ steps.fixture.outputs.prev }}
+
+      - name: Compared with the baseline
+        id: f
+        uses: ./actions/findings
+        with:
+          scan-dir: ${{ steps.fixture.outputs.cur }}
+          previous-findings: ${{ steps.fixture.outputs.prev }}/findings.json
+
+      - name: Check the comparison
+        env:
+          F: ${{ steps.f.outputs.findings }}
+          NEW_HC: ${{ steps.f.outputs.new-high-critical }}
+          HAS_PREV: ${{ steps.f.outputs.has-previous }}
+        run: |
+          set -euo pipefail
+          jq '.comparison' "$F"
+          [ "$HAS_PREV" = true ] || { echo "::error::has-previous should be true"; exit 1; }
+          [ "$(jq -c '[.comparison.new[].id] | sort' "$F")" = '["CVE-2000-0003","r.x"]' ] || { echo "::error::wrong new findings"; exit 1; }
+          [ "$(jq -c '[.comparison.fixed[].id]' "$F")" = '["CVE-2000-0002"]' ] || { echo "::error::wrong fixed findings"; exit 1; }
+          [ "$NEW_HC" = 2 ] || { echo "::error::new-high-critical: expected 2, got $NEW_HC"; exit 1; }
+          grep -qF 'a\|b.java' "$(dirname "$F")/FINDINGS.md" || { echo "::error::table metacharacters not escaped"; exit 1; }
+
+      - name: fail-on blocks a regression
+        id: gate
+        continue-on-error: true
+        uses: ./actions/findings
+        with:
+          scan-dir: ${{ steps.fixture.outputs.cur }}
+          previous-findings: ${{ steps.fixture.outputs.prev }}/findings.json
+          fail-on: CRITICAL
+
+      - name: Check the gate
+        env:
+          OUTCOME: ${{ steps.gate.outcome }}
+        run: '[ "$OUTCOME" = failure ] || { echo "::error::fail-on CRITICAL should have failed"; exit 1; }'
+
+      - name: Slack, findings mode, no webhook configured
+        id: slack
+        uses: ./actions/notify/slack
+        with:
+          findings: ${{ steps.f.outputs.findings }}
+          notify_on: high_and_critical
+
+      - name: Check Slack saw the change
+        env:
+          HAS_CHANGES: ${{ steps.slack.outputs.has_changes }}
+        run: '[ "$HAS_CHANGES" = true ] || { echo "::error::has_changes should be true"; exit 1; }'
