@@ -375,6 +375,44 @@ CVE-2024-1234 exp:2026-10-01
 
 See [Ignoring findings (`.trivyignore`)](#ignoring-findings-trivyignore) below for the full syntax, including per-path/per-package ignores via `.trivyignore.yaml`.
 
+### Without GitHub Pages: history, gating and Slack on any plan
+
+`actions/scan` publishes nothing. To keep a history and alert on regressions
+without Pages, publish each scan as a GitHub Release and let
+`actions/findings` compare with the previous one:
+
+```yaml
+- id: scan
+  uses: Avarko/gh-security-toolkit/actions/scan@v2
+
+- id: findings
+  uses: Avarko/gh-security-toolkit/actions/findings@v2
+  with:
+    scan-dir: ${{ steps.scan.outputs.output-dir }}
+    channel: nightly-master      # compared with the newest security-scan-nightly-master-* release
+    fail-on: none                # or CRITICAL/HIGH: fail only on NEW findings
+
+- uses: Avarko/gh-security-toolkit/actions/publisher/github-release@v2
+  with:
+    outdir: ${{ steps.scan.outputs.output-dir }}
+    channel: security-scan-nightly-master
+    tag_name: security-scan-nightly-master-${{ github.run_id }}-${{ github.run_attempt }}
+    release_name: Security scan nightly-master
+    body_file: ${{ steps.findings.outputs.summary }}
+    prerelease: "true"
+    retention_keep: "30"
+
+- uses: Avarko/gh-security-toolkit/actions/notify/slack@v2
+  with:
+    findings: ${{ steps.findings.outputs.findings }}
+    slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+    notify_on: high_and_critical
+```
+
+Release assets are visible to everyone who can read the repository, so this
+fits private repositories; for a public one, keep results in Actions
+artifacts (`actions/upload-artifact`) instead.
+
 ### Scanning in CI: `actions/scan@v2`
 
 `actions/scan` runs the same scans as `scanx scan`, from the same release of
@@ -643,6 +681,8 @@ gh-security-toolkit/
 | **`actions/scan`** | Runs scanx's scans from the pinned scanner image; native JSON reports and a manifest, no publishing |
 | **`actions/security-scan`** | Main composite action: runs Trivy + Semgrep, summarizes, publishes |
 | **`actions/publish-test-reports`** | Publishes JaCoCo/Surefire test reports to GitHub Pages |
+| **`actions/findings`** | Normalises scan reports into `findings.json` + `FINDINGS.md`, diffs against the channel's previous GitHub Release by finding identity, optional `fail-on` gate for new findings. No Pages needed |
+| **`actions/notify/slack`** | Slack message on new findings (`findings:` input, any plan) or on count changes in Pages scan history |
 
 ### Scanners
 
@@ -650,6 +690,7 @@ gh-security-toolkit/
 |---------|------|-------|
 | **Trivy** | Filesystem + Image | Vulnerabilities, Misconfigurations |
 | **Semgrep** | SAST | Code security issues, secrets |
+| **TruffleHog** | Git history / filesystem | Leaked credentials; report without secret values ([`actions/scanner/trufflehog`](actions/scanner/trufflehog/README.md)) |
 
 ### Publishers
 

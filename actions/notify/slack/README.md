@@ -12,6 +12,36 @@ Compares security scan results with the previous run and sends Slack notificatio
 
 ## Usage
 
+### Without GitHub Pages (any GitHub plan)
+
+Give it the `findings.json` from `actions/findings`. It notifies when there
+are **new** findings at the `notify_on` threshold -- compared finding by
+finding, so one CVE fixed and another introduced in the same run is still
+reported. The previous scan is read from the channel's latest GitHub Release,
+so publish each scan with `actions/publisher/github-release`.
+
+```yaml
+- id: findings
+  uses: Avarko/gh-security-toolkit/actions/findings@v2
+  with:
+    scan-dir: ${{ steps.scan.outputs.output-dir }}
+    channel: nightly-master
+
+- uses: Avarko/gh-security-toolkit/actions/notify/slack@v2
+  with:
+    findings: ${{ steps.findings.outputs.findings }}
+    slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+    notify_on: high_and_critical
+```
+
+The first scan of a channel sets the baseline and sends nothing.
+
+### With GitHub Pages scan history
+
+The original mode, used when `findings` is not set: it compares severity
+counts with the previous entry in the Pages scan-history artifact, so it
+needs `publish_to: github-pages` (Private Pages, GitHub Enterprise Cloud).
+
 ### Basic Example
 
 ```yaml
@@ -49,12 +79,13 @@ Compares security scan results with the previous run and sends Slack notificatio
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `channel` | ✅ | - | Scan channel name (e.g., `push-to-main`) |
-| `timestamp` | ✅ | - | Scan timestamp (`YYYYMMDD-HHMMSS`) |
+| `channel` | Pages mode | `''` | Scan channel name (e.g., `push-to-main`) |
+| `findings` | ❌ | `''` | Path to `findings.json`; selects the no-Pages mode |
+| `timestamp` | Pages mode | `''` | Scan timestamp (`YYYYMMDD-HHMMSS`) |
 | `slack_webhook_url` | ⚠️ | `''` | Slack webhook URL (required if not using bot token) |
 | `slack_bot_token` | ⚠️ | `''` | Slack bot OAuth token (alternative to webhook) |
 | `slack_channel` | ⚠️ | `''` | Slack channel ID (required with bot token) |
-| `github_token` | ✅ | - | GitHub token for artifact access |
+| `github_token` | ❌ | `github.token` | GitHub token for artifact access (Pages mode) |
 | `notify_on` | ❌ | `critical_only` | When to notify: `all`, `critical_only`, `high_and_critical` |
 
 **Note:** Either `slack_webhook_url` OR (`slack_bot_token` + `slack_channel`) must be provided.

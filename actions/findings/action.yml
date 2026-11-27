@@ -1,0 +1,118 @@
+name: "gh-security-toolkit: findings"
+description: >
+  Turns the reports in a scan output directory (actions/scan, and optionally
+  the TruffleHog action's trufflehog.json) into findings.json and FINDINGS.md,
+  compared with the previous scan of the same channel. Works on any GitHub
+  plan: the previous scan is read from the channel's latest GitHub Release
+  (actions/publisher/github-release), or from a file you give it.
+
+inputs:
+  scan-dir:
+    description: "Directory with the reports (actions/scan's output-dir). findings.json and FINDINGS.md are written here."
+    required: true
+  channel:
+    description: >
+      Channel whose previous scan to compare with. Releases of the channel
+      are tagged security-scan-<channel>-*. Empty: no comparison unless
+      previous-findings is given.
+    required: false
+    default: ""
+  previous-findings:
+    description: "Path to a previous findings.json; takes precedence over channel."
+    required: false
+    default: ""
+  fail-on:
+    description: >
+      Fail the step when there are NEW findings at or above this severity
+      (CRITICAL, HIGH, MEDIUM, LOW), or 'none'. Only new ones: a baseline of
+      known findings does not block, a regression does. With no previous scan
+      to compare with, nothing is new.
+    required: false
+    default: "none"
+  github-token:
+    description: "Token that can read releases (contents: read)."
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  findings:
+    description: "Path to findings.json."
+    value: ${{ steps.run.outputs.findings }}
+  summary:
+    description: "Path to FINDINGS.md."
+    value: ${{ steps.run.outputs.summary }}
+  new-high-critical:
+    description: "Number of new HIGH and CRITICAL findings since the previous scan (0 when there is none to compare with)."
+    value: ${{ steps.run.outputs.new-high-critical }}
+  has-previous:
+    description: "Whether a previous scan was found to compare with (true/false)."
+    value: ${{ steps.run.outputs.has-previous }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        INPUT_SCAN_DIR: ${{ inputs.scan-dir }}
+        INPUT_CHANNEL: ${{ inputs.channel }}
+        INPUT_PREVIOUS: ${{ inputs.previous-findings }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        set -euo pipefail
+        dir="$INPUT_SCAN_DIR"
+        [ -d "$dir" ] || { echo "::error::scan-dir '$dir' does not exist"; exit 1; }
+
+        case "$INPUT_FAIL_ON" in
+          CRITICAL|HIGH|MEDIUM|LOW|none) ;;
+          *) echo "::error::fail-on must be CRITICAL, HIGH, MEDIUM, LOW or none, not '$INPUT_FAIL_ON'"; exit 1 ;;
+        esac
+
+        prev="$INPUT_PREVIOUS"
+        if [ -z "$prev" ] && [ -n "$INPUT_CHANNEL" ]; then
+          if ! [[ $INPUT_CHANNEL =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,34}$ ]]; then
+            echo "::error::channel '$INPUT_CHANNEL' is not a valid channel name"; exit 1
+          fi
+          # Newest release of the channel that carries a findings.json. The
+          # release this run is about to create does not exist yet, so the
+          # newest one is the previous scan. Releases created before this
+          # action existed have no findings.json and are skipped.
+          prefix="security-scan-${INPUT_CHANNEL}-"
+          prev_dir="${RUNNER_TEMP}/findings-previous-${GITHUB_RUN_ID:-0}"
+          rm -rf "$prev_dir"; mkdir -p "$prev_dir"
+          tags=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq '.[] | select(.draft | not) | [.created_at, .tag_name, ([.assets[].name] | index("findings.json") != null)] | @tsv' 2>/dev/null \
+            | awk -F'\t' -v p="$prefix" 'index($2, p) == 1 && $3 == "true"' | sort -r | cut -f2 || true)
+          tag=$(printf '%s\n' "$tags" | head -n 1)
+          if [ -n "$tag" ] && gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern findings.json --dir "$prev_dir" >/dev/null 2>&1; then
+            prev="$prev_dir/findings.json"
+            echo "Comparing with $tag"
+          else
+            echo "No previous scan with findings.json in channel '$INPUT_CHANNEL'; nothing to compare with"
+          fi
+        fi
+
+        "$ACTION_PATH/findings.sh" "$dir" ${prev:+"$prev"}
+
+        new_hc=$(jq '[.comparison.new[]? | select(.severity == "CRITICAL" or .severity == "HIGH")] | length' "$dir/findings.json")
+        has_prev=$(jq 'if .comparison then "true" else "false" end' -r "$dir/findings.json")
+        {
+          echo "findings=$dir/findings.json"
+          echo "summary=$dir/FINDINGS.md"
+          echo "new-high-critical=$new_hc"
+          echo "has-previous=$has_prev"
+        } >> "$GITHUB_OUTPUT"
+
+        cat "$dir/FINDINGS.md" >> "$GITHUB_STEP_SUMMARY"
+
+        if [ "$INPUT_FAIL_ON" != none ]; then
+          n=$(jq --arg t "$INPUT_FAIL_ON" '
+            def rank: {CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1}[.] // 0;
+            [.comparison.new[]? | select((.severity | rank) >= ($t | rank))] | length' "$dir/findings.json")
+          if [ "$n" -gt 0 ]; then
+            echo "::error::$n new finding(s) at $INPUT_FAIL_ON or above since the previous scan"
+            exit 1
+          fi
+        fi

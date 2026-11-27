@@ -3,12 +3,23 @@ description: "Compares scan results with previous run and sends Slack notificati
 
 inputs:
   channel:
-    description: 'Scan channel name'
-    required: true
+    description: 'Scan channel name (Pages history mode; not used with findings)'
+    required: false
+    default: ''
 
   timestamp:
-    description: 'Current scan timestamp (YYYYMMDD-HHMMSS)'
-    required: true
+    description: 'Current scan timestamp (YYYYMMDD-HHMMSS). Pages history mode only.'
+    required: false
+    default: ''
+
+  findings:
+    description: |
+      Path to a findings.json from actions/findings. When set, notifies about
+      NEW findings at the notify_on threshold (by finding, not by count) and
+      reads no GitHub Pages artifact, so it works without Pages. When empty,
+      the Pages scan-history comparison below is used, as before.
+    required: false
+    default: ''
 
   slack_webhook_url:
     description: 'Slack webhook URL for notifications'
@@ -26,8 +37,9 @@ inputs:
     default: ''
 
   github_token:
-    description: 'GitHub token for artifact access'
-    required: true
+    description: 'GitHub token for artifact access (Pages history mode)'
+    required: false
+    default: ${{ github.token }}
 
   notify_on:
     description: 'When to notify: all, critical_only, or high_and_critical'
@@ -37,24 +49,41 @@ inputs:
 outputs:
   has_changes:
     description: 'Whether changes were detected (true/false)'
-    value: ${{ steps.compare.outputs.has_changes }}
+    value: ${{ steps.findings.outputs.has_changes || steps.compare.outputs.has_changes }}
 
   comparison_json:
     description: 'Full comparison result as JSON'
-    value: ${{ steps.compare.outputs.comparison }}
+    value: ${{ steps.findings.outputs.comparison || steps.compare.outputs.comparison }}
 
 runs:
   using: "composite"
   steps:
+    # findings mode: everything it needs is in findings.json, so none of the
+    # Pages-history steps below run.
+    - name: Notify from findings.json
+      id: findings
+      if: ${{ inputs.findings != '' }}
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        FINDINGS: ${{ inputs.findings }}
+        NOTIFY_ON: ${{ inputs.notify_on }}
+        SLACK_WEBHOOK_URL: ${{ inputs.slack_webhook_url }}
+        SLACK_BOT_TOKEN: ${{ inputs.slack_bot_token }}
+        SLACK_CHANNEL: ${{ inputs.slack_channel }}
+      run: '"$ACTION_PATH/from-findings.sh"'
+
     # This action runs two jbang scripts but never installed jbang, working
     # only because the summarizer happens to run earlier in the same job and
     # leaves it on PATH. The install is idempotent, so saying so here costs
     # nothing and stops the action from depending on its neighbours.
     - name: Setup JBang
+      if: ${{ inputs.findings == '' }}
       shell: bash
       run: "${GITHUB_ACTION_PATH}/../../../scripts/install-jbang.sh"
 
     - name: Download scan history artifact
+      if: ${{ inputs.findings == '' }}
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github_token }}
@@ -89,6 +118,7 @@ runs:
 
     - name: Compare with previous scan
       id: compare
+      if: ${{ inputs.findings == '' }}
       shell: bash
       env:
         INPUT_CHANNEL: ${{ inputs.channel }}
@@ -188,7 +218,7 @@ runs:
         echo "✅ Slack notification sent"
 
     - name: Summary
-      if: always()
+      if: always() && inputs.findings == ''
       shell: bash
       env:
         INPUT_CHANNEL: ${{ inputs.channel }}
@@ -196,6 +226,7 @@ runs:
         COMPARISON: ${{ steps.compare.outputs.comparison }}
         STEP_COMPARE_HAS_CHANGES: ${{ steps.compare.outputs.has_changes }}
         STEP_FILTER_SHOULD_NOTIFY: ${{ steps.filter.outputs.should_notify }}
+        INPUT_NOTIFY_ON: ${{ inputs.notify_on }}
       run: |
         echo "## Slack Notification Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
@@ -214,6 +245,6 @@ runs:
             echo "✅ Slack notification sent" >> $GITHUB_STEP_SUMMARY
           else
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "ℹ️  Changes didn't match notify_on filter (${​{ inputs.notify_on }})" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️  Changes didn't match notify_on filter (${INPUT_NOTIFY_ON})" >> $GITHUB_STEP_SUMMARY
           fi
         fi
