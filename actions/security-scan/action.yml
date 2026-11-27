@@ -98,8 +98,12 @@ runs:
       id: ts
       shell: bash
       run: |
-        # ISO 8601 timestamp for scan identification
-        echo "ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+        # ISO 8601 timestamp for scan identification, and the same instant in
+        # a form a git tag can hold: ':' is not allowed in a ref name, so a
+        # tag built from ts was refused and github-release publishing failed.
+        now=$(date -u +%s)
+        echo "ts=$(date -u -d "@$now" +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+        echo "ts_tag=$(date -u -d "@$now" +%Y%m%dT%H%M%SZ)" >> "$GITHUB_OUTPUT"
 
     - name: Validate channel name
       shell: bash
@@ -186,7 +190,7 @@ runs:
       with:
         outdir: ${{ steps.setup.outputs.output_dir }}
         release_name: "Security scan ${{ inputs.channel }} ${{ steps.ts.outputs.ts }}"
-        tag_name: "security-scan-${{ inputs.channel }}-${{ steps.ts.outputs.ts }}"
+        tag_name: "security-scan-${{ inputs.channel }}-${{ steps.ts.outputs.ts_tag }}"
         body_file: ${{ steps.sum.outputs.release_body_markdown }}
         draft: "false"
         prerelease: "true"
