@@ -226,6 +226,7 @@ runs:
         COMPARISON: ${{ steps.compare.outputs.comparison }}
         STEP_COMPARE_HAS_CHANGES: ${{ steps.compare.outputs.has_changes }}
         STEP_FILTER_SHOULD_NOTIFY: ${{ steps.filter.outputs.should_notify }}
+        INPUT_NOTIFY_ON: ${{ inputs.notify_on }}
       run: |
         echo "## Slack Notification Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
@@ -244,6 +245,6 @@ runs:
             echo "✅ Slack notification sent" >> $GITHUB_STEP_SUMMARY
           else
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "ℹ️  Changes didn't match notify_on filter (${​{ inputs.notify_on }})" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️  Changes didn't match notify_on filter (${INPUT_NOTIFY_ON})" >> $GITHUB_STEP_SUMMARY
           fi
         fi

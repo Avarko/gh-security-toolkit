@@ -21,6 +21,11 @@ RUN_START = re.compile(r"^\s*-?\s*run:\s*[|>]")
 # A one-line `run: cmd ...` carries its script on the key's own line.
 RUN_INLINE = re.compile(r"^\s*-?\s*run:\s*(?![|>])(\S.*)$")
 EXPRESSION = re.compile(r"\$\{\{(.*?)\}\}")
+# Characters that render as nothing. One sat between the braces of a
+# "${\u200b{ inputs.notify_on }}" in notify/slack: invisible to this check
+# and to a reviewer, still an expression to the runner, which then refused to
+# load the action at all. Treated as findings wherever they appear.
+INVISIBLE = re.compile("[\u200b\u200c\u200d\u2060\ufeff]")
 
 
 def run_blocks(lines):
@@ -51,6 +56,8 @@ def main():
         with open(path, encoding="utf-8") as handle:
             lines = handle.read().split("\n")
         for k, line in enumerate(lines):
+            if INVISIBLE.search(line):
+                findings.add((path, k + 1, None))
             inline = RUN_INLINE.match(line)
             if inline:
                 for expr in EXPRESSION.findall(inline.group(1)):
@@ -65,8 +72,11 @@ def main():
 
     if findings:
         print("Expressions interpolated into run: bodies -- move them to env:\n")
-        for path, line, expr in sorted(findings):
-            print(f"  {path}:{line}: ${{{{ {expr} }}}}")
+        for path, line, expr in sorted(findings, key=lambda f: (f[0], f[1], f[2] or "")):
+            if expr is None:
+                print(f"  {path}:{line}: invisible character (zero-width space or similar); remove it")
+            else:
+                print(f"  {path}:{line}: ${{{{ {expr} }}}}")
         print(f"\n{len(findings)} finding(s). See SECURITY.md, F-1 to F-3.")
         return 1
 
