@@ -1,247 +1,128 @@
 name: "TruffleHog Scanner"
-description: "Lightweight wrapper for TruffleHog to scan Git repositories for leaked credentials and secrets. Suitable for PR checks and pre-commit hooks."
+description: >
+  Scans a Git repository (its history, or a commit range) or a directory for
+  leaked credentials with the TruffleHog in the toolkit's scanner image. Writes
+  a findings report with the secret values removed; never prints them.
+
+# Why the scanner image and not a trufflehog on the runner: GitHub-hosted
+# runners have none, and this action used to call one that was never installed.
+# The image is the one actions/scan pins (actions/scan/image.ref), by digest,
+# so the TruffleHog that runs is the one the release was tested with.
 
 inputs:
   path:
-    description: "Path to Git repository or directory to scan"
+    description: "Repository or directory to scan, relative to the workspace."
     required: false
     default: "."
 
   base:
-    description: "Base commit/branch to scan from (for incremental scans, e.g., 'main' or commit SHA)"
+    description: >
+      Scan only commits after this one (a SHA or ref), up to head. Empty scans
+      all history reachable from head. For a pull request, the base SHA; for a
+      push, github.event.before. An all-zero SHA (a new branch) means full history.
     required: false
     default: ""
 
   head:
-    description: "Head commit/branch to scan to (defaults to current HEAD)"
+    description: "Commit or ref to scan up to."
     required: false
     default: "HEAD"
 
   scan_type:
-    description: "Scan type: 'git' (git history), 'filesystem' (current files only), or 'auto' (detect)"
+    description: "'git' (history), 'filesystem' (the files as they are), or 'auto' (git if path has .git)."
     required: false
     default: "auto"
 
-  only_verified:
-    description: "Only show verified secrets (true/false)"
+  results:
+    description: >
+      Which results to report, comma-separated: verified, unverified, unknown.
+      'unverified' matters: a hardcoded database password has nothing to verify
+      against and is only ever reported as unverified.
+    required: false
+    default: "verified,unverified,unknown"
+
+  verify:
+    description: >
+      Check candidate secrets against their providers (true/false). Verifying
+      sends each candidate to the provider's API, i.e. off the runner. Off by
+      default; with it off nothing is 'verified', and findings are reported as
+      unverified.
     required: false
     default: "false"
 
+  exclude_paths_file:
+    description: >
+      File of regexes, one per line, matched against repository-relative paths
+      (e.g. ^postgres/Dockerfile$). Default: .trufflehogignore in path, if any.
+      For single lines, a '# trufflehog:ignore' comment on the line also works.
+    required: false
+    default: ""
+
   fail_on_findings:
-    description: "Fail the workflow if secrets are found (true/false)"
+    description: "Fail the step when anything is reported (true/false)."
     required: false
     default: "true"
 
-  extra_args:
-    description: "Additional arguments to pass to TruffleHog CLI"
+  output_dir:
+    description: "Where to write trufflehog.json. Default: $RUNNER_TEMP/trufflehog."
     required: false
     default: ""
 
 outputs:
   findings_count:
-    description: "Number of secrets found"
+    description: "Number of findings reported."
     value: ${{ steps.scan.outputs.findings_count }}
-
   has_verified:
-    description: "Whether verified secrets were found (true/false)"
+    description: "Whether any finding was verified as a live credential (true/false)."
     value: ${{ steps.scan.outputs.has_verified }}
+  report:
+    description: "Path to trufflehog.json: findings with location and detector, secret values removed."
+    value: ${{ steps.scan.outputs.report }}
 
 runs:
   using: "composite"
   steps:
-    - name: Determine scan configuration
-      id: config
-      shell: bash
-      # Values arrive as environment variables, never interpolated into the
-      # script text. A ${{ }} expression is substituted before bash parses the
-      # line, so a value containing a quote escapes its own assignment and the
-      # rest of it is executed as script. Branch names reach this action, and
-      # on a fork pull request the branch name is chosen by the attacker.
-      env:
-        INPUT_PATH: ${{ inputs.path }}
-        INPUT_SCAN_TYPE: ${{ inputs.scan_type }}
-        INPUT_BASE: ${{ inputs.base }}
-        INPUT_HEAD: ${{ inputs.head }}
-        INPUT_ONLY_VERIFIED: ${{ inputs.only_verified }}
-      run: |
-        SCAN_PATH="$INPUT_PATH"
-        SCAN_TYPE="$INPUT_SCAN_TYPE"
-
-        # Auto-detect scan type
-        if [ "$SCAN_TYPE" = "auto" ]; then
-          if [ -d "$SCAN_PATH/.git" ]; then
-            SCAN_TYPE="git"
-            echo "ℹ️  Auto-detected: Git repository scan"
-          else
-            SCAN_TYPE="filesystem"
-            echo "ℹ️  Auto-detected: Filesystem scan"
-          fi
-        fi
-
-        echo "scan_type=$SCAN_TYPE" >> "$GITHUB_OUTPUT"
-
-        # Determine if this is an incremental scan
-        if [ -n "$INPUT_BASE" ] && [ "$SCAN_TYPE" = "git" ]; then
-          echo "incremental=true" >> "$GITHUB_OUTPUT"
-          echo "📈 Incremental scan: ${INPUT_BASE}..${INPUT_HEAD}"
-        else
-          echo "incremental=false" >> "$GITHUB_OUTPUT"
-          if [ "$SCAN_TYPE" = "git" ]; then
-            echo "📜 Full Git history scan"
-          else
-            echo "📁 Filesystem scan (current files only)"
-          fi
-        fi
-
-        # Build results filter
-        if [ "$INPUT_ONLY_VERIFIED" = "true" ]; then
-          echo "results_filter=verified" >> "$GITHUB_OUTPUT"
-          echo "🔍 Filter: Verified secrets only"
-        else
-          echo "results_filter=verified,unknown" >> "$GITHUB_OUTPUT"
-          echo "🔍 Filter: Verified + Unknown"
-        fi
-
-    - name: Run TruffleHog scan
+    # Values arrive as environment variables, never interpolated into the
+    # script text: base and head come from pull request events, and on a fork
+    # pull request the branch name is chosen by the attacker.
+    - name: Run TruffleHog
       id: scan
       shell: bash
-      working-directory: ${{ inputs.path }}
       env:
-        SCAN_TYPE: ${{ steps.config.outputs.scan_type }}
-        RESULTS_FILTER: ${{ steps.config.outputs.results_filter }}
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_PATH: ${{ inputs.path }}
         INPUT_BASE: ${{ inputs.base }}
         INPUT_HEAD: ${{ inputs.head }}
-        INPUT_EXTRA_ARGS: ${{ inputs.extra_args }}
+        INPUT_SCAN_TYPE: ${{ inputs.scan_type }}
+        INPUT_RESULTS: ${{ inputs.results }}
+        INPUT_VERIFY: ${{ inputs.verify }}
+        INPUT_EXCLUDE_PATHS_FILE: ${{ inputs.exclude_paths_file }}
         INPUT_FAIL_ON_FINDINGS: ${{ inputs.fail_on_findings }}
-      run: |
-        set +e  # Don't exit on TruffleHog findings
+        INPUT_OUTPUT_DIR: ${{ inputs.output_dir }}
+      run: '"$ACTION_PATH/trufflehog.sh"'
 
-        # The command is built as an array and executed directly. It used to be
-        # assembled into a string and run through eval, which re-parsed every
-        # value it contained as shell: a base or head of `main;id` was two
-        # commands by the time it ran. An array element is one argument no
-        # matter what is in it.
-        cmd=(trufflehog)
-        if [ "$SCAN_TYPE" = "git" ]; then
-          cmd+=(git file://.)
-          if [ -n "$INPUT_BASE" ]; then
-            cmd+=("--since-commit=$INPUT_BASE")
-          fi
-          cmd+=("--branch=$INPUT_HEAD")
-        else
-          cmd+=(filesystem .)
-        fi
-        cmd+=(--json "--results=$RESULTS_FILTER")
-
-        # extra_args is documented as a free-form CLI string, so it has to be
-        # split into words -- but with read -a rather than by the shell, so the
-        # words are only ever arguments. No globbing, no substitution, no
-        # metacharacters: `; rm -rf /` becomes four harmless arguments that
-        # TruffleHog rejects.
-        if [ -n "$INPUT_EXTRA_ARGS" ]; then
-          read -r -a extra_args <<< "$INPUT_EXTRA_ARGS"
-          cmd+=("${extra_args[@]}")
-        fi
-
-        echo "Running TruffleHog..."
-        printf 'Command:'; printf ' %q' "${cmd[@]}"; printf '\n'
-
-        # Run scan and capture output (use namespaced temp file to avoid collisions)
-        TEMP_OUTPUT="${RUNNER_TEMP}/trufflehog-output-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
-        "${cmd[@]}" > "$TEMP_OUTPUT" 2>&1
-        EXIT_CODE=$?
-
-        # Count findings
-        FINDINGS_COUNT=0
-        VERIFIED_COUNT=0
-
-        if [ -f "$TEMP_OUTPUT" ]; then
-          # Count total findings (JSON lines)
-          FINDINGS_COUNT=$(grep -c '{"SourceMetadata"' "$TEMP_OUTPUT" 2>/dev/null || echo "0")
-
-          # Count verified findings
-          VERIFIED_COUNT=$(grep '"Verified":true' "$TEMP_OUTPUT" 2>/dev/null | wc -l || echo "0")
-
-          # Show findings in output
-          if [ "$FINDINGS_COUNT" -gt 0 ]; then
-            echo ""
-            echo "⚠️  Found $FINDINGS_COUNT potential secret(s) ($VERIFIED_COUNT verified)"
-            echo ""
-            cat "$TEMP_OUTPUT"
-          else
-            echo "✅ No secrets found"
-          fi
-        fi
-
-        # Set outputs
-        echo "findings_count=$FINDINGS_COUNT" >> "$GITHUB_OUTPUT"
-
-        if [ "$VERIFIED_COUNT" -gt 0 ]; then
-          echo "has_verified=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "has_verified=false" >> "$GITHUB_OUTPUT"
-        fi
-
-        # Cleanup
-        rm -f "$TEMP_OUTPUT"
-
-        # Exit with appropriate code
-        if [ "$INPUT_FAIL_ON_FINDINGS" = "true" ] && [ "$FINDINGS_COUNT" -gt 0 ]; then
-          echo ""
-          echo "❌ Scan failed: Secrets detected"
-          exit 1
-        fi
-
-        exit 0
-
-    - name: Display summary
+    - name: Summary
+      if: always() && steps.scan.outputs.report != ''
       shell: bash
-      if: always()
       env:
-        SCAN_TYPE: ${{ steps.config.outputs.scan_type }}
-        INCREMENTAL: ${{ steps.config.outputs.incremental }}
-        RESULTS_FILTER: ${{ steps.config.outputs.results_filter }}
-        INPUT_BASE: ${{ inputs.base }}
-        INPUT_HEAD: ${{ inputs.head }}
-        FINDINGS: ${{ steps.scan.outputs.findings_count }}
-        HAS_VERIFIED: ${{ steps.scan.outputs.has_verified }}
-        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        REPORT: ${{ steps.scan.outputs.report }}
       run: |
-        # The step summary is rendered as Markdown in the run page, so a value
-        # written into it is untrusted content in a document other people read.
-        # printf %s keeps it data; echo of an interpolated expression would not.
+        # Every value written here comes from the report, which comes from the
+        # scanned repository: file names are attacker-chosen on a fork PR. jq
+        # writes them as data, with Markdown table metacharacters escaped.
         {
-          echo "### 🔐 TruffleHog Secret Scan"
+          echo "### 🔐 TruffleHog secret scan"
           echo ""
-          echo "**Configuration:**"
-          printf -- '- Scan type: %s\n' "$SCAN_TYPE"
-
-          if [ "$INCREMENTAL" = "true" ]; then
-            printf -- '- Mode: Incremental (`%s..%s`)\n' "$INPUT_BASE" "$INPUT_HEAD"
-          elif [ "$SCAN_TYPE" = "git" ]; then
-            echo "- Mode: Full Git history"
-          else
-            echo "- Mode: Filesystem (current files)"
-          fi
-
-          printf -- '- Filter: %s\n' "$RESULTS_FILTER"
-          echo ""
-        } >> "$GITHUB_STEP_SUMMARY"
-
-        {
-          echo "**Results:**"
-
-          if [ "$FINDINGS" = "0" ]; then
+          jq -r '"- Mode: \(.mode)\n- Results: \(.results)\n- Verification: \(if .verify then "on" else "off" end)\n"' "$REPORT"
+          if [ "$(jq '.findings | length' "$REPORT")" = "0" ]; then
             echo "✅ No secrets found"
           else
-            printf -- '⚠️  Found **%s** potential secret(s)\n' "$FINDINGS"
-
-            if [ "$HAS_VERIFIED" = "true" ]; then
-              echo ""
-              echo "🚨 **Verified secrets detected!** These are confirmed credentials."
-            fi
-
+            jq -r '"⚠️ **\(.findings | length)** potential secret(s), \([.findings[] | select(.verified)] | length) verified\n"' "$REPORT"
+            echo "| Detector | File | Line | Commit | Verified |"
+            echo "|---|---|---|---|---|"
+            jq -r 'def md: tostring | gsub("(?<c>[|`<>\\[\\]])"; "\\\(.c)");
+              .findings[:50][] | "| \(.detector|md) | \(.file|md) | \(.line // "" | md) | \(.commit // "" | .[0:8]) | \(if .verified then "🚨 yes" else "no" end) |"' "$REPORT"
             echo ""
-            printf -- 'Check the [action logs](%s) for details.\n' "$RUN_URL"
+            echo "Values are not shown. Remove the secret, rotate it if it was ever pushed, or mark a false positive in .trufflehogignore or with a \`# trufflehog:ignore\` comment."
           fi
         } >> "$GITHUB_STEP_SUMMARY"

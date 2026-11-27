@@ -1,280 +1,152 @@
-# TruffleHog Scanner Action
+# TruffleHog scanner action
 
-Lightweight wrapper for [TruffleHog](https://github.com/trufflesecurity/trufflehog) to scan Git repositories for leaked credentials and secrets.
+Scans a Git repository or a directory for leaked credentials with
+[TruffleHog](https://github.com/trufflesecurity/trufflehog), run from the
+toolkit's scanner image (the one `actions/scan` pins by digest, so the
+TruffleHog version is the one the release was tested with).
 
-Perfect for:
-- 🔍 Pull Request checks
-- 🪝 Pre-commit hooks
-- 🚀 CI/CD pipelines
-- 📊 Security audits
+- **Secret values never reach the log.** The action writes `trufflehog.json`
+  with detector, file, line and commit only, and prints the same. The raw
+  TruffleHog output, which carries every secret in full, is deleted before
+  the step ends.
+- **Unverified findings are reported by default.** A hardcoded database
+  password has nothing to verify against, so `--results=verified,unknown`
+  (this action's old default) silently dropped exactly that kind of leak.
+- **No verification by default.** Verifying sends each candidate secret to
+  its provider's API. Opt in with `verify: true` if that is acceptable; the
+  container then gets network access, otherwise it runs with none.
 
-## Features
+## Pull request check (recommended)
 
-- ✅ **Zero configuration** - Works out of the box
-- 🎯 **Auto-detection** - Automatically detects Git repos vs filesystems
-- 📈 **Incremental scans** - Scan only new commits in PRs
-- 🔐 **Verified secrets** - Filter to show only confirmed credentials
-- 📊 **Summary output** - Clean GitHub Actions summary with findings count
-
-## Quick Start
-
-### Pull Request Check
-
-Scan only the changes in a PR:
+Scans only the commits the pull request adds:
 
 ```yaml
-name: Secret Scan
+name: Secret scan
 on: pull_request
+
+permissions:
+  contents: read
 
 jobs:
   secrets:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          fetch-depth: 0  # Full history for base comparison
-      
-      - name: Scan for secrets
-        uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
+          fetch-depth: 0          # the base commit must be in the clone
+          persist-credentials: false
+
+      - uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
         with:
           base: ${{ github.event.pull_request.base.sha }}
           head: ${{ github.event.pull_request.head.sha }}
 ```
 
-### Commit Push Check
+For pushes use `base: ${{ github.event.before }}`; a push that creates a
+branch (`before` is all zeros) scans the full history instead.
 
-Scan changes in a push:
-
-```yaml
-name: Secret Scan
-on: push
-
-jobs:
-  secrets:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      
-      - name: Scan for secrets
-        uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
-        with:
-          base: ${{ github.event.before }}
-          head: ${{ github.event.after }}
-```
-
-### Full Repository Scan
-
-Scan entire Git history:
+## Full history audit
 
 ```yaml
-- uses: actions/checkout@v7
+- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
   with:
-    fetch-depth: 0  # Required for full history
-
+    fetch-depth: 0
 - uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
-  # No base/head specified = full history scan
+  with:
+    fail_on_findings: false   # report, don't block, while triaging the backlog
 ```
 
-### Filesystem-Only Scan
+A secret found in history stays in every clone and fork even after the file
+is fixed: **rotate it**. Rewriting history does not undo the exposure.
 
-Scan current files without Git history:
+## With actions/scan and actions/findings
+
+Write the report into the scan's output directory and `actions/findings`
+includes it (every TruffleHog finding counts as CRITICAL):
 
 ```yaml
-- uses: actions/checkout@v7
-  # No fetch-depth needed
-
+- id: scan
+  uses: Avarko/gh-security-toolkit/actions/scan@v2
 - uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
   with:
     scan_type: filesystem
+    fail_on_findings: false
+    output_dir: ${{ steps.scan.outputs.output-dir }}
+- uses: Avarko/gh-security-toolkit/actions/findings@v2
+  with:
+    scan-dir: ${{ steps.scan.outputs.output-dir }}
 ```
 
 ## Inputs
 
-| Input | Description | Default | Required |
-|-------|-------------|---------|----------|
-| `path` | Path to repository/directory | `.` | No |
-| `base` | Base commit/branch for incremental scan | `""` | No |
-| `head` | Head commit/branch to scan to | `HEAD` | No |
-| `scan_type` | `git`, `filesystem`, or `auto` | `auto` | No |
-| `only_verified` | Only show verified secrets | `false` | No |
-| `fail_on_findings` | Fail workflow if secrets found | `true` | No |
-| `extra_args` | Additional TruffleHog CLI arguments | `""` | No |
+| Input | Default | Description |
+|---|---|---|
+| `path` | `.` | Repository or directory to scan |
+| `base` | | Scan commits after this one (SHA or ref); empty = full history |
+| `head` | `HEAD` | Scan up to this commit |
+| `scan_type` | `auto` | `git`, `filesystem`, or `auto` (git when `path` is a repository root) |
+| `results` | `verified,unverified,unknown` | Which results to report |
+| `verify` | `false` | Verify candidates against provider APIs (sends them off the runner) |
+| `exclude_paths_file` | `.trufflehogignore` | Regexes, one per line, against repository-relative paths |
+| `fail_on_findings` | `true` | Fail the step when anything is reported |
+| `output_dir` | `$RUNNER_TEMP/trufflehog` | Where `trufflehog.json` is written |
 
 ## Outputs
 
 | Output | Description |
-|--------|-------------|
-| `findings_count` | Number of secrets found |
-| `has_verified` | Whether verified secrets were found (`true`/`false`) |
+|---|---|
+| `findings_count` | Number of findings |
+| `has_verified` | `true` if any finding was verified live |
+| `report` | Path to `trufflehog.json` (no secret values) |
 
-## Examples
+## False positives
 
-### Only Fail on Verified Secrets
+Two ways, both reviewed in pull requests like any other change:
 
-```yaml
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
-  with:
-    only_verified: true
-    fail_on_findings: true
+```text
+# .trufflehogignore -- regexes against repository-relative paths
+# Local development database only; not used in any deployed environment.
+^postgres/Dockerfile$
 ```
 
-### Warning Mode (Don't Fail)
-
 ```yaml
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
-  with:
-    fail_on_findings: false
+url: jdbc:postgresql://bus-postgres:5432/postgres  # trufflehog:ignore
 ```
 
-### Custom TruffleHog Arguments
+Prefer the inline comment: it ignores one line, while a path ignores
+everything that file will ever contain. `.git/` is always excluded from
+filesystem scans (it is the history, which the git mode scans).
+
+## Pre-commit hook
+
+A hook catches a secret before it is in a commit at all, which is the only
+point where no rotation is needed. It is a convenience, not the control:
+hooks are installed per clone and skipped with `--no-verify`, so the pull
+request check above is what enforces it.
+
+With [pre-commit](https://pre-commit.com/), using TruffleHog's own hook
+definition:
 
 ```yaml
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
-  with:
-    extra_args: --no-update --concurrency=4
-```
-
-### Use Outputs
-
-```yaml
-- name: Scan for secrets
-  id: scan
-  uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
-  with:
-    fail_on_findings: false
-
-- name: Check results
-  run: |
-    echo "Found ${{ steps.scan.outputs.findings_count }} secrets"
-    if [ "${{ steps.scan.outputs.has_verified }}" = "true" ]; then
-      echo "⚠️ Verified secrets detected!"
-    fi
-```
-
-## Pre-commit Hook
-
-Use TruffleHog locally with [pre-commit](https://pre-commit.com/):
-
-### 1. Install pre-commit
-
-```bash
-pip install pre-commit
-```
-
-### 2. Create `.pre-commit-config.yaml`
-
-```yaml
+# .pre-commit-config.yaml
 repos:
   - repo: https://github.com/trufflesecurity/trufflehog
-    rev: v3.63.2
+    rev: v3.99.9   # keep equal to the scanner image's TruffleHog (actions/scan/image.ref)
     hooks:
       - id: trufflehog
-        name: TruffleHog
-        description: Detect secrets in your data
-        entry: bash -c 'trufflehog git file://. --since-commit HEAD --only-verified --fail --json'
-        language: golang
-        pass_filenames: false
+        # The upstream hook reports only verified secrets, which misses
+        # passwords and other credentials that cannot be verified, and
+        # verification sends staged secrets to provider APIs. This scans the
+        # staged changes for everything, offline.
+        entry: trufflehog git file://. --since-commit HEAD --results=verified,unverified,unknown --no-verification --no-update --fail --trust-local-git-config
 ```
 
-### 3. Install the hook
-
 ```bash
+pip install pre-commit   # or: brew install pre-commit
 pre-commit install
 ```
 
-Now TruffleHog runs on every commit!
-
-## Advanced Usage
-
-### Scan Specific Branch
-
-```yaml
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
-  with:
-    base: origin/main
-    head: origin/develop
-```
-
-### Scan Last N Commits
-
-```yaml
-- uses: actions/checkout@v7
-  with:
-    fetch-depth: 10
-
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
-  with:
-    base: HEAD~10
-    head: HEAD
-```
-
-### Multi-directory Scan
-
-```yaml
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
-  with:
-    path: ./frontend
-
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
-  with:
-    path: ./backend
-```
-
-## How It Works
-
-1. **Auto-detection**: Detects if scanning a Git repo or filesystem
-2. **Incremental**: If `base` provided, scans only commits between base and head
-3. **TruffleHog CLI**: Runs native TruffleHog with JSON output
-4. **Parse Results**: Counts findings and checks for verified secrets
-5. **Summary**: Creates GitHub Actions summary with results
-6. **Exit Code**: Fails workflow if secrets found (configurable)
-
-## Comparison: This vs Official TruffleHog Action
-
-| Feature | This Action | Official Action |
-|---------|-------------|-----------------|
-| **Configuration** | Minimal | More options |
-| **Incremental scans** | ✅ Easy (base/head) | ⚠️ Manual |
-| **Filesystem scans** | ✅ Yes | ❌ Git only |
-| **Auto-detection** | ✅ Yes | ❌ No |
-| **Summary output** | ✅ Clean format | ⚠️ Raw output |
-| **Outputs** | ✅ findings_count, has_verified | ❌ No outputs |
-| **Use case** | PR checks, pre-commit | Full scans |
-
-## Troubleshooting
-
-### "No secrets found" but I know there are secrets
-
-Try full history scan:
-
-```yaml
-- uses: actions/checkout@v7
-  with:
-    fetch-depth: 0  # Important!
-
-- uses: Avarko/gh-security-toolkit/actions/scanner/trufflehog@v2
-```
-
-### Scan takes too long
-
-Use incremental scan for PRs:
-
-```yaml
-with:
-  base: ${{ github.event.pull_request.base.sha }}
-```
-
-### False positives
-
-Use verified-only mode:
-
-```yaml
-with:
-  only_verified: true
-```
-
-## License
-
-MIT License — feel free to fork, extend, and reuse.
+`--since-commit HEAD` scans what is staged, not only committed history; it
+honours `# trufflehog:ignore` comments. `language: golang` (from the upstream
+definition) builds TruffleHog on first use, which needs Go; with TruffleHog
+already installed, `language: system` in a `repo: local` hook avoids that.
