@@ -720,7 +720,14 @@ sec/provenance: ## Print what a scan on this machine would run: images, dates, d
 # them. It refuses without printing the banner first, which is the right way
 # round -- the refusal names the artefact and its age itself, and a banner
 # describing a scan that is not going to happen is noise.
-__ghst-provenance: __ghst-db-ensure __ghst-self-check __ghst-freshness-floor
+#
+# sec/scan has passed the floor itself before it asks a make of its own for
+# this, and says so with __GHST_FLOOR_PASSED (command line only), so that a
+# refusal, or an unreachable registry, is not met twice.
+ifneq ($(origin __GHST_FLOOR_PASSED),command line)
+__GHST_FLOOR_PASSED :=
+endif
+__ghst-provenance: __ghst-db-ensure $(if $(__GHST_FLOOR_PASSED),,__ghst-self-check __ghst-freshness-floor)
 	@stamp_age() { \
 		s=$$(stat -c %Y "$$1" 2>/dev/null || stat -f %m "$$1" 2>/dev/null); \
 		[ -n "$$s" ] || { echo "never"; return; }; \
@@ -1008,8 +1015,10 @@ __GHST_REPORT_RENDER = \
 	fi; \
 	exit $$rc
 
-# Scan and render in one container: $(1) the Trivy subcommand, $(2) what it
-# scans, relative to the workspace. Inside, $0 is the report and $1 and $2
+# Scan and render in one container: $(1) the Trivy subcommand, $(2) the name
+# of the variable holding what it scans, relative to the workspace. A name
+# rather than the path itself, because $(call) splits its arguments at commas
+# and a path may have one. Inside, $0 is the report and $1 and $2
 # the arguments, so a path is never parsed as shell. A render that fails
 # leaves a marker beside the report, which says on the host what a separate
 # container's exit status used to.
@@ -1029,17 +1038,26 @@ __GHST_REPORT_RENDER = \
 # the reports the previous run left there, and now that the scans run side by
 # side it would read the ones being written. Semgrep excludes it the same way.
 __GHST_RUN_LABEL = --label fi.evolver.ghst.run=$(__GHST_RUN_ID)
-__GHST_REPORT_MASK = $(if $(and $(filter $(__GHST_REPORT_DIR),$(__GHST_REPORT_OUT)),$(filter-out /% ../% ..,$(__GHST_REPORT_DIR))),--tmpfs /workspace/$(__GHST_REPORT_DIR):ro)
+#
+# Worked out from absolute paths, because the report directory is relative to
+# make's directory and /workspace is $(PWD), which make -C does not change: a
+# mask named after the relative path pointed somewhere in the workspace that
+# need not exist, and Docker cannot create a mount point in a read-only mount.
+# Only a directory strictly inside the workspace is masked, never the
+# workspace itself.
+__GHST_WORKSPACE_ABS = $(abspath $(PWD))
+__GHST_REPORT_MASK = $(foreach o,$(abspath $(__GHST_REPORT_OUT)),$(if $(filter $(__GHST_WORKSPACE_ABS)/%,$(o)),--tmpfs /workspace/$(patsubst $(__GHST_WORKSPACE_ABS)/%,%,$(o)):ro))
 __GHST_TRIVY_CANNOT_WRITE := 97
+__GHST_WORKSPACE_ROOT := .
 __GHST_TRIVY_SCAN = \
 	$(__GHST_DOCKER_CMD) run --init $(__GHST_DOCKER_OPTS) $(__GHST_RUN_LABEL) $(__GHST_REPORT_MASK) \
 		-v $(abspath $(__GHST_REPORT_OUT)):/scanx-out $(__GHST_IMAGE) \
-		sh -c '$(__GHST_TRIVY_IN_CONTAINER)' /scanx-out/$(notdir $(__GHST_REPORT)) $(1) "$(2)" \
+		sh -c '$(__GHST_TRIVY_IN_CONTAINER)' /scanx-out/$(notdir $(__GHST_REPORT)) $(1) "$($(2))" \
 	&& rc=0 || rc=$$?; \
 	if [ $$rc -eq $(__GHST_TRIVY_CANNOT_WRITE) ] && [ ! -e $(__GHST_REPORT) ]; then \
 		echo "ℹ️  The scanner cannot write to $(__GHST_REPORT_OUT) from inside its container; rendering separately" >&2; \
 		$(__GHST_DOCKER_CMD) run $(__GHST_DOCKER_OPTS) $(__GHST_RUN_LABEL) $(__GHST_REPORT_MASK) $(__GHST_IMAGE) \
-			trivy $(1) "$(2)" $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
+			trivy $(1) "$($(2))" $(__GHST_TRIVY_CONFIG_OPT) --format json $(__GHST_REPORT_SCAN_OPTS) --timeout $(__GHST_TRIVY_TIMEOUT) \
 		> $(__GHST_REPORT) && rc=0 || rc=$$?; \
 		$(__GHST_REPORT_RENDER); \
 	fi; \
@@ -1095,7 +1113,7 @@ sec/scan/trivy/fs: $(__GHST_TRIVY_PREREQ) # Scan filesystem (uses trivy.yaml or 
 	@echo "🔍 Scanning filesystem with Trivy (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
 	@$(__GHST_TRIVY_REPORT_PREPARE)
-	$(call __GHST_TRIVY_SCAN,fs,.)
+	$(call __GHST_TRIVY_SCAN,fs,__GHST_WORKSPACE_ROOT)
 
 # rootfs, not fs. The two differ in what they read, not just where: fs reads
 # lockfiles and manifests (pom.xml, package-lock.json) and skips jars, while
@@ -1118,14 +1136,14 @@ sec/scan/trivy/artifact: $(__GHST_TRIVY_PREREQ) # Scan built artifact - Gradle W
 	@echo "🔍 Scanning artifact $(ARTIFACT) with Trivy (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
 	@$(__GHST_TRIVY_REPORT_PREPARE)
-	$(call __GHST_TRIVY_SCAN,rootfs,$(ARTIFACT))
+	$(call __GHST_TRIVY_SCAN,rootfs,ARTIFACT)
 
 .PHONY: sec/scan/trivy/config
 sec/scan/trivy/config: $(__GHST_TRIVY_PREREQ) # Scan IaC configs for misconfigurations - Terraform, Dockerfile, K8s, etc. (uses trivy.yaml or .trivy.yaml)
 	@echo "🔍 Scanning IaC configs with Trivy (offline mode)..." >&2
 	@$(__GHST_TRIVY_CONFIG_NOTE)
 	@$(__GHST_TRIVY_REPORT_PREPARE)
-	$(call __GHST_TRIVY_SCAN,config,.)
+	$(call __GHST_TRIVY_SCAN,config,__GHST_WORKSPACE_ROOT)
 
 # The image reaches Trivy as a file rather than through the Docker socket.
 # Mounting the socket gave the scanner root-equivalent access to this host on
@@ -1311,11 +1329,18 @@ sec/scan/semgrep: $(__GHST_SEMGREP_PREREQ) # Scan code with Semgrep (uses .semgr
 # another the scan took their sum. Each scan's stderr comes before its stdout,
 # so its "📄 Full JSON report" line now precedes its table.
 #
-# First the update, the checks and the banner run once, in a make of their
-# own as well, with their output live: a database update takes minutes and
-# draws its progress. When that fails Semgrep still runs, on its own, as it
-# did when the three were prerequisites run with make -k: it needs none of the
-# Trivy databases. The scan then fails either way.
+# First the freshness floor, here, and then the update and the banner once, in
+# a make of their own, with their output live: a database update takes
+# minutes and draws its progress. When the floor refuses, nothing runs. When
+# the update fails Semgrep still runs, on its own, as it did when the three
+# were prerequisites run with make -k: it needs none of the Trivy databases.
+# The scan then fails either way.
+#
+# The nested makes read the first makefile the first one did. A project that
+# names several with -f, or includes this file from a MAKEFILES one, cannot be
+# followed that way and should run the scans one by one; so should one whose
+# include fetches this file while it is parsed ($(shell curl ...)), since
+# every nested make would fetch it again.
 #
 # On a terminal a status line is redrawn until all are shown; elsewhere, or
 # with GHST_PROGRESS=0, there is one line saying the scans have started.
@@ -1331,10 +1356,10 @@ __GHST_FULL_SCANS := sec/scan/trivy/fs sec/scan/trivy/config sec/scan/semgrep
 GHST_SCAN_PARALLEL ?= 1
 
 .PHONY: sec/scan
-sec/scan: ## Full scan. Subcommands: sec/scan/[trivy/fs,trivy/config,trivy/artifact ARTIFACT=<path>,trivy/img IMAGE=<Docker img tag>,/semgrep,/clean,/help]. Databases: sec/db/[update,status,clean].
-	@if ! $(MAKE) $(__GHST_SUBMAKE_ARGS) __ghst-provenance; then \
+sec/scan: __ghst-freshness-floor ## Full scan. Subcommands: sec/scan/[trivy/fs,trivy/config,trivy/artifact ARTIFACT=<path>,trivy/img IMAGE=<Docker img tag>,/semgrep,/clean,/help]. Databases: sec/db/[update,status,clean].
+	@if ! $(MAKE) $(__GHST_SUBMAKE_ARGS) __GHST_FLOOR_PASSED=1 __ghst-provenance; then \
 		echo "⚠️  The Trivy scans cannot run (see above); running Semgrep on its own." >&2; \
-		$(MAKE) $(__GHST_SUBMAKE_ARGS) sec/scan/semgrep; \
+		$(MAKE) $(__GHST_SUBMAKE_ARGS) __GHST_SCAN_PREPARED=1 sec/scan/semgrep; \
 		exit 2; \
 	fi; \
 	if [ "$(GHST_SCAN_PARALLEL)" = 0 ]; then \
@@ -1367,6 +1392,7 @@ sec/scan: ## Full scan. Subcommands: sec/scan/[trivy/fs,trivy/config,trivy/artif
 			> "$$tmp/$$n.out" 2> "$$tmp/$$n.err" < /dev/null; \
 		  echo $$? > "$$tmp/$$n.rc.tmp" && mv "$$tmp/$$n.rc.tmp" "$$tmp/$$n.rc" ) & \
 		pids="$$pids $$!"; \
+		echo $$! > "$$tmp/$$n.pid"; \
 	done; \
 	progress=$(__GHST_PROGRESS); \
 	names=$$(i=1; while [ $$i -le $$n ]; do printf '%s, ' "$$(cat "$$tmp/$$i.name")"; i=$$((i + 1)); done); \
@@ -1375,6 +1401,11 @@ sec/scan: ## Full scan. Subcommands: sec/scan/[trivy/fs,trivy/config,trivy/artif
 	fi; \
 	start=$$(date +%s); next=1; frame=0; failed=""; \
 	while [ $$next -le $$n ]; do \
+		if [ ! -e "$$tmp/$$next.rc" ] && ! kill -0 "$$(cat "$$tmp/$$next.pid")" 2>/dev/null \
+			&& [ ! -e "$$tmp/$$next.rc" ]; then \
+			echo "❌ $$(cat "$$tmp/$$next.name") was stopped from outside before it finished" >> "$$tmp/$$next.err"; \
+			echo 137 > "$$tmp/$$next.rc"; \
+		fi; \
 		if [ -e "$$tmp/$$next.rc" ]; then \
 			[ "$$progress" != 1 ] || printf '\r\033[K' >&2; \
 			cat "$$tmp/$$next.err" >&2; \
