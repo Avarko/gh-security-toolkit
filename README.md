@@ -98,7 +98,9 @@ before it has been shown, so it always comes in the same order (trivy fs,
 trivy config, Semgrep) and never mixed together. On a terminal a status line
 shows which scans are still running; `--no-progress` turns it off. A scan's
 stderr is shown before its stdout, so its "Full JSON report" line comes just
-above its table.
+above its table. `GHST_SCAN_PARALLEL=0` runs them one after another instead,
+with their output as it comes, for a machine where three scanners at once
+do not fit in memory.
 
 Each scan also leaves its full JSON report in `.scanx/` in the scanned
 directory (`trivy-fs.json`, `trivy-config.json`, `trivy-artifact.json`,

@@ -48,6 +48,8 @@ Environment:
   SCANX_CHECK_INTERVAL_MINUTES=10    How long a successful check for a newer scanx or
                                      image holds (default 10; 0 checks on every run)
   SCANX_NO_PROGRESS=1                Same as --no-progress
+  GHST_SCAN_PARALLEL=0               scanx scan runs its scans one after another
+                                     instead of side by side
   SCANX_MAKE=gmake                   GNU make to use (macOS ships make 3.81)
 
 Trailing NAME=value arguments are passed to make, e.g.
