@@ -92,6 +92,16 @@ to stderr. A scan that fails, or finds what `exit-code` in `trivy.yaml` tells it
 to fail on, makes `scanx` exit with status 2; `scanx scan` still runs the
 remaining scans first.
 
+`scanx scan` runs its three scans side by side and holds back what each one
+prints. Each scan's output is shown when it has finished and every scan
+before it has been shown, so it always comes in the same order (trivy fs,
+trivy config, Semgrep) and never mixed together. On a terminal a status line
+shows which scans are still running; `--no-progress` turns it off. A scan's
+stderr is shown before its stdout, so its "Full JSON report" line comes just
+above its table. `GHST_SCAN_PARALLEL=0` runs them one after another instead,
+with their output as it comes, for a machine where three scanners at once
+do not fit in memory.
+
 Each scan also leaves its full JSON report in `.scanx/` in the scanned
 directory (`trivy-fs.json`, `trivy-config.json`, `trivy-artifact.json`,
 `trivy-image.json`, `semgrep.json`), overwritten by the next scan of the same

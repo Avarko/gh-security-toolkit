@@ -48,6 +48,8 @@ Environment:
   SCANX_CHECK_INTERVAL_MINUTES=10    How long a successful check for a newer scanx or
                                      image holds (default 10; 0 checks on every run)
   SCANX_NO_PROGRESS=1                Same as --no-progress
+  GHST_SCAN_PARALLEL=0               scanx scan runs its scans one after another
+                                     instead of side by side
   SCANX_MAKE=gmake                   GNU make to use (macOS ships make 3.81)
 
 Trailing NAME=value arguments are passed to make, e.g.
@@ -140,6 +142,12 @@ minutes_since_fetch() {
 # this run would not see it. The scan's make checks in either case.
 image_check_start() {
 	image_pid=""
+	# One name for the run, shared with the scan's make, so that what this
+	# check records about the image (one docker image inspect, a third of a
+	# second) is not asked again there. A scanx restarted on its update
+	# inherits it.
+	__GHST_RUN_ID=${__GHST_RUN_ID:-scanx-$$-$(date +%s)}
+	export __GHST_RUN_ID
 	[ "${SCANX_OFFLINE:-0}" = "1" ] && return 0
 	[ "${SCANX_UPDATED:-0}" = "1" ] && return 0
 	case "$1 ${2:-}" in "db update" | "db status" | scan* | provenance*) ;; *) return 0 ;; esac
