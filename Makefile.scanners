@@ -1044,9 +1044,13 @@ __GHST_RUN_LABEL = --label fi.evolver.ghst.run=$(__GHST_RUN_ID)
 # mask named after the relative path pointed somewhere in the workspace that
 # need not exist, and Docker cannot create a mount point in a read-only mount.
 # Only a directory strictly inside the workspace is masked, never the
-# workspace itself.
-__GHST_WORKSPACE_ABS = $(abspath $(PWD))
-__GHST_REPORT_MASK = $(foreach o,$(abspath $(__GHST_REPORT_OUT)),$(if $(filter $(__GHST_WORKSPACE_ABS)/%,$(o)),--tmpfs /workspace/$(patsubst $(__GHST_WORKSPACE_ABS)/%,%,$(o)):ro))
+# workspace itself. Both sides are resolved through symlinks: PWD is the
+# shell's logical path, a relative report directory is resolved against
+# make's physical one, and the two would otherwise never share a prefix.
+# realpath is empty for a directory not yet created, and abspath, physical
+# for a relative path, stands in.
+__GHST_WORKSPACE_ABS = $(or $(realpath $(PWD)),$(abspath $(PWD)))
+__GHST_REPORT_MASK = $(foreach o,$(or $(realpath $(__GHST_REPORT_OUT)),$(abspath $(__GHST_REPORT_OUT))),$(if $(filter $(__GHST_WORKSPACE_ABS)/%,$(o)),--tmpfs /workspace/$(patsubst $(__GHST_WORKSPACE_ABS)/%,%,$(o)):ro))
 __GHST_TRIVY_CANNOT_WRITE := 97
 __GHST_WORKSPACE_ROOT := .
 __GHST_TRIVY_SCAN = \
